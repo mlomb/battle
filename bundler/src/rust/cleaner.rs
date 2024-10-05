@@ -1,5 +1,6 @@
 use syn::visit_mut::VisitMut;
 
+/// Removes parts of the code that include the specified attributes
 pub struct Cleaner {
     pub attributes_to_remove: Vec<String>,
 }
@@ -25,9 +26,4 @@ impl VisitMut for Cleaner {
     remove_attrs!(visit_item_struct_mut, ItemStruct);
     remove_attrs!(visit_item_impl_mut, ItemImpl);
     remove_attrs!(visit_field_mut, Field);
-
-    /*
-    fn visit_item_use_mut(&mut self, i: &mut syn::ItemUse) {
-    }
-    */
 }

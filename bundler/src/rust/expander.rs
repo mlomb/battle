@@ -1,13 +1,15 @@
-use crate::read_file;
-use std::path::Path;
+use super::read_file;
+use std::path::PathBuf;
 use syn::visit_mut::VisitMut;
 
-pub struct Expander<'a> {
-    pub base_path: &'a Path,
-    pub crate_name: &'a str,
+/// Recursively resolves the `use` and `extern crate` statements in the code,
+/// effectively inlining all the code.
+pub struct Expander {
+    pub base_path: PathBuf,
+    pub crate_name: String,
 }
 
-impl Expander<'_> {
+impl Expander {
     fn expand_items(&self, items: &mut Vec<syn::Item>) {
         let mut new_items = vec![];
         for item in items.drain(..) {
@@ -55,8 +57,8 @@ impl Expander<'_> {
         let name = item.ident.to_string();
         let other_base_path = self.base_path.join(&name);
         let (base_path, code) = vec![
-            (self.base_path, format!("{}.rs", name)),
-            (&other_base_path, String::from("mod.rs")),
+            (self.base_path.clone(), format!("{}.rs", name)),
+            (other_base_path, String::from("mod.rs")),
         ]
         .into_iter()
         .flat_map(|(base_path, file_name)| {
@@ -69,7 +71,7 @@ impl Expander<'_> {
         if let Ok(mut file) = syn::parse_file(&code) {
             Expander {
                 base_path,
-                crate_name: self.crate_name,
+                crate_name: self.crate_name.clone(),
             }
             .visit_file_mut(&mut file);
             item.content = Some((Default::default(), file.items));
@@ -77,7 +79,7 @@ impl Expander<'_> {
     }
 }
 
-impl VisitMut for Expander<'_> {
+impl VisitMut for Expander {
     fn visit_file_mut(&mut self, file: &mut syn::File) {
         for it in &mut file.attrs {
             self.visit_attribute_mut(it)

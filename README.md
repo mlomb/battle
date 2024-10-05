@@ -3,7 +3,7 @@
 Clone and run:
 
 ```
-cargo install --path cgbundler
+cargo install --path bundler
 cargo install --path cgsync
 ```
 
