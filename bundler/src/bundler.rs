@@ -5,11 +5,13 @@ use std::{
 
 /// The trait all bundlers implement
 pub trait Bundler {
+    /// Checks if the path leads to a valid entry point
     fn is_entrypoint(path: &Path) -> bool;
 
+    /// Bundles the project into a single source file
     fn bundle(path: &Path) -> Result<String, Box<dyn Error>>;
 
-    /// Find the entrypoint file of the project
+    /// Find the entrypoint file of a project
     fn find_entrypoint(path: &Path) -> Option<PathBuf> {
         // enumerate available files
         let mut candidates = if path.is_dir() {

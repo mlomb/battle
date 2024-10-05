@@ -9,21 +9,12 @@ use expander::Expander;
 use format::{format_code, FmtError};
 use quote::quote;
 use std::error::Error;
+use std::fs;
 use std::path::Path;
 use std::{fs::File, io::Read};
 use syn::visit_mut::VisitMut;
 
-pub struct RustBundle {
-    source: String,
-}
-
 pub struct RustBundler {}
-
-impl RustBundler {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
 
 impl Bundler for RustBundler {
     /// Check if the path points to a valid Cargo.toml file
@@ -34,6 +25,7 @@ impl Bundler for RustBundler {
             .eq("cargo.toml")
     }
 
+    /// Bundle a Rust project
     fn bundle(manifest_path: &Path) -> Result<String, Box<dyn Error>> {
         let metadata = MetadataCommand::new()
             .manifest_path(manifest_path)
@@ -47,9 +39,9 @@ impl Bundler for RustBundler {
             .find(|target| target.kind.iter().any(|t| t == "bin"))
             .expect("no binary target found");
 
-        let content = read_file(target.src_path.as_std_path())?;
+        let content = fs::read_to_string(target.src_path.as_std_path())?;
 
-        let mut file = syn::parse_file(&content)?; //.expect("failed to parse binary target source");
+        let mut file = syn::parse_file(&content).expect("failed to parse binary target source");
 
         Expander {
             base_path: manifest_path.parent().unwrap().join("src"),
@@ -79,11 +71,4 @@ impl Bundler for RustBundler {
             }
         }
     }
-}
-
-fn read_file(path: &Path) -> Result<String, std::io::Error> {
-    let mut file = File::open(path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    Ok(contents)
 }

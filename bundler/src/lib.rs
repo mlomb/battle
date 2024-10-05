@@ -11,21 +11,15 @@ use cpp::CppBundler;
 use rust::RustBundler;
 use std::{error::Error, path::Path};
 
-enum Language {
-    Cpp,
-    Rust,
-}
-
-struct Bundle {
-    lang: Language,
-    source: String,
-}
-
+/// Bundles a C++/Rust project directory into a single source file
 pub fn bundle(entry: &Path) -> Result<String, Box<dyn Error>> {
-    let bundler = RustBundler::new();
+    if let Some(entry) = RustBundler::find_entrypoint(entry) {
+        return RustBundler::bundle(entry.as_path());
+    }
 
-    let r = CppBundler::find_entrypoint(entry);
-    let r2 = RustBundler::find_entrypoint(entry);
+    if let Some(entry) = CppBundler::find_entrypoint(entry) {
+        return CppBundler::bundle(entry.as_path());
+    }
 
-    RustBundler::bundle(r2.ok_or("mp oteas")?.as_path())
+    Err("No entrypoint found".into())
 }

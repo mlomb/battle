@@ -1,5 +1,4 @@
-use super::read_file;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 use syn::visit_mut::VisitMut;
 
 /// Recursively resolves the `use` and `extern crate` statements in the code,
@@ -37,8 +36,8 @@ impl Expander {
                         self.crate_name,
                         self.base_path.to_str().unwrap()
                     );*/
-                    let code =
-                        read_file(&self.base_path.join("lib.rs")).expect("failed to read lib.rs");
+                    let code = fs::read_to_string(&self.base_path.join("lib.rs"))
+                        .expect("failed to read lib.rs");
                     let lib = syn::parse_file(&code).expect("failed to parse lib.rs");
                     new_items.extend(lib.items);
                     return;
@@ -62,7 +61,7 @@ impl Expander {
         ]
         .into_iter()
         .flat_map(|(base_path, file_name)| {
-            read_file(&base_path.join(file_name)).map(|code| (base_path, code))
+            fs::read_to_string(&base_path.join(file_name)).map(|code| (base_path, code))
         })
         .next()
         .expect("mod not found");
