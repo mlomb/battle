@@ -150,7 +150,7 @@ async fn main() {
         // TODO: debounce
         println!("Source changed!");
 
-        if let Ok(source) = bundle(args.package_path.clone()) {
+        if let Ok(source) = bundle(&args.package_path) {
             println!("Sending...");
 
             let peer_map2 = peer_map.clone();

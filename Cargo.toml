@@ -4,4 +4,4 @@ resolver = "2"
 members = [
     "bundler",
     "cgsync"
-, "tester"]
+]
