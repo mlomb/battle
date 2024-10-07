@@ -13,7 +13,6 @@ use notify::{RecursiveMode, Watcher};
 use serde_json::json;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::thread;
 use std::{collections::HashMap, sync::Arc};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
@@ -31,7 +30,7 @@ type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 async fn accept_connection(stream: TcpStream, rx: Receiver<String>) {
     let ws_stream = tokio_tungstenite::accept_async(stream)
         .await
-        .expect("Error during the websocket handshake occurred");
+        .expect("websocket handshake should succeed");
 
     let (mut outgoing, incoming) = ws_stream.split();
 
@@ -46,30 +45,11 @@ async fn accept_connection(stream: TcpStream, rx: Receiver<String>) {
         .await
         .unwrap();
 
-    /*
-    let forward_code = rx
-        .map(|code| {
-            Message::Text(
-                json!({
-                    "action": "update-code",
-                    "payload": {
-                        "play": false,
-                        "code": code
-                    }
-                })
-                .to_string(),
-            )
-        })
-        .map(Ok)
-        .forward(outgoing);
-    */
     let forward_code = tokio::spawn(async move {
         let mut rx = rx;
         let mut outgoing = outgoing;
 
         while let Some(code) = rx.next().await {
-            //println!("Sending code: {}", code);
-
             match outgoing
                 .send(Message::Text(
                     json!({
@@ -92,7 +72,7 @@ async fn accept_connection(stream: TcpStream, rx: Receiver<String>) {
         }
     });
 
-    let discard_incoming = incoming.try_for_each(|msg| {
+    let discard_incoming = incoming.try_for_each(|_msg| {
         // println!("Received a message: {}", msg.to_text().unwrap());
 
         future::ok(())
@@ -128,7 +108,7 @@ async fn main() {
     let addr = "127.0.0.1:53135";
     let listener = TcpListener::bind(&addr)
         .await
-        .expect("Can't listen. Port already in use?");
+        .expect("Can't listen on port 53135. Port already in use?");
     println!("CGSync listening on {}", addr);
 
     let peer_map1 = peer_map.clone();
@@ -146,7 +126,7 @@ async fn main() {
     println!("Watching \"{}\"", watch_path.display());
 
     for res in &rx {
-        let event = res.unwrap();
+        let _event = res.unwrap();
         // TODO: debounce
         println!("Source changed!");
 
