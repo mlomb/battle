@@ -1,6 +1,7 @@
 use std::{
     io::Write,
     process::{Command, Stdio},
+    vec,
 };
 
 pub enum FmtError {
@@ -15,7 +16,7 @@ pub fn format_code<T: ToString>(input: &T) -> Result<String, FmtError> {
     let rustfmt =
         toolchain_find::find_installed_component("rustfmt").ok_or(FmtError::RustfmtNotFound)?;
 
-    let args: Vec<String> = Vec::new();
+    let args: Vec<String> = vec!["--edition=2021".to_string()];
 
     let mut command = Command::new(&rustfmt)
         .args(args)
