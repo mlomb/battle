@@ -14,4 +14,3 @@ futures-util = "0.3.30"
 futures-channel = "0.3.30"
 tokio = { version = "1.35.1", features = ["io-std", "macros", "net", "rt-multi-thread", "time"] }
 crossbeam-channel = "0.5.13"
-proc-macro2 = { version = "1.0.87", features = ["span-locations"] }
