@@ -123,6 +123,7 @@ version = "0.1.0"
 dependencies = [
  "cargo_metadata",
  "clap",
+ "proc-macro2",
  "quote",
  "syn",
  "toolchain_find",
@@ -197,7 +198,6 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "notify",
- "proc-macro2",
  "serde_json",
  "tokio",
  "tokio-tungstenite",

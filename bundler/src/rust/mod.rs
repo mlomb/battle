@@ -11,8 +11,6 @@ use quote::quote;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
-use std::{fs::File, io::Read};
-use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
 
 pub struct RustBundler {}
