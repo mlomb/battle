@@ -12,6 +12,7 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::{fs::File, io::Read};
+use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
 
 pub struct RustBundler {}
@@ -43,7 +44,15 @@ impl Bundler for RustBundler {
 
         let content = fs::read_to_string(target.src_path.as_std_path())?;
 
-        let mut file = syn::parse_file(&content).expect("failed to parse binary target source");
+        let mut file = syn::parse_file(&content).map_err(|e| {
+            format!(
+                "failed to parse file {} @ Ln {} Col {}: {}",
+                target.src_path.file_name().unwrap(),
+                e.span().start().line,
+                e.span().start().column,
+                e
+            )
+        })?;
 
         Expander {
             base_path: manifest_path.parent().unwrap().join("src"),
