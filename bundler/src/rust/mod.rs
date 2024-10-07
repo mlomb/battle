@@ -27,6 +27,8 @@ impl Bundler for RustBundler {
 
     /// Bundle a Rust project
     fn bundle(manifest_path: &Path) -> Result<String, Box<dyn Error>> {
+        assert!(Self::is_entrypoint(manifest_path));
+
         let metadata = MetadataCommand::new()
             .manifest_path(manifest_path)
             // .features(CargoOpt::AllFeatures)

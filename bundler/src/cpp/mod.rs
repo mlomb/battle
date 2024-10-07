@@ -1,7 +1,13 @@
-use crate::bundler::Bundler;
-use std::{error::Error, path::Path};
+mod expander;
 
-// https://docs.rs/tree-sitter-cpp/latest/tree_sitter_cpp/
+use expander::CppExpander;
+
+use crate::bundler::Bundler;
+use std::{
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub struct CppBundler {}
 
@@ -18,7 +24,9 @@ impl Bundler for CppBundler {
         ext == "cpp" || ext == "c"
     }
 
-    fn bundle(path: &Path) -> Result<String, Box<dyn Error>> {
-        unimplemented!()
+    fn bundle(main_path: &Path) -> Result<String, Box<dyn Error>> {
+        assert!(Self::is_entrypoint(main_path));
+
+        CppExpander::new().expand_source(main_path)
     }
 }
