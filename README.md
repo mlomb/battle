@@ -1,3 +1,12 @@
+# Bot tools
+
+Tools for building competitive bots. The project is composed of four crates:
+
+- `bundler`: Bundles C++ and Rust projects into a single file.
+- `cgsync`: Watches a project for changes, bundles it and syncs it with the [CG Local extension](https://github.com/jmerle/cg-local-ext).
+- `testbed`: Allows automated testing of bots. Connects to other instances via P2P to run distributed tests.
+- `optimizer`: Uses the `testbed` crate to run parameter searches.
+
 # Install binaries
 
 Clone and run:
