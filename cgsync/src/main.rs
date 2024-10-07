@@ -120,7 +120,7 @@ async fn main() {
 
     // Watcher
     let (tx, rx) = std::sync::mpsc::channel();
-    let watch_path = &args.package_path.join("src");
+    let watch_path = &args.package_path;
     let mut watcher = notify::recommended_watcher(tx).unwrap();
     watcher.watch(watch_path, RecursiveMode::Recursive).unwrap();
     println!("Watching \"{}\"", watch_path.display());
