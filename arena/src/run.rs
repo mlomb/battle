@@ -50,7 +50,7 @@ pub fn execute(args: Vec<&str>, timeout: Duration) -> ExecutionResult {
 }
 
 fn read_pipe<R: Read>(reader: Option<R>) -> String {
-    BufReader::new(reader.expect("Internal error, could not take pipe"))
+    BufReader::new(reader.expect("to take pipe"))
         .lines()
         .map(|l| l.unwrap())
         .collect::<Vec<String>>()
