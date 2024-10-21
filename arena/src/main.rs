@@ -1,38 +1,21 @@
+pub mod agent;
 mod network;
+pub mod referee;
 pub mod run;
 
+use agent::Agent;
 use clap::{Parser, Subcommand};
-use futures::executor::ThreadPool;
 use futures::StreamExt;
-use libp2p::gossipsub::PublishError;
-use libp2p::identify;
-use libp2p::request_response::ProtocolSupport;
-use libp2p::swarm::SwarmEvent;
-use libp2p::{gossipsub, mdns, swarm::NetworkBehaviour};
-use libp2p::{ping, request_response, Multiaddr, StreamProtocol};
-use network::{Event, Message, WorkError};
+use network::{Event, WorkError};
+use referee::Referee;
 use run::execute;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::env::args;
 use std::error::Error;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tokio::runtime::Runtime;
-use tokio::{io, io::AsyncBufReadExt, select};
-use tracing_subscriber::EnvFilter;
-
-struct Referee {
-    path: PathBuf,
-}
-
-struct Agent {
-    path: PathBuf,
-    params: Vec<String>,
-}
 
 struct MatchSetup {
     referee: Referee,
@@ -58,37 +41,46 @@ enum Commands {
     Worker,
 }
 
+// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/main.rs
+// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/network.rs
+
 fn main() -> Result<(), Box<dyn Error>> {
+    // let rt = Runtime::new().unwrap();
+    // let _guard = rt.enter();
+    // let handle = work();
+    // rt.block_on(handle);
+
+    let args = Args::parse();
+
+    println!("{:?}", args);
+
+    let N = 100;
+
+    let referee = Referee::new(PathBuf::from("summer-2024-olympics-1.0-SNAPSHOT.jar"));
+
+    let agents = vec![
+        Agent::new("mlomb-146-2.exe".into()),
+        Agent::new("mlomb-146-2.exe".into()),
+        Agent::new("mlomb-146-2.exe".into()), // SMITS_v04.exe
+    ];
+
+    // referee
+    let args = referee.command(agents);
+
+    println!("Args: {:?}", args);
+
+    println!("{:?}", execute(args, Duration::from_secs(10)));
+
+    // -
+
+    /*
     let rt = Runtime::new().unwrap();
     let _guard = rt.enter();
     let handle = work();
     rt.block_on(handle);
+    */
 
     // https://github.com/dreignier/game-ultimate-tictactoe/blob/master/src/main/java/com/codingame/gameengine/runner/CommandLineInterface.java
-
-    /*
-        let args = Args::parse();
-
-        println!("{:?}", args);
-
-        let N = 100;
-
-        let mut args = vec!["java", "-jar", "summer-2024-olympics-1.0-SNAPSHOT.jar"];
-
-        args.push("-p1");
-        args.push("mlomb-146-2.exe");
-        args.push("-p2");
-        args.push("mlomb-146-2.exe");
-        //args.push("SMITS_v04.exe");
-        args.push("-p3");
-        args.push("mlomb-146-2.exe");
-        args.push("-l pepito.txt");
-        //args.push("SMITS_v09.exe");
-
-        println!("{:?}", execute(args, Duration::from_secs(10)));
-
-        // -
-    */
 
     Ok(())
 }

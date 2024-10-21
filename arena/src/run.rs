@@ -15,10 +15,10 @@ pub struct ExecutionResult {
     timed_out: bool,
 }
 
-pub fn execute(args: Vec<&str>, timeout: Duration) -> ExecutionResult {
+pub fn execute(args: Vec<String>, timeout: Duration) -> ExecutionResult {
     let start = Instant::now();
 
-    let mut child = Command::new(args[0])
+    let mut child = Command::new(args[0].to_string())
         .args(args.iter().skip(1))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
