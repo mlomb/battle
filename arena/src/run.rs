@@ -31,6 +31,16 @@ pub fn execute(args: Vec<String>, timeout: Duration) -> ExecutionResult {
     let stdout = read_pipe(child.stdout);
     let stderr = read_pipe(child.stderr);
 
+    // Temporal fix!
+    let stdout = stdout
+        .split("\n")
+        .into_iter()
+        .collect::<Vec<&str>>()
+        .into_iter()
+        .filter(|l| !l.starts_with("WARNING:"))
+        .collect::<Vec<&str>>()
+        .join("\n");
+
     match status {
         Ok(exit_status) => ExecutionResult {
             exit_code: exit_status.code().expect("could not get exit code"), // signal?
