@@ -128,12 +128,14 @@ version = "0.1.0"
 dependencies = [
  "child_wait_timeout",
  "clap",
+ "crossbeam-channel",
  "futures",
  "libp2p",
  "rand 0.8.5",
  "rayon",
  "serde",
  "serde_json",
+ "skillratings",
  "tokio",
  "tracing-subscriber",
 ]
@@ -2949,6 +2951,12 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "rand_core 0.6.4",
 ]
+
+[[package]]
+name = "skillratings"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53c8196a815d27d6dbd2439058a2cbf6597a549a68ca6368611df240df7c2987"
 
 [[package]]
 name = "slab"

@@ -8,11 +8,11 @@ use std::{
 
 #[derive(Debug)]
 pub struct ExecutionResult {
-    exit_code: i32,
-    stdout: String,
-    stderr: String,
-    duration: Duration,
-    timed_out: bool,
+    pub exit_code: i32,
+    pub stdout: String,
+    pub stderr: String,
+    pub duration: Duration,
+    pub timed_out: bool,
 }
 
 pub fn execute(args: Vec<String>, timeout: Duration) -> ExecutionResult {
