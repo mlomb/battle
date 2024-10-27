@@ -1,6 +1,7 @@
 use crate::Agent;
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub struct Referee {
     path: PathBuf,
 }
@@ -10,7 +11,7 @@ impl Referee {
         Self { path }
     }
 
-    pub fn command(&self, agents: Vec<Agent>) -> Vec<String> {
+    pub fn command(&self, agents: &Vec<Agent>) -> Vec<String> {
         let mut args: Vec<String> = vec![
             "java".to_string(),
             "-jar".to_string(),

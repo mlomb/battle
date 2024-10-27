@@ -6,14 +6,15 @@ pub mod run;
 
 use agent::Agent;
 use clap::{Parser, Subcommand};
-use futures::StreamExt;
+use crossbeam_channel::bounded;
+use futures::{FutureExt, StreamExt};
 use network::{Event, WorkError};
 use rayon::iter::{
     IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator,
 };
 use referee::Referee;
-use result::BasicGenerator;
-use run::execute;
+use result::{BasicGenerator, Generator, MatchRequest, MatchResult, ResultReceiver, Summary};
+use run::{execute, ExecutionResult};
 use serde::{Deserialize, Serialize};
 use std::env::args;
 use std::error::Error;
@@ -55,27 +56,99 @@ fn main() -> Result<(), Box<dyn Error>> {
     //let args = Args::parse();
     //println!("{:?}", args);
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(8)
-        .build()
-        .unwrap();
+    fn smth(gen: &mut BasicGenerator) {
+        let mut summary = Summary::new();
 
-    let gen = BasicGenerator::new(10000);
+        // It is necessary to explicit the type due a bug in rust-analyzer
+        // https://github.com/rust-lang/rust-analyzer/issues/15984
+        let (s, r) = bounded::<MatchRequest>(1);
+        let (u, v) = bounded::<MatchResult>(1);
+
+        for i in 0..8 {
+            let r = r.clone();
+            let u = u.clone();
+            std::thread::spawn(move || {
+                println!("Starting thread: {}", i);
+
+                loop {
+                    let req = r.recv().unwrap();
+                    //println!("Received: {:?}", req);
+                    let args = req.referee.command(&req.agents);
+                    let res = execute(args, Duration::from_secs(10));
+
+                    let scores = res
+                        .stdout
+                        .split("\n")
+                        .take(3)
+                        .map(|x| x.parse().unwrap())
+                        .collect();
+
+                    // ExecutionResult → MatchResult
+                    let res = MatchResult {
+                        agents: req.agents.clone(),
+                        scores,
+                    };
+
+                    u.send(res).unwrap();
+                }
+            });
+        }
+
+        let mut next_req = None;
+
+        // TODO: split in two threads
+        loop {
+            if let None = next_req {
+                next_req = gen.next_game();
+            }
+
+            if let Some(req) = next_req.take() {
+                crossbeam_channel::select! {
+                    recv(v) -> res => {
+                        summary.receive_result(res.unwrap());
+                        println!("Summary: {:?}", summary);
+                    },
+                    send(s, req) -> res => {
+                        next_req = None;
+                        assert!(res.is_ok());
+                    },
+                }
+            } else {
+                unimplemented!();
+                //crossbeam_channel::select! {
+                //    recv(v) -> msg => {
+                //        println!("received at main: {:?}", msg);
+                //    },
+                //    default(Duration::from_secs(1)) => {
+                //        println!("timeout");
+                //    },
+                //}
+            }
+        }
+
+        drop(s);
+
+        //let pool = rayon::ThreadPoolBuilder::new()
+        //    .num_threads(8)
+        //    .build()
+        //    .unwrap();
+        //let a = gen.par_bridge().map(|req| {
+        //    let args = req.referee.command(req.agents);
+        //
+        //    execute(args, Duration::from_secs(10))
+        //});
+        //
+        //// gen.pepito();
+        //a.for_each(|x| {
+        //    println!("x: {:?}", x);
+        //});
+    }
+
+    let mut gen = BasicGenerator::new(10000);
+    smth(&mut gen);
 
     // TODO: un generador y receptor de resultados a la vez?
     //       y despues otro que solo recibe resultados, para el summary clasico a parte de lo otro
-
-    pool.install(|| {
-        let a = gen.par_bridge().map(|req| {
-            let args = req.referee.command(req.agents);
-
-            execute(args, Duration::from_secs(10))
-        });
-
-        a.for_each(|x| {
-            println!("x: {:?}", x);
-        });
-    });
 
     // -
 
