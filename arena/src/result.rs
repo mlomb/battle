@@ -35,17 +35,6 @@ impl BasicGenerator {
         BasicGenerator { count }
     }
 
-    pub fn pepito(&self) {
-        println!("pepito");
-    }
-
-    pub fn as_stream<'a>(&'a mut self) -> impl Stream<Item = u8> + 'a {
-        futures::stream::unfold(self, |rng| async {
-            let number = 5;
-            Some((number, rng))
-        })
-    }
-
     pub fn next_game(&mut self) -> Option<MatchRequest> {
         if self.count > 0 {
             self.count -= 1;
