@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 crossbeam_channel::select! {
                     recv(v) -> res => {
                         summary.receive_result(res.unwrap());
-                        println!("Summary: {:?}", summary);
+                        summary.print();
                     },
                     send(s, req) -> res => {
                         next_req = None;
