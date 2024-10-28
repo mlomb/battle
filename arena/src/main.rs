@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod network;
+pub mod optim;
 pub mod referee;
 pub mod result;
 pub mod run;
