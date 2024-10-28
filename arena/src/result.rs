@@ -78,6 +78,35 @@ impl Summary {
             rank_counts: HashMap::new(),
         }
     }
+
+    pub fn print(&self) {
+        println!("================== Summary ==================");
+
+        let mut ratings = self.ratings.clone().into_iter().collect::<Vec<_>>();
+
+        // sort ratings from highest to lowest
+        ratings.sort_by(|(_, a), (_, b)| b.rating.partial_cmp(&a.rating).unwrap());
+
+        for (id, rating) in ratings {
+            let places = self.rank_counts.get(&id).unwrap();
+            let first_place = *places.get(&1).unwrap_or(&0);
+            let non_first_place = *places.get(&2).unwrap_or(&0)
+                + *places.get(&3).unwrap_or(&0)
+                + *places.get(&4).unwrap_or(&0);
+
+            let total = places.values().sum::<u32>();
+
+            println!(
+                "{}: [R {:.2}±{:.2}] [W {:.2}% L {:.2}%] [N {}]",
+                id,
+                rating.rating,
+                rating.uncertainty,
+                (first_place as f32) / (total as f32) * 100.0,
+                (non_first_place as f32) / (total as f32) * 100.0,
+                total
+            );
+        }
+    }
 }
 
 impl ResultReceiver for Summary {
