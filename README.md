@@ -43,3 +43,30 @@ cgsync
 ```
 
 Extension: https://github.com/jmerle/cg-local-ext
+
+
+# Optimization
+
+## Decorators
+
+* `RealParam`
+* `IntegerParam`
+* TODO: log?
+* TODO: arrays?
+
+## Rust
+
+In Rust, you can add the previous decorators to your code to specify parameters to optimize:
+
+```
+/// RealParam
+const FOO: f32 = 42.0;
+```
+
+Internally, this will turn `FOO` into a parameter that can be read from arguments:
+
+```
+...
+```
+
+If the parameter is not found, the default value will be used. Requires Rust 1.80.0.
