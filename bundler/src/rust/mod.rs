@@ -1,12 +1,14 @@
 mod cleaner;
 mod expander;
 mod format;
+mod params;
 
 use crate::bundler::Bundler;
 use cargo_metadata::MetadataCommand;
 use cleaner::Cleaner;
 use expander::Expander;
 use format::{format_code, FmtError};
+use params::ParameterExpander;
 use quote::quote;
 use std::error::Error;
 use std::fs;
@@ -57,6 +59,8 @@ impl Bundler for RustBundler {
             crate_name: package.name.replace("-", "_"),
         }
         .visit_file_mut(&mut file);
+
+        ParameterExpander {}.visit_file_mut(&mut file);
 
         Cleaner {
             attributes_to_remove: vec!["doc".to_string(), "wasm_bindgen".to_string()],
