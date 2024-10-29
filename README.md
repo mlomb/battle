@@ -58,15 +58,24 @@ Extension: https://github.com/jmerle/cg-local-ext
 
 In Rust, you can add the previous decorators to your code to specify parameters to optimize:
 
-```
+```rust
 /// RealParam
-const FOO: f32 = 42.0;
+const FOO: LazyCell<f32> = LazyCell::new(|| 42.0);
 ```
 
 Internally, this will turn `FOO` into a parameter that can be read from arguments:
 
-```
-...
+```rust
+#[doc = " RealParam"]
+const FOO: LazyCell<f32> = LazyCell::new(|| {
+    std::env::args()
+        .skip(1)
+        .collect::<Vec<_>>()
+        .chunks_exact(2)
+        .find(|item| item[0] == "FOO")
+        .map(|item| item[1].parse().unwrap())
+        .unwrap_or_else(|| 42.0)
+});
 ```
 
 If the parameter is not found, the default value will be used. Requires Rust 1.80.0.
