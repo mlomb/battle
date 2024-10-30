@@ -1,18 +1,18 @@
 # bundler
 
-A tool to bundle C++ and Rust projects into a single source file for submission.
+A tool to bundle C++ and Rust projects into a single source unit for submission.
 
 ## Usage
 
 Open the terminal in a folder which contains a C++ or Rust project (see [What is a project?](#what-is-a-project)), and run:
 
-```
+```sh
 bundler
 ```
 
-This will output the final source code into the console. You can redirect it to a file or use `--output`:
+This will output the final source code into the console. You can redirect it to a file (`>`) or use `--output`:
 
-```
+```sh
 bundler --output submit.cpp
 ```
 
@@ -23,11 +23,11 @@ To build a project, the bundler must find an entry point:
 - **C++**: a `.cpp` file.
 - **Rust**: a `Cargo.toml` file.
 
-The entry point can be defined using `--entry` pointing to an entry file. However, it is practical to point to a folder _containing_ the entry file. By default `--entry` points to the current folder.
+The entry point can be defined using `--entry` pointing to an entry file. However, it is practical to point to a folder containing the entry file. By default `--entry` points to the current folder.
 
 When the entry point is a folder, the bundler will look for a `main.cpp` or `Cargo.toml` in the folder specified by `--entry`.
 
-```
+```sh
 bundler --entry src
 bundler --entry src/main.cpp
 ```
