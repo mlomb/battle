@@ -7,7 +7,7 @@ use std::path::Path;
 #[derive(Debug, Parser)]
 struct Cli {
     /// Entry point file (main.cpp, Cargo.toml) or directory containing an entry file.
-    /// If not provided, it will find an appopriate entry point in the current folder.
+    /// If not provided, it will find an appropiate entry point in the current folder.
     #[arg(long)]
     entry: Option<String>,
 
