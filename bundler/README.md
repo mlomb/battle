@@ -45,7 +45,7 @@ TODO
 * TODO: log?
 * TODO: arrays?
 
-## Rust
+### Rust
 
 In Rust, you can add the previous decorators to your code to specify parameters to optimize:
 
@@ -71,7 +71,7 @@ const FOO: LazyCell<f32> = LazyCell::new(|| {
 
 If the parameter is not found, the default value will be used. Requires Rust 1.80.0.
 
-## C++
+### C++
 
 ```cpp
 
@@ -82,3 +82,8 @@ If the parameter is not found, the default value will be used. Requires Rust 1.8
 ```cpp
 
 ```
+
+## Future work
+
+- [ ] Basic dead code elimination to reduce size. Probably too hard, maybe for C++ macros and basic heuristics?
+- [ ] Add support for other compiled languages?
