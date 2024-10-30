@@ -86,4 +86,6 @@ If the parameter is not found, the default value will be used. Requires Rust 1.8
 ## Future work
 
 - [ ] Basic dead code elimination to reduce size. Probably too hard, maybe for C++ macros and basic heuristics?
+- [ ] Cleaning like
+    - [ ] Remove duplicate includes (e.g. `#include <iostream>` twice)
 - [ ] Add support for other compiled languages?

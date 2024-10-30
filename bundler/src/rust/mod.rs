@@ -3,7 +3,7 @@ mod expander;
 mod format;
 mod params;
 
-use crate::bundler::Bundler;
+use crate::bundler::{Bundle, Bundler};
 use cargo_metadata::MetadataCommand;
 use cleaner::Cleaner;
 use expander::Expander;
@@ -26,8 +26,7 @@ impl Bundler for RustBundler {
             .eq("cargo.toml")
     }
 
-    /// Bundle a Rust project
-    fn bundle(manifest_path: &Path) -> Result<String, Box<dyn Error>> {
+    fn bundle(manifest_path: &Path) -> Result<Bundle, Box<dyn Error>> {
         assert!(Self::is_entrypoint(manifest_path));
 
         let metadata = MetadataCommand::new()
@@ -73,7 +72,10 @@ impl Bundler for RustBundler {
             Ok(source) => {
                 let source = source.replace("use wasm_bindgen::prelude::*;", "");
 
-                Ok(source)
+                Ok(Bundle {
+                    source,
+                    files: vec![],
+                })
             }
             Err(FmtError::RustfmtNotFound) => {
                 panic!("rustfmt component not found in toolchain (rustup component add rustfmt)");

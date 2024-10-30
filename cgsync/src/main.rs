@@ -38,8 +38,8 @@ async fn main() {
     loop {
         // bundle and send the code
         match bundle(&args.project_path) {
-            Ok(source) => {
-                code_tx.try_send(source).unwrap();
+            Ok(bundle) => {
+                code_tx.try_send(bundle.source).unwrap();
             }
             Err(e) => {
                 println!("Failed to bundle: {:?}", e);
