@@ -3,13 +3,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// The result of bundling a project
+pub struct Bundle {
+    /// The bundled source code
+    pub source: String,
+
+    /// All relevant files used to create the bundle (and should be watched)
+    pub files: Vec<PathBuf>,
+}
+
 /// The trait all bundlers implement
 pub trait Bundler {
     /// Checks if the path leads to a valid entry point
     fn is_entrypoint(path: &Path) -> bool;
 
-    /// Bundles the project into a single source file
-    fn bundle(path: &Path) -> Result<String, Box<dyn Error>>;
+    /// Bundles the project into a single source unit
+    fn bundle(path: &Path) -> Result<Bundle, Box<dyn Error>>;
 
     /// Find the entrypoint file of a project
     fn find_entrypoint(path: &Path) -> Option<PathBuf> {
@@ -24,10 +33,10 @@ pub trait Bundler {
             vec![path.to_path_buf()]
         };
 
-        // filter out entrypoint files
+        // filter out invalid entrypoint files
         candidates.retain(|path| Self::is_entrypoint(path));
 
-        // return the first candidate
+        // return the first valid entrypoint file
         candidates.first().map(|p| p.to_path_buf())
     }
 }

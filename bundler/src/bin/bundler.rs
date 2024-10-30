@@ -21,12 +21,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
     let entry = args.entry.unwrap_or_else(|| ".".to_string());
 
-    let source = bundle(Path::new(&entry))?;
+    let bundle = bundle(Path::new(&entry))?;
 
     if let Some(output) = args.output {
-        std::fs::write(output, source)?;
+        std::fs::write(output, bundle.source)?;
     } else {
-        println!("{}", source);
+        println!("{}", bundle.source);
     }
 
     Ok(())
