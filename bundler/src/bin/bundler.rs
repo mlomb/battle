@@ -1,3 +1,8 @@
+// This line is unnecesary for Rust, however we are using it to
+// signal the bundler to include this crate (lib.rs) in the output
+// so we can self-test the bundler with its own code :)
+extern crate bundler;
+
 use bundler::bundle;
 use clap::arg;
 use clap::Parser;

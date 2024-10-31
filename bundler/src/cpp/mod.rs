@@ -20,9 +20,10 @@ impl Bundler for CppBundler {
 
         Ok(Bundle {
             source: format!("{}\n{}", PRAGMAS, source),
+            params: Default::default(),
             files: vec![],
         })
     }
 }
 
-static PRAGMAS: &str = include_str!("pragmas.c");
+static PRAGMAS: &str = include_str!("pragmas.h");

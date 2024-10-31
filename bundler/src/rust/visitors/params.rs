@@ -70,7 +70,6 @@ fn get_doc_content(attrs: &Vec<Attribute>) -> Option<String> {
 fn get_lazy_cell_initializer(expr: &Expr) -> Option<Expr> {
     if let Expr::Call(expr_call) = expr {
         if let Expr::Path(expr_path) = expr_call.func.as_ref() {
-            println!("EXPRPATH: {:?}", expr_path);
             if path_is_lazy_cell_new(&expr_path.path) {
                 return Some(expr_call.args[0].clone());
             }
