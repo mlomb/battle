@@ -1,8 +1,21 @@
 use syn::visit_mut::VisitMut;
 
-/// Removes parts of the code that include the specified attributes
-pub struct Cleaner {
-    pub attributes_to_remove: Vec<String>,
+/// Removes specified attributes from a syntax tree
+pub struct AttributeRemover {
+    attributes_to_remove: Vec<String>,
+}
+
+impl AttributeRemover {
+    pub fn new() -> Self {
+        Self {
+            attributes_to_remove: vec![],
+        }
+    }
+
+    pub fn with_attribute<T: ToString>(mut self, attribute: T) -> Self {
+        self.attributes_to_remove.push(attribute.to_string());
+        self
+    }
 }
 
 macro_rules! remove_attrs {
@@ -19,8 +32,9 @@ macro_rules! remove_attrs {
     };
 }
 
-impl VisitMut for Cleaner {
+impl VisitMut for AttributeRemover {
     remove_attrs!(visit_item_fn_mut, ItemFn);
+    remove_attrs!(visit_item_const_mut, ItemConst);
     remove_attrs!(visit_item_enum_mut, ItemEnum);
     remove_attrs!(visit_item_trait_mut, ItemTrait);
     remove_attrs!(visit_item_struct_mut, ItemStruct);

@@ -1,19 +1,18 @@
-mod cleaner;
-mod expander;
 mod format;
-mod params;
+mod visitors;
 
 use crate::bundler::{Bundle, Bundler};
 use cargo_metadata::MetadataCommand;
-use cleaner::Cleaner;
-use expander::Expander;
 use format::{format_code, FmtError};
-use params::ParameterExpander;
 use quote::quote;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
 use syn::visit_mut::VisitMut;
+use visitors::attribute_remover::AttributeRemover;
+use visitors::mod_inliner::ModInliner;
+use visitors::params::ParameterExpander;
 
 pub struct RustBundler {}
 
@@ -34,6 +33,7 @@ impl Bundler for RustBundler {
             // .features(CargoOpt::AllFeatures)
             .exec()?;
 
+        // take the first occurrence of a binary target as the entry point
         let package = metadata.root_package().unwrap();
         let target = package
             .targets
@@ -53,18 +53,22 @@ impl Bundler for RustBundler {
             )
         })?;
 
-        Expander {
-            base_path: manifest_path.parent().unwrap().join("src"),
+        println!("deps: {:?}", package.dependencies);
+
+        ModInliner {
+            base_path: package.manifest_path.parent().unwrap().join("src").into(),
             crate_name: package.name.replace("-", "_"),
         }
         .visit_file_mut(&mut file);
 
         ParameterExpander {}.visit_file_mut(&mut file);
 
-        Cleaner {
-            attributes_to_remove: vec!["doc".to_string(), "wasm_bindgen".to_string()],
-        }
-        .visit_file_mut(&mut file);
+        AttributeRemover::new()
+            // remove comments
+            .with_attribute("doc")
+            // remove WASM bindings
+            .with_attribute("wasm_bindgen")
+            .visit_file_mut(&mut file);
 
         let source = quote!(#file).to_string();
 
@@ -74,6 +78,7 @@ impl Bundler for RustBundler {
 
                 Ok(Bundle {
                     source,
+                    params: HashMap::new(),
                     files: vec![],
                 })
             }

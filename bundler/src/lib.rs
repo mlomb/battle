@@ -4,6 +4,7 @@ extern crate syn;
 
 mod bundler;
 mod cpp;
+mod parameter;
 mod rust;
 
 use bundler::{Bundle, Bundler};
