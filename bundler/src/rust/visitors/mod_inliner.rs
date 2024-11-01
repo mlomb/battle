@@ -92,14 +92,16 @@ impl VisitMut for ModInliner {
                 .next()
                 .ok_or(format!("mod '{}' not found!", mod_name));
 
-            if let Ok(mut file) = file {
-                self.visit_file_mut(&mut file);
-
-                // Note: file attributes are being dropped (shebang)
-                i.content = Some((Default::default(), file.items));
-            } else {
-                i.attrs.push(parse_quote! { #[doc="Failed to resolve"] });
-                i.content = Some((Default::default(), vec![]));
+            match file {
+                Ok(file) => {
+                    // Note: file attributes are being dropped (shebang)
+                    i.content = Some((Default::default(), file.items));
+                }
+                Err(err) => {
+                    let msg = format!("Failed to resolve: {}", err);
+                    i.attrs.push(parse_quote! { #[doc=#msg] });
+                    i.content = Some((Default::default(), vec![]));
+                }
             }
         }
     }
