@@ -94,13 +94,13 @@ impl VisitMut for ModInliner {
 
             match file {
                 Ok(file) => {
-                    // Note: file attributes are being dropped (shebang)
+                    // Note: file attributes are being dropped (shebangs #!)
                     i.content = Some((Default::default(), file.items));
                 }
                 Err(err) => {
                     let msg = format!("Failed to resolve: {}", err);
                     i.attrs.push(parse_quote! { #[doc=#msg] });
-                    i.content = Some((Default::default(), vec![]));
+                    // Note: content is empty (no { ... })
                 }
             }
         }
