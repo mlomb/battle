@@ -1,4 +1,9 @@
-use std::{error::Error, fs, path::PathBuf};
+use std::{
+    collections::HashSet,
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+};
 use syn::{parse_quote, visit_mut::VisitMut};
 
 /// Recursively resolves the `use` and `extern crate` statements in the code,
@@ -6,131 +11,86 @@ use syn::{parse_quote, visit_mut::VisitMut};
 ///
 /// At the same time, it collecs all the files that were read to resolve the lines.
 pub struct ModInliner {
-    pub base_path: PathBuf,
-    pub crate_name: String,
+    /// The current file path being resolved (e.g. lib.rs)
+    current_file_path: Option<PathBuf>,
+
+    /// Every Rust file that was visited to build the final syn::File
+    visited_files: HashSet<PathBuf>,
 }
 
 impl ModInliner {
-    pub fn new(base_path: PathBuf, crate_name: String) -> Self {
+    pub fn new() -> Self {
         Self {
-            base_path,
-            crate_name,
+            current_file_path: None,
+            visited_files: HashSet::new(),
         }
     }
 }
 
 impl ModInliner {
-    fn expand_items(&self, items: &mut Vec<syn::Item>) {
-        let mut new_items = vec![];
-        for item in items.drain(..) {
-            self.expand_item(item, &mut new_items);
-        }
-        *items = new_items;
-    }
+    pub fn resolve(&mut self, rust_file: impl AsRef<Path>) -> Result<syn::File, Box<dyn Error>> {
+        // convert to PathBuf
+        let rust_file = rust_file.as_ref().to_path_buf();
 
-    fn expand_item(&self, item: syn::Item, new_items: &mut Vec<syn::Item>) {
-        match item {
-            syn::Item::ExternCrate(ref item) => {
-                if item.ident == self.crate_name {
-                    /*eprintln!(
-                        "expanding crate {} in {}",
-                        self.crate_name,
-                        self.base_path.to_str().unwrap()
-                    );*/
-                    let code = fs::read_to_string(&self.base_path.join("lib.rs"))
-                        .expect("failed to read lib.rs");
-                    let lib = syn::parse_file(&code).expect("failed to parse lib.rs");
-                    new_items.extend(lib.items);
-                }
-            }
-            // keep items as is
-            _ => new_items.push(item),
-        }
-    }
+        // load source from disk
+        let source_code = fs::read_to_string(&rust_file)?;
 
-    fn expand_mods(&self, item: &mut syn::ItemMod) {
-        if item.content.is_some() {
-            return;
-        }
-        let name = item.ident.to_string();
-        let other_base_path = self.base_path.join(&name);
+        // parse into syn::File
+        let mut file = syn::parse_file(&source_code).map_err(|e| {
+            format!(
+                "failed to parse file {} @ Ln {} Col {}: {}",
+                rust_file.file_name().unwrap().to_str().unwrap(),
+                e.span().start().line,
+                e.span().start().column,
+                e
+            )
+        })?;
 
-        let (base_path, code) = vec![
-            (self.base_path.clone(), format!("{}.rs", name)),
-            (other_base_path, String::from("mod.rs")),
-        ]
-        .into_iter()
-        .flat_map(|(base_path, file_name)| {
-            fs::read_to_string(&base_path.join(file_name)).map(|code| (base_path, code))
-        })
-        .next()
-        .expect("mod not found");
-        //eprintln!("expanding mod {} in {}", name, base_path.to_str().unwrap());
+        // add to the list of visited files (so they can be watched later)
+        self.visited_files.insert(rust_file.clone());
 
-        if let Ok(mut file) = syn::parse_file(&code) {
-            ModInliner {
-                base_path,
-                crate_name: self.crate_name.clone(),
-            }
-            .visit_file_mut(&mut file);
-            item.content = Some((Default::default(), file.items));
-        } else {
-            eprintln!("failed to parse file {}", name);
-        }
-    }
+        // store the current file path
+        let prev_file_path = self.current_file_path.clone();
+        self.current_file_path = Some(rust_file);
 
-    fn resolve(&mut self, name: &String) -> Result<syn::File, Box<dyn Error>> {
-        let other_base_path = self.base_path.join(&name);
+        self.visit_file_mut(&mut file);
 
-        let (base_path, code) = vec![
-            (self.base_path.clone(), format!("{}.rs", name)),
-            (other_base_path, String::from("mod.rs")),
-        ]
-        .into_iter()
-        .flat_map(|(base_path, file_name)| {
-            fs::read_to_string(&base_path.join(file_name)).map(|code| (base_path, code))
-        })
-        .next()
-        .ok_or(format!("mod not found: {}", name))?;
+        // restore the previous file path
+        self.current_file_path = prev_file_path;
 
-        syn::parse_file(&code).map_err(|e| e.into())
+        Ok(file)
     }
 }
 
 impl VisitMut for ModInliner {
-    //fn visit_file_mut(&mut self, file: &mut syn::File) {
-    //    // syn::visit_mut::visit_file_mut(self, file);
-    //
-    //    for it in &mut file.attrs {
-    //        self.visit_attribute_mut(it)
-    //    }
-    //
-    //    self.expand_items(&mut file.items);
-    //
-    //    for it in &mut file.items {
-    //        self.visit_item_mut(it)
-    //    }
-    //}
-
-    // fn visit_item_mod_mut(&mut self, item: &mut syn::ItemMod) {
-    //     for it in &mut item.attrs {
-    //         self.visit_attribute_mut(it)
-    //     }
-    //     self.visit_visibility_mut(&mut item.vis);
-    //     self.visit_ident_mut(&mut item.ident);
-    //     self.expand_mods(item);
-    //     if let Some(ref mut it) = item.content {
-    //         for it in &mut (it).1 {
-    //             self.visit_item_mut(it);
-    //         }
-    //     }
-    // }
-
     fn visit_item_mod_mut(&mut self, i: &mut syn::ItemMod) {
         // check that the mod is not defined inline (not mod m { ... })
         if i.content.is_none() {
+            let current_file_path = self.current_file_path.clone().unwrap();
+            let mod_name = i.ident.to_string();
+
+            // possible locations for the mod file
+            let candidate_locations = vec![
+                // mod_name.rs
+                current_file_path
+                    .parent()
+                    .unwrap()
+                    .join(&mod_name)
+                    .with_extension("rs"),
+                // mod_name/mod.rs
+                current_file_path
+                    .parent()
+                    .unwrap()
+                    .join(&mod_name)
+                    .join("mod.rs"),
+            ];
+
             // resolve mod recursively
-            let file = self.resolve(&i.ident.to_string());
+            let file = candidate_locations
+                .into_iter()
+                .flat_map(|rust_file| self.resolve(rust_file))
+                .next()
+                .ok_or(format!("mod '{}' not found!", mod_name));
 
             if let Ok(mut file) = file {
                 self.visit_file_mut(&mut file);
@@ -142,6 +102,13 @@ impl VisitMut for ModInliner {
                 i.content = Some((Default::default(), vec![]));
             }
         }
+    }
+
+    fn visit_item_extern_crate_mut(&mut self, i: &mut syn::ItemExternCrate) {
+        // let code =
+        //     fs::read_to_string(&self.base_path.join("lib.rs")).expect("failed to read lib.rs");
+        // let lib = syn::parse_file(&code).expect("failed to parse lib.rs");
+        // new_items.extend(lib.items);
     }
 
     fn visit_item_use_mut(&mut self, i: &mut syn::ItemUse) {
