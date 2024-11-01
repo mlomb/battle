@@ -41,25 +41,9 @@ impl Bundler for RustBundler {
             .find(|target| target.kind.iter().any(|t| t == "bin"))
             .expect("no binary target found");
 
-        let content = fs::read_to_string(target.src_path.as_std_path())?;
-
-        let mut file = syn::parse_file(&content).map_err(|e| {
-            format!(
-                "failed to parse file {} @ Ln {} Col {}: {}",
-                target.src_path.file_name().unwrap(),
-                e.span().start().line,
-                e.span().start().column,
-                e
-            )
-        })?;
-
         println!("deps: {:?}", package.dependencies);
 
-        ModInliner {
-            base_path: package.manifest_path.parent().unwrap().join("src").into(),
-            crate_name: package.name.replace("-", "_"),
-        }
-        .visit_file_mut(&mut file);
+        let mut file = ModInliner::new().resolve(target.src_path.as_std_path())?;
 
         ParameterExpander {}.visit_file_mut(&mut file);
 
