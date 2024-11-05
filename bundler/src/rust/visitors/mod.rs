@@ -1,6 +1,7 @@
 mod attribute_remover;
 mod mod_inliner;
 mod params;
+mod test_remover;
 
 use attribute_remover::AttributeRemover;
 use cargo_metadata::camino::Utf8Path;
@@ -8,6 +9,7 @@ use mod_inliner::ModInliner;
 use params::ParameterExpander;
 use std::{error::Error, path::PathBuf};
 use syn::{visit_mut::VisitMut, File};
+use test_remover::TestRemover;
 
 /// Parses a source file and applies all the visitors to it
 pub fn resolve_source(
@@ -27,6 +29,8 @@ pub fn resolve_source(
         // remove WASM bindings
         .with_attribute("wasm_bindgen")
         .visit_file_mut(&mut file);
+
+    TestRemover::new().visit_file_mut(&mut file);
 
     Ok(file)
 }
