@@ -14,7 +14,7 @@ pub struct ModInliner {
     current_file_path: Option<PathBuf>,
 
     /// Every Rust file that was visited to build the final syn::File
-    visited_files: HashSet<PathBuf>,
+    pub(crate) visited_files: HashSet<PathBuf>,
 }
 
 impl ModInliner {
