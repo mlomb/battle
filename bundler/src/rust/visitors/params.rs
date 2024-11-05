@@ -1,12 +1,35 @@
 use quote::ToTokens;
 use syn::{visit_mut::VisitMut, Attribute, Expr};
 
+#[derive(Clone)]
+struct ParameterExpression {
+    name: String,
+    default: Expr,
+}
+
 /// Expands parameter definitions to values that are read from standard arguments automatically
-pub struct ParameterExpander {}
+pub struct ParameterExpander {
+    pub(crate) parameters: Vec<ParameterExpression>,
+}
+
+// Print parameters in cg-sync
+
+impl ParameterExpander {
+    pub fn new() -> Self {
+        Self {
+            parameters: Vec::new(),
+        }
+    }
+}
 
 impl VisitMut for ParameterExpander {
     fn visit_item_const_mut(&mut self, i: &mut syn::ItemConst) {
-        if let Some(ParameterExpression { name, default }) = get_parameter(&i) {
+        if let Some(param) = get_parameter(&i) {
+            self.parameters.push(param.clone());
+
+            let name = param.name;
+            let default = param.default;
+
             i.expr = syn::parse_quote! {
                 LazyCell::new(|| {
                     std::env::args()
@@ -20,11 +43,6 @@ impl VisitMut for ParameterExpander {
             };
         }
     }
-}
-
-struct ParameterExpression {
-    name: String,
-    default: Expr,
 }
 
 /// Extracts a parameter definition from a const item
