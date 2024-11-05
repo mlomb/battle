@@ -21,7 +21,7 @@ impl Bundler for CppBundler {
         Ok(Bundle {
             source: format!("{}\n{}", PRAGMAS, source),
             params: Default::default(),
-            files: vec![],
+            src_files: vec![],
         })
     }
 }

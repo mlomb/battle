@@ -14,7 +14,7 @@ pub struct Bundle {
     pub params: HashMap<String, Parameter>,
 
     /// All relevant files used to create the bundle (and should be watched)
-    pub files: Vec<PathBuf>,
+    pub src_files: Vec<PathBuf>,
 }
 
 /// The trait all bundlers implement
