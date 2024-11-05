@@ -39,7 +39,7 @@ impl BasicGenerator {
         if self.count > 0 {
             self.count -= 1;
             Some(MatchRequest {
-                referee: Referee::new("summer-2024-olympics-1.0-SNAPSHOT.jar".into()),
+                referee: Referee::new("./agents/cg-2024-summer-olympics.jar".into()),
                 agents: vec![
                     Agent::new("mlomb-146-2.exe".into()),
                     Agent::new("SMITS_v04.exe".into()),

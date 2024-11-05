@@ -2,14 +2,15 @@ mod format;
 mod visitors;
 
 use crate::bundler::{Bundle, Bundler};
+use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use format::{format_code, FmtError};
 use quote::quote;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fs;
 use std::path::Path;
 use syn::visit_mut::VisitMut;
+use syn::File;
 use visitors::attribute_remover::AttributeRemover;
 use visitors::mod_inliner::ModInliner;
 use visitors::params::ParameterExpander;
@@ -32,29 +33,34 @@ impl Bundler for RustBundler {
             .manifest_path(manifest_path)
             // .features(CargoOpt::AllFeatures)
             .exec()?;
+        let package = metadata.root_package().expect("no root package found");
 
         // take the first occurrence of a binary target as the entry point
-        let package = metadata.root_package().unwrap();
         let target = package
             .targets
             .iter()
             .find(|target| target.kind.iter().any(|t| t == "bin"))
             .expect("no binary target found");
 
-        println!("deps: {:?}", package.dependencies);
+        // check if package has a lib
+        // packages can only have one lib
+        let lib = package
+            .targets
+            .iter()
+            .filter(|target| target.kind.iter().any(|t| t == "lib"))
+            .next();
 
-        let mut file = ModInliner::new().resolve(target.src_path.as_std_path())?;
+        let mut target_file = resolve_source(&target.src_path)?;
 
-        ParameterExpander {}.visit_file_mut(&mut file);
+        if let Some(lib) = lib {
+            let lib_file = resolve_source(&lib.src_path)?;
 
-        AttributeRemover::new()
-            // remove comments
-            .with_attribute("doc")
-            // remove WASM bindings
-            .with_attribute("wasm_bindgen")
-            .visit_file_mut(&mut file);
+            target_file.attrs.splice(..0, lib_file.attrs);
+            target_file.items.splice(..0, lib_file.items);
+            target_file.shebang = target_file.shebang.or(lib_file.shebang);
+        }
 
-        let source = quote!(#file).to_string();
+        let source = quote!(#target_file).to_string();
 
         match format_code(&source) {
             Ok(source) => {
@@ -75,4 +81,19 @@ impl Bundler for RustBundler {
             }
         }
     }
+}
+
+fn resolve_source(src_path: &Utf8Path) -> Result<File, Box<dyn Error>> {
+    let mut file = ModInliner::new().resolve(src_path.as_std_path())?;
+
+    ParameterExpander {}.visit_file_mut(&mut file);
+
+    AttributeRemover::new()
+        // remove comments
+        .with_attribute("doc")
+        // remove WASM bindings
+        .with_attribute("wasm_bindgen")
+        .visit_file_mut(&mut file);
+
+    Ok(file)
 }

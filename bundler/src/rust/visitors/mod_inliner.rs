@@ -6,8 +6,7 @@ use std::{
 };
 use syn::{parse_quote, visit_mut::VisitMut};
 
-/// Recursively resolves the `use` and `extern crate` statements in the code,
-/// effectively inlining all the code.
+/// Recursively resolves the `mod` statements in the code, effectively inlining all the code.
 ///
 /// At the same time, it collecs all the files that were read to resolve the lines.
 pub struct ModInliner {
@@ -104,17 +103,5 @@ impl VisitMut for ModInliner {
                 }
             }
         }
-    }
-
-    fn visit_item_extern_crate_mut(&mut self, i: &mut syn::ItemExternCrate) {
-        // let code =
-        //     fs::read_to_string(&self.base_path.join("lib.rs")).expect("failed to read lib.rs");
-        // let lib = syn::parse_file(&code).expect("failed to parse lib.rs");
-        // new_items.extend(lib.items);
-    }
-
-    fn visit_item_use_mut(&mut self, i: &mut syn::ItemUse) {
-        //
-        println!("visiting use");
     }
 }
