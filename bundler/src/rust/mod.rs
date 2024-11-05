@@ -2,18 +2,13 @@ mod format;
 mod visitors;
 
 use crate::bundler::{Bundle, Bundler};
-use cargo_metadata::camino::Utf8Path;
 use cargo_metadata::MetadataCommand;
 use format::{format_code, FmtError};
 use quote::quote;
 use std::collections::HashMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use syn::visit_mut::VisitMut;
-use syn::File;
-use visitors::attribute_remover::AttributeRemover;
-use visitors::mod_inliner::{self, ModInliner};
-use visitors::params::ParameterExpander;
+use std::path::Path;
+use visitors::resolve_source;
 
 pub struct RustBundler {}
 
@@ -47,7 +42,7 @@ impl Bundler for RustBundler {
         let lib = package
             .targets
             .iter()
-            .filter(|target| target.kind.iter().any(|t| t == "lib"))
+            .filter(|target| target.kind.iter().any(|t| t.contains("lib"))) // lib, rlib, cdylib
             .next();
 
         let mut src_files = vec![manifest_path.to_path_buf()];
@@ -83,25 +78,4 @@ impl Bundler for RustBundler {
             }
         }
     }
-}
-
-fn resolve_source(
-    src_path: &Utf8Path,
-    src_files: &mut Vec<PathBuf>,
-) -> Result<File, Box<dyn Error>> {
-    let mut mod_inliner = ModInliner::new();
-    let mut file = mod_inliner.resolve(src_path.as_std_path())?;
-
-    src_files.extend(mod_inliner.visited_files);
-
-    ParameterExpander {}.visit_file_mut(&mut file);
-
-    AttributeRemover::new()
-        // remove comments
-        .with_attribute("doc")
-        // remove WASM bindings
-        .with_attribute("wasm_bindgen")
-        .visit_file_mut(&mut file);
-
-    Ok(file)
 }
