@@ -58,7 +58,7 @@ The source code is parsed using the `syn` crate to create a syntax tree. The cod
    - `#[wasm_bindgen]`.
    
    Note that the attribute line is removed and not the items, like in 2.
-5. **UseTrimmer**: If the package is a library and the entry point is a binary in `src/bin`, the code may refer to code in the library using `use package::...`. Since the code is inlined, the prefix `package::` is removed: `use package::{ ... }` -> `use { ... }`. Note that this solution is not perfect and may generate invalid code in some cases.
+5. **UseTrimmer**: If the package is a library and the target is a binary in `src/bin`, the binary code may refer to library code using `use package::...`. Since the code is inlined, the prefix `package::` must be removed: `use package::{ ... }` -> `use { ... }`. Note that this solution is not perfect and may generate invalid code in some cases.
 
 The `syn::File` is then converted to string and formatted with `rustfmt`.
 
@@ -66,55 +66,10 @@ The `syn::File` is then converted to string and formatted with `rustfmt`.
 
 TODO
 
-
-## Decorators
-
-* `RealParam`
-* `IntegerParam`
-* TODO: log?
-* TODO: arrays?
-
-### Rust
-
-In Rust, you can add the previous decorators to your code to specify parameters to optimize:
-
-```rust
-/// RealParam
-const FOO: LazyCell<f32> = LazyCell::new(|| 42.0);
-```
-
-Internally, this will turn `FOO` into a parameter that can be read from arguments:
-
-```rust
-#[doc = " RealParam"]
-const FOO: LazyCell<f32> = LazyCell::new(|| {
-    std::env::args()
-        .skip(1)
-        .collect::<Vec<_>>()
-        .chunks_exact(2)
-        .find(|item| item[0] == "FOO")
-        .map(|item| item[1].parse().unwrap())
-        .unwrap_or_else(|| 42.0)
-});
-```
-
-If the parameter is not found, the default value will be used. Requires Rust 1.80.0.
-
-### C++
-
-```cpp
-
-```
-
-↓
-
-```cpp
-
-```
-
 ## Future work
 
 - [ ] Rust: inline `include_str!` and `include_bytes!` calls.
+- [ ] Allow for configuration, e.g. `--keep-comments`.
 - [ ] Basic dead code elimination to reduce size. Probably too hard, maybe for C++ macros and basic heuristics?
 - [ ] Cleaning like
     - [ ] Remove duplicate includes (e.g. `#include <iostream>` twice)
