@@ -8,6 +8,7 @@ use quote::quote;
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
+use syn::{parse_quote, spanned::Spanned, Ident, Item, ItemMod};
 use visitors::resolve_source;
 
 pub struct RustBundler {}
@@ -47,10 +48,16 @@ impl Bundler for RustBundler {
 
         let mut src_files = vec![manifest_path.to_path_buf()];
 
-        let mut target_file = resolve_source(&target.src_path, &mut src_files)?;
+        let mut target_file = resolve_source(
+            &target.src_path,
+            // pass the name of the package so `use` statements are trimmed
+            // `use pkg::foo` -> `use foo`;
+            Some(package.name.clone()),
+            &mut src_files,
+        )?;
 
         if let Some(lib) = lib {
-            let lib_file = resolve_source(&lib.src_path, &mut src_files)?;
+            let lib_file = resolve_source(&lib.src_path, None, &mut src_files)?;
 
             target_file.attrs.splice(..0, lib_file.attrs);
             target_file.items.splice(..0, lib_file.items);

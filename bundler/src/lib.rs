@@ -36,8 +36,14 @@ mod tests {
     }
 
     #[test]
-    fn test_rust_bundle() {
-        let bundle = bundle("test_cases/rust".as_ref()).expect("correct bundle");
+    fn test_rust_main_bundle() {
+        let bundle = bundle("test_cases/rust_main".as_ref()).expect("correct bundle");
+        println!("{}", bundle.source);
+    }
+
+    #[test]
+    fn test_rust_bin_bundle() {
+        let bundle = bundle("test_cases/rust_bin".as_ref()).expect("correct bundle");
         println!("{}", bundle.source);
     }
 }

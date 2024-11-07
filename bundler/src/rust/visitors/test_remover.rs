@@ -1,8 +1,15 @@
 use proc_macro2::TokenTree;
-use quote::quote;
-use syn::{visit_mut::VisitMut, Ident, Item, Meta};
+use syn::{visit_mut::VisitMut, Item, Meta};
 
 /// Removes test functions and modules from a syntax tree
+///
+/// ```ignore
+/// #[test]
+/// fn test() { ... }
+///
+/// #[cfg(test)]
+/// mod tests { ... }
+/// ```
 pub struct TestRemover {}
 
 impl TestRemover {
