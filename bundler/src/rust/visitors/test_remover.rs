@@ -1,7 +1,7 @@
 use proc_macro2::TokenTree;
 use syn::{visit_mut::VisitMut, Item, Meta};
 
-/// Removes test functions and modules from a syntax tree
+/// Removes modules and functions marked as tests.
 ///
 /// ```ignore
 /// #[test]

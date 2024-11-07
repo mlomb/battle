@@ -6,14 +6,14 @@ use std::{
 };
 use syn::{parse_quote, visit_mut::VisitMut};
 
-/// Recursively resolves the `mod` statements in the code, effectively inlining all the code.
+/// Recursively inlines `mod` statements.
 ///
-/// At the same time, it collecs all the files that were read to resolve the lines.
+/// At the same time, it collecs all the files that were read.
 pub struct ModInliner {
-    /// The current file path being resolved (e.g. lib.rs)
+    /// The current file path being resolved (e.g. src/lib.rs)
     current_file_path: Option<PathBuf>,
 
-    /// Every Rust file that was visited to build the final syn::File
+    /// Every Rust file that was visited
     pub(crate) visited_files: HashSet<PathBuf>,
 }
 

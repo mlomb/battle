@@ -1,9 +1,13 @@
 use syn::{parse_quote, visit_mut::VisitMut, ItemUse, UseTree};
 
-/// Removes the segment prefixes from `use` statements.
+/// Removes the specified prefix from `use` statements.
 ///
-/// `use pkg::foo` -> `use foo`
+/// If the prefix is `pkg`, then:
+///  - `use pkg` -> `use {}`
+///  - `use pkg::foo` -> `use foo`
+///  - `use pkg::{foo, bar}` -> `use {foo, bar}`
 pub struct UseTrimmer {
+    /// The prefix to remove from `use` statements
     prefix: String,
 }
 
@@ -23,8 +27,8 @@ impl VisitMut for UseTrimmer {
                     i.tree = use_path.tree.as_ref().clone();
                 }
             }
-            // `use pkg;`
-            // replace by `use {};`
+            // `use pkg`
+            // replace by `use {}`
             UseTree::Name(ref use_name) => {
                 if use_name.ident.to_string().starts_with(&self.prefix) {
                     i.tree = parse_quote! { {} };

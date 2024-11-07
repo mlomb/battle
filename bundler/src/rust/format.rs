@@ -34,10 +34,10 @@ pub fn format_code<T: ToString>(input: &T) -> Result<String, FmtError> {
     let output = command.wait_with_output().unwrap();
 
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        Ok(String::from_utf8(output.stdout).expect("utf-8").to_string())
     } else {
         Err(FmtError::Failed(
-            String::from_utf8_lossy(&output.stderr).to_string(),
+            String::from_utf8(output.stderr).expect("utf-8").to_string(),
         ))
     }
 }
