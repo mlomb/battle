@@ -1,6 +1,6 @@
 mod expander;
 
-use crate::bundler::{Bundle, Bundler};
+use crate::{bundler::Bundler, Bundle};
 use expander::CppExpander;
 use std::{error::Error, path::Path};
 
@@ -21,7 +21,7 @@ impl Bundler for CppBundler {
         Ok(Bundle {
             source: format!("{}\n{}", PRAGMAS, source),
             params: Default::default(),
-            src_files: vec![],
+            src_files: Default::default(),
         })
     }
 }

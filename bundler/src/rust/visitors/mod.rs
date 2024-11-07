@@ -8,7 +8,7 @@ use attribute_remover::AttributeRemover;
 use cargo_metadata::camino::Utf8Path;
 use mod_inliner::ModInliner;
 use params::ParameterExpander;
-use std::{error::Error, path::PathBuf};
+use std::{collections::HashSet, error::Error, path::PathBuf};
 use syn::{visit_mut::VisitMut, File};
 use test_remover::TestRemover;
 use use_trimmer::UseTrimmer;
@@ -17,10 +17,22 @@ use use_trimmer::UseTrimmer;
 pub fn resolve_source(
     src_path: &Utf8Path,
     lib_package_name: Option<String>,
-    src_files: &mut Vec<PathBuf>,
+    src_files: &mut HashSet<PathBuf>,
 ) -> Result<File, Box<dyn Error>> {
     let mut mod_inliner = ModInliner::new();
     let mut file = mod_inliner.resolve(src_path.as_std_path())?;
+
+    if mod_inliner.unresolved_mods.len() > 0 {
+        return Err(format!(
+            "Failed to resolve mods: {}",
+            mod_inliner
+                .unresolved_mods
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into());
+    }
 
     TestRemover::new().visit_file_mut(&mut file);
 

@@ -1,15 +1,13 @@
 use bundler::bundle;
+use bundler::BundlerArgs;
 use clap::arg;
 use clap::Parser;
-use std::path::Path;
 
 /// Converts a C++/Rust project directory into a single source file
 #[derive(Debug, Parser)]
 struct Cli {
-    /// Entry point file (main.cpp, Cargo.toml) or directory containing an entry file.
-    /// If not provided, it will find an appropiate entry point in the current folder.
-    #[arg(long)]
-    entry: Option<String>,
+    #[clap(flatten)]
+    bundler_args: BundlerArgs,
 
     /// Output target file.
     /// If not provided, the output will be printed to stdout.
@@ -19,9 +17,8 @@ struct Cli {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
-    let entry = args.entry.unwrap_or_else(|| ".".to_string());
 
-    let bundle = bundle(Path::new(&entry))?;
+    let bundle = bundle(&args.bundler_args)?;
 
     if let Some(output) = args.output {
         std::fs::write(output, bundle.source)?;

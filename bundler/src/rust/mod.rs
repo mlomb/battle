@@ -1,13 +1,14 @@
 mod format;
 mod visitors;
 
-use crate::bundler::{Bundle, Bundler};
+use crate::bundler::Bundler;
+use crate::Bundle;
 use cargo_metadata::MetadataCommand;
 use format::{format_code, FmtError};
 use quote::quote;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use visitors::resolve_source;
 
 pub struct RustBundler {}
@@ -45,7 +46,8 @@ impl Bundler for RustBundler {
             .filter(|target| target.kind.iter().any(|t| t.contains("lib"))) // lib, rlib, cdylib
             .next();
 
-        let mut src_files = vec![manifest_path.to_path_buf()];
+        let mut src_files = HashSet::new();
+        src_files.insert(package.manifest_path.to_path_buf().into());
 
         let mut target_file = resolve_source(
             &target.src_path,
