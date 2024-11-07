@@ -15,9 +15,6 @@ pub struct ModInliner {
 
     /// Every Rust file that was visited
     pub(crate) visited_files: HashSet<PathBuf>,
-
-    /// Mods that could not be resolved (e.g. missing files)
-    pub(crate) unresolved_mods: HashSet<String>,
 }
 
 impl ModInliner {
@@ -25,7 +22,6 @@ impl ModInliner {
         Self {
             current_file_path: None,
             visited_files: HashSet::new(),
-            unresolved_mods: HashSet::new(),
         }
     }
 }
@@ -104,9 +100,6 @@ impl VisitMut for ModInliner {
                     let msg = format!("Failed to resolve: {}", err);
                     i.attrs.push(parse_quote! { #[doc=#msg] });
                     // Note: content is empty (no { ... })
-
-                    // store the unresolved mod
-                    self.unresolved_mods.insert(mod_name);
                 }
             }
         }

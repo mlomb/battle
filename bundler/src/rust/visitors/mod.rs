@@ -22,18 +22,6 @@ pub fn resolve_source(
     let mut mod_inliner = ModInliner::new();
     let mut file = mod_inliner.resolve(src_path.as_std_path())?;
 
-    if mod_inliner.unresolved_mods.len() > 0 {
-        return Err(format!(
-            "Failed to resolve mods: {}",
-            mod_inliner
-                .unresolved_mods
-                .into_iter()
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .into());
-    }
-
     TestRemover::new().visit_file_mut(&mut file);
 
     ParameterExpander::new().visit_file_mut(&mut file);
