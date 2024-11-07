@@ -2,6 +2,7 @@ mod attribute_remover;
 mod mod_inliner;
 mod params;
 mod test_remover;
+mod use_trimmer;
 
 use attribute_remover::AttributeRemover;
 use cargo_metadata::camino::Utf8Path;
@@ -10,16 +11,18 @@ use params::ParameterExpander;
 use std::{error::Error, path::PathBuf};
 use syn::{visit_mut::VisitMut, File};
 use test_remover::TestRemover;
+use use_trimmer::UseTrimmer;
 
 /// Parses a source file and applies all the visitors to it
 pub fn resolve_source(
     src_path: &Utf8Path,
+    lib_package_name: Option<String>,
     src_files: &mut Vec<PathBuf>,
 ) -> Result<File, Box<dyn Error>> {
     let mut mod_inliner = ModInliner::new();
     let mut file = mod_inliner.resolve(src_path.as_std_path())?;
 
-    src_files.extend(mod_inliner.visited_files);
+    TestRemover::new().visit_file_mut(&mut file);
 
     ParameterExpander::new().visit_file_mut(&mut file);
 
@@ -30,7 +33,11 @@ pub fn resolve_source(
         .with_attribute("wasm_bindgen")
         .visit_file_mut(&mut file);
 
-    TestRemover::new().visit_file_mut(&mut file);
+    if let Some(lib_package_name) = lib_package_name {
+        UseTrimmer::with_prefix(lib_package_name).visit_file_mut(&mut file);
+    }
+
+    src_files.extend(mod_inliner.visited_files);
 
     Ok(file)
 }
