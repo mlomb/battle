@@ -44,7 +44,7 @@ ARR[0] { min=0, max=5, default=3 }
 
 ### Rust
 
-From the entry point `Cargo.toml`, the bundler will look for the first binary target in the package. It will use the main source file (`main.rs`) to start the process. If the package contains a library, the bundler will also process the library code (`lib.rs`) and merge it with the binary code. 
+From the entry point `Cargo.toml`, the bundler will look for the first binary target in the package. It will use the main source file (`main.rs`) of that target to start the process. If the package contains a library, the bundler will also process the library code (`lib.rs`) and merge it with the binary code. 
 
 The source code is parsed using the `syn` crate to create a syntax tree. The code is then transformed using multiple `syn::VisitMut`, in the following order:
 
@@ -69,6 +69,7 @@ TODO
 ## Future work
 
 - [ ] Rust: inline `include_str!` and `include_bytes!` calls.
+- [ ] Rust: inline relative packages: `subpkg = { path = "../subpkg" }`.
 - [ ] Allow for configuration, e.g. `--keep-comments`.
 - [ ] Basic dead code elimination to reduce size. Probably too hard, maybe for C++ macros and basic heuristics?
 - [ ] Cleaning like

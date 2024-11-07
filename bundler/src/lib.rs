@@ -2,18 +2,49 @@ extern crate cargo_metadata;
 extern crate quote;
 extern crate syn;
 
-mod bundler;
+pub mod bundler;
 mod cpp;
 mod parameter;
 mod rust;
 
-use bundler::{Bundle, Bundler};
+use bundler::Bundler;
+use clap::Parser;
 use cpp::CppBundler;
+use parameter::Parameter;
 use rust::RustBundler;
-use std::{error::Error, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    path::{Path, PathBuf},
+};
+
+#[derive(Debug, Parser)]
+pub struct BundlerArgs {
+    /// Entry point file (main.cpp, Cargo.toml) or directory containing an entry file.
+    /// If not provided, it will find an appropiate entry point in the current folder.
+    #[arg(long)]
+    entry: Option<String>,
+    // TODO: add flags: remove comments, etc
+}
+
+/// The result of bundling a project
+#[derive(Debug)]
+pub struct Bundle {
+    /// The bundled source code
+    pub source: String,
+
+    /// Parameters found in the original source. Now available to set via standard arguments
+    pub params: HashMap<String, Parameter>,
+
+    /// All relevant files used to create the bundle (and should be watched)
+    pub src_files: HashSet<PathBuf>,
+}
 
 /// Bundles a C++/Rust project directory into a single source unit
-pub fn bundle(entry: &Path) -> Result<Bundle, Box<dyn Error>> {
+pub fn bundle(args: &BundlerArgs) -> Result<Bundle, Box<dyn Error>> {
+    let entry = args.entry.clone().unwrap_or_else(|| ".".to_string());
+    let entry = Path::new(&entry);
+
     if let Some(entry) = RustBundler::find_entrypoint(entry) {
         return RustBundler::bundle(entry.as_path());
     }
@@ -27,23 +58,32 @@ pub fn bundle(entry: &Path) -> Result<Bundle, Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::bundle;
+    use crate::{bundle, BundlerArgs};
 
     #[test]
     fn test_cpp_bundle() {
-        let bundle = bundle("test_cases/cpp".as_ref()).expect("correct bundle");
+        let bundle = bundle(&BundlerArgs {
+            entry: Some("test_cases/cpp".to_string()),
+        })
+        .expect("correct bundle");
         println!("{}", bundle.source);
     }
 
     #[test]
     fn test_rust_main_bundle() {
-        let bundle = bundle("test_cases/rust_main".as_ref()).expect("correct bundle");
+        let bundle = bundle(&BundlerArgs {
+            entry: Some("test_cases/rust_main".to_string()),
+        })
+        .expect("correct bundle");
         println!("{}", bundle.source);
     }
 
     #[test]
     fn test_rust_bin_bundle() {
-        let bundle = bundle("test_cases/rust_bin".as_ref()).expect("correct bundle");
+        let bundle = bundle(&BundlerArgs {
+            entry: Some("test_cases/rust_bin".to_string()),
+        })
+        .expect("correct bundle");
         println!("{}", bundle.source);
     }
 }

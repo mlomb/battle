@@ -1,21 +1,8 @@
-use crate::parameter::Parameter;
+use crate::Bundle;
 use std::{
-    collections::HashMap,
     error::Error,
     path::{Path, PathBuf},
 };
-
-/// The result of bundling a project
-pub struct Bundle {
-    /// The bundled source code
-    pub source: String,
-
-    /// Parameters found in the original source. Now available to set via standard arguments
-    pub params: HashMap<String, Parameter>,
-
-    /// All relevant files used to create the bundle (and should be watched)
-    pub src_files: Vec<PathBuf>,
-}
 
 /// The trait all bundlers implement
 pub trait Bundler {

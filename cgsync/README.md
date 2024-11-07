@@ -27,7 +27,7 @@ When changes are made, `cgsync` will bundle and send the code to the browser.
 
 ## How it works
 
-The process starts a local web socket server on port 53135. The browser extension then connects to this server. When a file changes the code is bundled using `bundler` and sent to the browser extension, which pastes it into the browser IDE.
+The process starts a local web socket server on port 53135. The browser extension then connects to this server. When a file changes, the code is bundled using `bundler` and sent to the browser extension, which pastes it into the browser IDE.
 
 ## Notes
 

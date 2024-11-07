@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Parameter {
     name: String,
     default: Option<f32>,
