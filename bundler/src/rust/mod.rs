@@ -8,7 +8,6 @@ use quote::quote;
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
-use syn::{parse_quote, spanned::Spanned, Ident, Item, ItemMod};
 use visitors::resolve_source;
 
 pub struct RustBundler {}

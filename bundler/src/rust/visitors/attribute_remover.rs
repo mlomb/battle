@@ -1,7 +1,8 @@
 use syn::visit_mut::VisitMut;
 
-/// Removes specified attributes from a syntax tree
+/// Removes the specified attributes.
 pub struct AttributeRemover {
+    /// The attributes to remove
     attributes_to_remove: Vec<String>,
 }
 
@@ -40,4 +41,6 @@ impl VisitMut for AttributeRemover {
     remove_attrs!(visit_item_struct_mut, ItemStruct);
     remove_attrs!(visit_item_impl_mut, ItemImpl);
     remove_attrs!(visit_field_mut, Field);
+    remove_attrs!(visit_variant_mut, Variant);
+    remove_attrs!(visit_impl_item_fn_mut, ImplItemFn);
 }
