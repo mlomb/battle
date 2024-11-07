@@ -44,11 +44,11 @@ ARR[0] { min=0, max=5, default=3 }
 
 ### Rust
 
-From the entry point `Cargo.toml`, the bundler will look for the first binary target in the package. It will use the entry source file (`main.rs`) to start the process. If the package contains a library, the bundler will also process the library code (`lib.rs`) and merge it with the binary code. 
+From the entry point `Cargo.toml`, the bundler will look for the first binary target in the package. It will use the main source file (`main.rs`) to start the process. If the package contains a library, the bundler will also process the library code (`lib.rs`) and merge it with the binary code. 
 
 The source code is parsed using the `syn` crate to create a syntax tree. The code is then transformed using multiple `syn::VisitMut`, in the following order:
 
-1. **ModInliner**: Starts from the entry source file (e.g. `main.rs`) and recursively goes through all `mod` statements. It looks for the mod source file (`name.rs` or `name/mod.rs`), parses it with `syn` and inlines it: `mod name;` -> `mod { ... };`.
+1. **ModInliner**: Starts from the main source file (e.g. `main.rs`) and recursively goes through all `mod` statements. It looks for the mod source file (`name.rs` or `name/mod.rs`), parses it with `syn` and inlines it: `mod name;` -> `mod { ... };`.
 2. **TestRemover**: Removes...
    - modules marked with `#[cfg(test)]`.
    - functions marked with `#[test]`.
