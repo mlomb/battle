@@ -8,7 +8,7 @@ use format::{format_code, FmtError};
 use quote::quote;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use visitors::resolve_source;
 
 pub struct RustBundler {}
