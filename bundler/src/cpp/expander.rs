@@ -26,33 +26,45 @@ impl CppExpander {
             .into_iter()
             .map(|line| self.process_line(source_file, line))
             .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter_map(|line| line)
+            .collect::<Vec<_>>()
             .join("\n");
 
         Ok(lines)
     }
 
     /// Processes a single line of the source file
-    fn process_line(&mut self, source_file: &Path, line: &str) -> Result<String, Box<dyn Error>> {
+    fn process_line(
+        &mut self,
+        source_file: &Path,
+        line: &str,
+    ) -> Result<Option<String>, Box<dyn Error>> {
         // we are looking for includes which contain a quoted path
         if line.trim().starts_with("#include \"") {
             let include_str = line.trim_start_matches("#include \"").trim_end_matches('"');
             let include_path = self.resolve_include(source_file, Path::new(include_str))?;
 
             if self.has_been_included(&include_path) {
-                return Ok(format!("// (already included) {}", line));
+                return Ok(Some(format!("// (already included) {}", line)));
             } else {
                 self.mark_as_included(&include_path);
 
-                return Ok(format!(
+                return Ok(Some(format!(
                     "// {}\n{}",
                     line,
                     self.expand_source(&include_path)?
-                ));
+                )));
             }
         }
 
+        // if line is a #pragma once, remove it
+        if line.trim() == "#pragma once" {
+            return Ok(None);
+        }
+
         // leave line unchanged
-        Ok(line.to_string())
+        Ok(Some(line.to_string()))
     }
 
     /// Resolves an include directive
@@ -72,17 +84,16 @@ impl CppExpander {
         candidates.insert(0, source_file.parent().unwrap().to_path_buf());
 
         // find the included file in the search paths, in the order provided
-        for dir in candidates {
-            let candidate = dir.join(include_path);
-            if candidate.exists() {
-                return Ok(candidate);
-            }
-        }
-
-        Err(format!(
-            "Failed to resolve include: {:?} in file: {:?}",
-            include_path, source_file
-        ))
+        candidates
+            .iter()
+            .map(|dir| dir.join(include_path))
+            .filter(|candidate| candidate.exists())
+            .next()
+            .ok_or(format!(
+                "Failed to resolve include: {} in file: {}",
+                include_path.to_str().unwrap(),
+                source_file.to_str().unwrap()
+            ))
     }
 
     fn mark_as_included(&mut self, include_path: &Path) {

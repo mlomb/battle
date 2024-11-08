@@ -50,7 +50,9 @@ impl ProjectWatcher {
 
         // add new files to watch
         for file in &bundle.src_files {
-            if self.currently_watching.contains(file) {
+            let file = std::fs::canonicalize(file).unwrap();
+
+            if self.currently_watching.contains(&file) {
                 continue;
             }
 
