@@ -18,12 +18,18 @@ struct Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
-    let bundle = bundle(&args.bundler_args)?;
-
-    if let Some(output) = args.output {
-        std::fs::write(output, bundle.source)?;
-    } else {
-        println!("{}", bundle.source);
+    match bundle(&args.bundler_args) {
+        Ok(bundle) => {
+            if let Some(output) = args.output {
+                std::fs::write(output, bundle.source)?;
+            } else {
+                println!("{}", bundle.source);
+            }
+        }
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            std::process::exit(1);
+        }
     }
 
     Ok(())
