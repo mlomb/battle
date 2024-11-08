@@ -32,7 +32,7 @@ impl CGLocalClient {
         println!("{} Connection closed: {}", style("[-]").red(), addr);
     }
 
-    async fn run_loop(&mut self, mut code_rx: CodeRx) {
+    async fn run_loop(mut self, mut code_rx: CodeRx) {
         self.send_init().await;
 
         loop {
@@ -40,6 +40,8 @@ impl CGLocalClient {
                 // wait for code updates
                 // it will be triggered automatically the first time
                 _ = code_rx.changed() => {
+                    println!("{} Code updated", style("[U]").green());
+
                     let code = code_rx.borrow().clone();
                     self.send_code(code).await;
                 },
@@ -52,7 +54,7 @@ impl CGLocalClient {
 
                 // every 10s of inactivity, send a ping
                 // this prevents the browser from closing the connection (because it is running in a service worker)
-                _ = tokio::time::sleep(Duration::from_secs(10)) => self.send_ping().await,
+                _ = tokio::time::sleep(Duration::from_secs(10)) => self.send_ping().await
             }
         }
     }
@@ -61,11 +63,13 @@ impl CGLocalClient {
         self.ws_stream
             .send(Message::Text(msg.to_string()))
             .await
-            // we don't care about sending errors
+            // we don't care about errors when sending messages
             .ok();
     }
 
     async fn send_ping(&mut self) {
+        // the extension does not support this action type, however it does not crash either
+        // we just use it to keep the connection alive
         self.send(json!({"action":"ping"})).await;
     }
 
@@ -90,6 +94,11 @@ pub async fn start_ws_server(code_rx: CodeRx) {
         .expect("Can't listen on port 53135. Port already in use?");
 
     println!("{} CGSync listening on {}", style("[I]").blue(), addr);
+    println!(
+        "{} Click the {} to trigger the connection",
+        style("[I]").blue(),
+        style("CG Local extension").yellow().underlined()
+    );
 
     tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
