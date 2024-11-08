@@ -89,9 +89,15 @@ impl ProjectWatcher {
             "{} Changes detected: {}",
             style("[C]").blue(),
             style(
-                changed_paths
+                HashSet::<PathBuf>::from_iter(changed_paths.iter().cloned())
                     .iter()
-                    .map(|f| f.file_name().unwrap().to_str().unwrap())
+                    .map(|f| std::fs::canonicalize(f).unwrap())
+                    .map(|f| f
+                        .clone()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned())
                     .collect::<Vec<_>>()
                     .join(", ")
             )
