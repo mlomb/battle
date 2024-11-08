@@ -15,13 +15,13 @@ struct Cli {
     output: Option<String>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let args = Cli::parse();
 
     match bundle(&args.bundler_args) {
         Ok(bundle) => {
             if let Some(output) = args.output {
-                std::fs::write(output, bundle.source)?;
+                std::fs::write(output, bundle.source).expect("a writeable output file");
             } else {
                 println!("{}", bundle.source);
             }
@@ -31,6 +31,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     }
-
-    Ok(())
 }
