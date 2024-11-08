@@ -1,6 +1,7 @@
 use console::style;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
+use indicatif::HumanCount;
 use serde_json::json;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
@@ -40,10 +41,19 @@ impl CGLocalClient {
                 // wait for code updates
                 // it will be triggered automatically the first time
                 _ = code_rx.changed() => {
-                    println!("{} Code updated", style("[U]").green());
-
                     let code = code_rx.borrow().clone();
-                    self.send_code(code).await;
+                    self.send_code(&code).await;
+
+                    println!(
+                        "{} Code updated {}",
+                        style("[U]").green(),
+                        style(format!(
+                            "({} chars)",
+                            HumanCount(code.chars().count() as u64).to_string()
+                        ))
+                        .cyan()
+                        .bold()
+                    );
                 },
 
                 // receive messages
@@ -73,7 +83,7 @@ impl CGLocalClient {
         self.send(json!({"action":"ping"})).await;
     }
 
-    async fn send_code(&mut self, code: String) {
+    async fn send_code(&mut self, code: &String) {
         self.send(json!({"action":"update-code", "payload": { "play": false, "code": code } }))
             .await;
     }
