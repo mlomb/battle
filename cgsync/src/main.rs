@@ -3,10 +3,10 @@ mod server;
 use bundler::{bundle, BundlerArgs};
 use clap::Parser;
 use console::style;
-use futures_channel::mpsc::channel;
 use notify::{RecursiveMode, Watcher};
-use server::start_server;
+use server::start_ws_server;
 use std::collections::HashSet;
+use tokio::sync::watch;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -19,9 +19,9 @@ struct Args {
 async fn main() {
     let args = Args::parse();
 
-    let (mut code_tx, code_rx) = channel(100);
+    let (code_tx, code_rx) = watch::channel("".to_string());
 
-    start_server(code_rx).await;
+    start_ws_server(code_rx).await;
 
     let (evt_tx, evt_rx) = std::sync::mpsc::channel();
     let mut watcher = notify::recommended_watcher(evt_tx).unwrap();
@@ -31,9 +31,7 @@ async fn main() {
         // bundle and send the code
         match bundle(&args.bundler_args) {
             Ok(bundle) => {
-                code_tx.try_send(bundle.source).unwrap();
-                println!("{} Code bundled and updated", style("U").green());
-
+                // add new files to watch
                 for file in bundle.src_files {
                     if currently_watching.contains(&file) {
                         continue;
@@ -42,12 +40,18 @@ async fn main() {
                     println!(
                         "{} Added file to watch: {}",
                         style("W").yellow(),
-                        file.file_name().unwrap().to_str().unwrap()
+                        style(file.file_name().unwrap().to_str().unwrap()).magenta()
                     );
 
                     watcher.watch(&file, RecursiveMode::NonRecursive).unwrap();
                     currently_watching.insert(file);
                 }
+
+                code_tx
+                    .send(bundle.source)
+                    .expect("at least one receiver (_rx)");
+
+                println!("{} Code updated", style("U").green());
             }
             Err(e) => {
                 println!("{} Failed to bundle: {:?}", style("E").red(), e);
@@ -57,15 +61,25 @@ async fn main() {
         // wait for a file change event
         let evt = evt_rx.recv().unwrap();
 
+        // sleep some ms to throttle the watcher
+        // this allows the IDE to run any formatters
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // consume any other events so that they don't re-trigger
+        while let Ok(_) = evt_rx.try_recv() {}
+
         println!(
             "{} Changes detected: {}",
             style("C").blue(),
-            evt.unwrap()
-                .paths
-                .iter()
-                .map(|f| f.file_name().unwrap().to_str().unwrap())
-                .collect::<Vec<_>>()
-                .join(", ")
+            style(
+                evt.unwrap()
+                    .paths
+                    .iter()
+                    .map(|f| f.file_name().unwrap().to_str().unwrap())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+            .magenta()
         );
     }
 }

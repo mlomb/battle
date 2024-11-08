@@ -424,8 +424,6 @@ dependencies = [
  "bundler",
  "clap",
  "console",
- "crossbeam-channel",
- "futures-channel",
  "futures-util",
  "notify",
  "serde_json",

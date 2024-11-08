@@ -1,125 +1,99 @@
-use futures_channel::mpsc::unbounded;
-use futures_channel::mpsc::Receiver;
-use futures_channel::mpsc::UnboundedReceiver;
-use futures_channel::mpsc::UnboundedSender;
-use futures_util::future;
-use futures_util::lock::Mutex;
-use futures_util::pin_mut;
+use console::style;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
-use futures_util::TryStreamExt;
 use serde_json::json;
-use std::net::SocketAddr;
-use std::{collections::HashMap, sync::Arc};
+use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::select;
+use tokio::sync::watch::Receiver;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::WebSocketStream;
 
-type CodeTx = UnboundedSender<String>;
-type CodeRx = UnboundedReceiver<String>;
-pub type PeerMap = Arc<Mutex<HashMap<SocketAddr, CodeTx>>>;
+type CodeRx = Receiver<String>;
 
-/// Accepts a WebSocket connection and forwards code messages to it
-async fn accept_ws(stream: TcpStream, mut rx: CodeRx) {
-    let ws_stream = tokio_tungstenite::accept_async(stream)
-        .await
-        .expect("websocket handshake should succeed");
-
-    let (mut outgoing, incoming) = ws_stream.split();
-
-    outgoing
-        .send(Message::Text(r#"{"action":"app-ready"}"#.to_string()))
-        .await
-        .unwrap();
-    outgoing
-        .send(Message::Text(
-            r#"{"action":"set-read-only", "payload": { "state": true } }"#.to_string(),
-        ))
-        .await
-        .unwrap();
-
-    let forward_code = tokio::spawn(async move {
-        while let Some(code) = rx.next().await {
-            match outgoing
-                .send(Message::Text(
-                    json!({
-                        "action": "update-code",
-                        "payload": {
-                            "play": false,
-                            "code": code
-                        }
-                    })
-                    .to_string(),
-                ))
-                .await
-            {
-                Ok(_) => {}
-                Err(e) => {
-                    println!("Error sending code: {}", e);
-                    break;
-                }
-            }
-        }
-    });
-
-    let discard_incoming = incoming.try_for_each(|_msg| {
-        // println!("Received a message: {}", msg.to_text().unwrap());
-
-        future::ok(())
-    });
-
-    pin_mut!(forward_code, discard_incoming);
-    future::select(forward_code, discard_incoming).await;
+/// A wrapper for a WebSocket connection.
+/// Is used to send code updates to the CGLocalExtension in the browser.
+struct CGLocalClient {
+    ws_stream: WebSocketStream<TcpStream>,
 }
 
-async fn stream_thread(stream: TcpStream, peer_map: PeerMap, initial_code: Option<String>) {
-    let addr = stream
-        .peer_addr()
-        .expect("connected streams should have a peer address");
+impl CGLocalClient {
+    async fn run_from_stream(stream: TcpStream, code_rx: CodeRx) {
+        let addr = stream
+            .peer_addr()
+            .expect("connected streams should have a peer address");
 
-    println!("Client connected: {}", addr);
+        let ws_stream = tokio_tungstenite::accept_async(stream)
+            .await
+            .expect("websocket handshake should succeed");
 
-    let (tx, rx) = unbounded();
-    if let Some(initial_code) = initial_code {
-        tx.unbounded_send(initial_code).unwrap();
+        println!("{} Client connected: {}", style("[+]").green(), addr);
+        Self { ws_stream }.run_loop(code_rx).await;
+        println!("{} Connection closed: {}", style("[-]").red(), addr);
     }
 
-    peer_map.lock().await.insert(addr, tx);
-    accept_ws(stream, rx).await;
-    peer_map.lock().await.remove(&addr);
+    async fn run_loop(&mut self, mut code_rx: CodeRx) {
+        self.send_init().await;
 
-    println!("Client disconnected: {}", &addr);
+        loop {
+            select! {
+                // wait for code updates
+                // it will be triggered automatically the first time
+                _ = code_rx.changed() => {
+                    let code = code_rx.borrow().clone();
+                    self.send_code(code).await;
+                },
+
+                // receive messages
+                msg = self.ws_stream.next() => match msg {
+                    Some(Ok(Message::Text(_msg))) => {}, // discard incoming (valid) messages
+                    _ => break, // close the connection
+                },
+
+                // every 10s of inactivity, send a ping
+                // this prevents the browser from closing the connection (because it is running in a service worker)
+                _ = tokio::time::sleep(Duration::from_secs(10)) => self.send_ping().await,
+            }
+        }
+    }
+
+    async fn send(&mut self, msg: serde_json::Value) {
+        self.ws_stream
+            .send(Message::Text(msg.to_string()))
+            .await
+            // we don't care about sending errors
+            .ok();
+    }
+
+    async fn send_ping(&mut self) {
+        self.send(json!({"action":"ping"})).await;
+    }
+
+    async fn send_code(&mut self, code: String) {
+        self.send(json!({"action":"update-code", "payload": { "play": false, "code": code } }))
+            .await;
+    }
+
+    async fn send_init(&mut self) {
+        // notify the client that the app is ready
+        self.send(json!({"action":"app-ready"})).await;
+        // set the client to read-only mode (one-way sync)
+        self.send(json!({"action":"set-read-only", "payload": { "state": true } }))
+            .await;
+    }
 }
 
-pub async fn start_server(mut code_rx: Receiver<String>) {
+pub async fn start_ws_server(code_rx: CodeRx) {
     let addr = "127.0.0.1:53135";
     let listener = TcpListener::bind(&addr)
         .await
         .expect("Can't listen on port 53135. Port already in use?");
-    println!("CGSync listening on {}", addr);
 
-    let last_value = Arc::new(Mutex::new(None));
-    let peer_map = PeerMap::new(Mutex::new(HashMap::new()));
-
-    let peer_map1 = peer_map.clone();
-    let last_value1 = last_value.clone();
+    println!("{} CGSync listening on {}", style("[I]").blue(), addr);
 
     tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
-            tokio::spawn(stream_thread(
-                stream,
-                peer_map1.clone(),
-                last_value1.clone().lock().await.clone(),
-            ));
-        }
-    });
-
-    tokio::spawn(async move {
-        while let Some(code) = code_rx.next().await {
-            last_value.lock().await.replace(code.clone());
-
-            for (_, tx) in peer_map.lock().await.iter_mut() {
-                tx.unbounded_send(code.clone()).unwrap();
-            }
+            tokio::spawn(CGLocalClient::run_from_stream(stream, code_rx.clone()));
         }
     });
 }
