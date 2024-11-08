@@ -16,12 +16,13 @@ impl Bundler for CppBundler {
     fn bundle(main_path: &Path) -> Result<Bundle, Box<dyn Error>> {
         assert!(Self::is_entrypoint(main_path));
 
-        let source = CppExpander::new().expand_source(main_path)?;
+        let mut expander = CppExpander::new();
+        let source = expander.expand_source(main_path)?.ok_or("No source")?;
 
         Ok(Bundle {
             source: format!("{}\n{}", PRAGMAS, source),
             params: Default::default(),
-            src_files: Default::default(),
+            src_files: expander.files_included,
         })
     }
 }

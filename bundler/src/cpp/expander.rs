@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     error::Error,
     path::{Path, PathBuf},
 };
@@ -8,19 +9,24 @@ pub struct CppExpander {
     include_dirs: Vec<PathBuf>,
 
     /// Files that have already been included
-    already_included: Vec<PathBuf>,
+    pub files_included: HashSet<PathBuf>,
 }
 
 impl CppExpander {
     pub fn new() -> Self {
         Self {
             include_dirs: vec![],
-            already_included: vec![],
+            files_included: HashSet::new(),
         }
     }
 
     /// Expands the source file by resolving all the includes
-    pub fn expand_source(&mut self, source_file: &Path) -> Result<String, Box<dyn Error>> {
+    pub fn expand_source(&mut self, source_file: &Path) -> Result<Option<String>, Box<dyn Error>> {
+        if self.has_been_included(&source_file) {
+            return Ok(None);
+        }
+        self.mark_as_included(source_file);
+
         let lines = std::fs::read_to_string(source_file)?
             .lines()
             .into_iter()
@@ -31,7 +37,7 @@ impl CppExpander {
             .collect::<Vec<_>>()
             .join("\n");
 
-        Ok(lines)
+        Ok(Some(lines))
     }
 
     /// Processes a single line of the source file
@@ -45,17 +51,10 @@ impl CppExpander {
             let include_str = line.trim_start_matches("#include \"").trim_end_matches('"');
             let include_path = self.resolve_include(source_file, Path::new(include_str))?;
 
-            if self.has_been_included(&include_path) {
-                return Ok(Some(format!("// (already included) {}", line)));
-            } else {
-                self.mark_as_included(&include_path);
-
-                return Ok(Some(format!(
-                    "// {}\n{}",
-                    line,
-                    self.expand_source(&include_path)?
-                )));
-            }
+            return Ok(Some(match self.expand_source(&include_path)? {
+                Some(inc_source) => format!("// {}\n{}", line, inc_source),
+                None => format!("// (already included) {}", line),
+            }));
         }
 
         // if line is a #pragma once, remove it
@@ -73,11 +72,6 @@ impl CppExpander {
         source_file: &Path,
         include_path: &Path,
     ) -> Result<PathBuf, String> {
-        // println!(
-        //     "Resolving include: {:?} in file: {:?}",
-        //     include_path, source_file
-        // );
-
         // folders to search for the include file
         let mut candidates = self.include_dirs.clone();
         // the current source directory has priority
@@ -97,12 +91,12 @@ impl CppExpander {
     }
 
     fn mark_as_included(&mut self, include_path: &Path) {
-        self.already_included
-            .push(std::fs::canonicalize(include_path).unwrap());
+        self.files_included
+            .insert(std::fs::canonicalize(include_path).unwrap());
     }
 
     fn has_been_included(&self, include_path: &Path) -> bool {
-        self.already_included
+        self.files_included
             .contains(&std::fs::canonicalize(include_path).unwrap())
     }
 }
