@@ -27,11 +27,29 @@ pub struct BundlerArgs {
     // TODO: add flags: remove comments, etc
 }
 
+impl BundlerArgs {
+    pub fn default_from_path(path: &str) -> Self {
+        Self {
+            entry: Some(path.to_string()),
+        }
+    }
+}
+
+/// The language of the bundled source code
+#[derive(Debug)]
+pub enum BundleLanguage {
+    Cpp,
+    Rust,
+}
+
 /// The result of bundling a project
 #[derive(Debug)]
 pub struct Bundle {
     /// The bundled source code
     pub source: String,
+
+    /// The language of the bundled source code
+    pub language: BundleLanguage,
 
     /// Parameters found in the original source. Now available to set via standard arguments
     pub params: HashMap<String, Parameter>,

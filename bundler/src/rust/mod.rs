@@ -2,7 +2,7 @@ mod format;
 mod visitors;
 
 use crate::bundler::Bundler;
-use crate::Bundle;
+use crate::{Bundle, BundleLanguage};
 use cargo_metadata::MetadataCommand;
 use format::{format_code, FmtError};
 use quote::quote;
@@ -73,6 +73,7 @@ impl Bundler for RustBundler {
 
                 Ok(Bundle {
                     source,
+                    language: BundleLanguage::Rust,
                     params: HashMap::new(),
                     src_files,
                 })
