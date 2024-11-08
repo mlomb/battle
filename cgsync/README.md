@@ -23,12 +23,8 @@ Then use `cgsync` the same way you would use `bundler`. Open the folder of your 
 cgsync
 ```
 
-When changes are made, `cgsync` will bundle and send the code to the browser.
+When changes are made, `cgsync` will bundle and send the code to the browser automatically.
 
 ## How it works
 
 The process starts a local web socket server on port 53135. The browser extension then connects to this server. When a file changes, the code is bundled using `bundler` and sent to the browser extension, which pastes it into the browser IDE.
-
-## Notes
-
-It only watches file changes for extensions: `rs`, `c`, `cpp`, `h`, `hpp`, `toml`

@@ -95,7 +95,7 @@ pub async fn start_ws_server(code_rx: CodeRx) {
 
     println!("{} CGSync listening on {}", style("[I]").blue(), addr);
     println!(
-        "{} Click the {} to trigger the connection",
+        "{} Click the {} in your browser to connect",
         style("[I]").blue(),
         style("CG Local extension").yellow().underlined()
     );
