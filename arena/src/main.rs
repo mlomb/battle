@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod build;
 pub mod network;
 pub mod optim;
 pub mod referee;
@@ -6,6 +7,7 @@ pub mod result;
 pub mod run;
 
 use agent::Agent;
+use bundler::{bundle, BundlerArgs};
 use clap::{Parser, Subcommand};
 use crossbeam_channel::bounded;
 use futures::{FutureExt, StreamExt};
@@ -19,7 +21,7 @@ use run::{execute, ExecutionResult};
 use serde::{Deserialize, Serialize};
 use std::env::args;
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -47,6 +49,24 @@ enum Commands {
 // https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/network.rs
 
 fn main() -> Result<(), Box<dyn Error>> {
+    //let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/cpp";
+    let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/rust_main";
+    let args = BundlerArgs::default_from_path(entry);
+    let bundle = bundle(&args)?;
+    let exe = build::build_source(&bundle.source, bundle.language)?;
+
+    println!("EXE LEN: {:?}", exe.len());
+
+    // write file and run it
+
+    let exe_path = PathBuf::from("./test.exe");
+    std::fs::write(&exe_path, &exe)?;
+
+    let output = std::process::Command::new(&exe_path)
+        .status()
+        .expect("failed to execute process");
+
+    return Ok(());
     /*
     let rt = Runtime::new().unwrap();
     let _guard = rt.enter();
