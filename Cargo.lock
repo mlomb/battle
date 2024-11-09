@@ -142,6 +142,7 @@ dependencies = [
  "cc",
  "child_wait_timeout",
  "clap",
+ "console",
  "crossbeam-channel",
  "current_platform",
  "futures",
