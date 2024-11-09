@@ -1,16 +1,21 @@
 pub mod agent;
 pub mod build;
+pub mod env;
+pub mod interactive;
 pub mod network;
 pub mod optim;
+pub mod param;
 pub mod referee;
 pub mod result;
 pub mod run;
 
 use agent::Agent;
-use bundler::{bundle, BundlerArgs};
 use clap::{Parser, Subcommand};
 use crossbeam_channel::bounded;
+use env::Env;
 use futures::{FutureExt, StreamExt};
+use inquire::{InquireError, MultiSelect, Select};
+use interactive::interactive;
 use network::{Event, WorkError};
 use rayon::iter::{
     IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator,
@@ -49,10 +54,46 @@ enum Commands {
 // https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/network.rs
 
 fn main() -> Result<(), Box<dyn Error>> {
+    interactive();
+    let env = Env::from_file(&PathBuf::from("env.yml")).unwrap();
+
+    println!("{:?}", env);
+
+    return Ok(());
+
+    let options: Vec<&str> = vec![
+        "Banana",
+        "Apple",
+        "Strawberry",
+        "Grapes",
+        "Lemon",
+        "Tangerine",
+        "Watermelon",
+        "Orange",
+        "Pear",
+        "Avocado",
+        "Pineapple",
+    ];
+
+    let ans: Result<&str, InquireError> =
+        Select::new("What's your favorite fruit?", options).prompt();
+
+    let options = vec![
+        "Apple",
+        "Orange",
+        "Banana",
+        "Strawberry",
+        "Blueberry",
+        "Mango",
+        "Pineapple",
+    ];
+
+    let ans = MultiSelect::new("Select the fruits for your shopping list:", options).prompt();
+
     //let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/cpp";
     let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/rust_main";
-    let args = BundlerArgs::default_from_path(entry);
-    let bundle = bundle(&args)?;
+    let args = bundler::BundlerArgs::default_from_path(entry);
+    let bundle = bundler::bundle(&args)?;
     let exe = build::build_source(&bundle.source, bundle.language)?;
 
     println!("EXE LEN: {:?}", exe.len());

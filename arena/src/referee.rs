@@ -1,5 +1,5 @@
 use crate::Agent;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Referee {
@@ -7,8 +7,21 @@ pub struct Referee {
 }
 
 impl Referee {
+    // TODO: remove
     pub fn new(path: PathBuf) -> Self {
         Self { path }
+    }
+
+    pub fn from_preset(preset: &str) -> Result<Self, String> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("referees")
+            .join(format!("{}.jar", preset));
+
+        if !path.is_file() {
+            return Err(format!("Referee not found: {}", path.to_string_lossy()));
+        }
+
+        Ok(Self { path })
     }
 
     pub fn command(&self, agents: &Vec<Agent>) -> Vec<String> {
