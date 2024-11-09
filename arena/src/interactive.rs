@@ -33,18 +33,9 @@ pub fn build_command_interactive(env_file: PathBuf, env: Env) -> Vec<String> {
         Options::SingleMatch => {
             cmd.push("run".to_owned());
 
-            for i in 0..env.max_agents {
-                if let Some(agent) = request_agent(
-                    &format!("Select agent #{} ({} max)", i + 1, env.max_agents),
-                    i + 1 > env.min_agents,
-                    &env,
-                ) {
-                    cmd.push("-a".to_owned());
-                    cmd.push(agent);
-                } else {
-                    // once the user selects None, stop asking
-                    break;
-                }
+            for agent in prompt_agents(&env) {
+                cmd.push("-a".to_owned());
+                cmd.push(agent);
             }
         }
         Options::Tournament => todo!(),
@@ -82,20 +73,38 @@ impl Display for Options {
     }
 }
 
-fn request_agent(message: &str, optional: bool, env: &Env) -> Option<String> {
-    let mut options: Vec<String> = env.agents.iter().map(|agent| agent.name.clone()).collect();
+fn prompt_agents(env: &Env) -> Vec<String> {
+    let agent_none: String = style("None").red().to_string();
+    let mut agents = vec![];
 
-    if optional {
-        options.insert(0, style("None").red().to_string());
-    }
+    for i in 0..env.max_agents {
+        let mut options: Vec<String> = env.agents.iter().map(|agent| agent.name.clone()).collect();
+        assert!(options.len() > 0);
 
-    let ans = Select::new(message, options.clone())
+        if options.len() == 1 {
+            // if there is only one agent, select it by default
+            agents.push(options[0].clone());
+            break;
+        }
+
+        if i + 1 > env.min_agents {
+            options.insert(0, agent_none.clone());
+        }
+
+        let agent = Select::new(
+            &format!("Select agent #{} ({} max)", i + 1, env.max_agents),
+            options,
+        )
         .prompt()
         .expect("an agent to be selected");
 
-    if optional && ans == options[0] {
-        None
-    } else {
-        Some(ans.to_owned())
+        if agent == agent_none {
+            // once the user selects None, stop asking
+            break;
+        }
+
+        agents.push(agent);
     }
+
+    agents
 }
