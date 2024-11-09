@@ -48,7 +48,7 @@ enum Commands {
     /// Runs the given configuration file
     Run {
         #[arg(short, long)]
-        agent: Vec<String>,
+        agent: Vec<String>, // ["agent1,agent2", "agent1,agent3"]
     },
     /// Starts a worker that listens for jobs in the local network (via P2P)
     Worker,
@@ -63,9 +63,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     match Env::from_file(&args.env) {
         Ok(env) => {
             println!(
-                "{} Env file read {}",
+                "{} Env file read {}. Found {} agents.",
                 style("[OK]").green().bold(),
-                style(args.env.display()).magenta()
+                style(args.env.display()).magenta(),
+                style(env.agents.len()).cyan(),
             );
 
             let command = if let Some(cmd) = args.command {
@@ -94,6 +95,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     EnvError::ParseError(e) => {
                         format!("Error parsing the YAML file {}", style(e).red())
                     }
+                    EnvError::NoAgents =>
+                        format!("No agents provided. Please provide at least one."),
                     EnvError::BadReferee(e) => {
                         format!("Bad referee: {}", style(e).red())
                     }
