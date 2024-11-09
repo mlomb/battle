@@ -6,7 +6,7 @@ Tools for building competitive bots. The project is composed of three crates:
 |---|---|---|
 | `bundler`  | [bundler/README.md](bundler) | Bundles C++ and Rust projects into a single file for submission |
 | `cgsync` | [cgsync/README.md](cgsync) | Watches a project for changes, bundles it (with `bundler`) and syncs it with the [CG Local extension](https://github.com/jmerle/cg-local-ext) |
-| `arena` | TODO | Allows automated testing of bots. Connects to other instances via P2P to run distributed tests |
+| `arena` | [arena/README.md](arena) | Automated testing of bots. Parameter optimization. Allows distributed compute using P2P |
 
 The tools are designed to "just work" and aim to have good DX.
 
