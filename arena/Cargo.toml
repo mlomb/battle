@@ -22,3 +22,4 @@ current_platform = "0.2.0"
 bundler = { path = "../bundler" }
 inquire = "0.7.5"
 yaml-rust2 = "0.9.0"
+console = "0.15.8"

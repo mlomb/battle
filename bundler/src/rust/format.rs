@@ -16,10 +16,8 @@ pub fn format_code<T: ToString>(input: &T) -> Result<String, FmtError> {
     let rustfmt =
         toolchain_find::find_installed_component("rustfmt").ok_or(FmtError::RustfmtNotFound)?;
 
-    let args: Vec<String> = vec!["--edition=2021".to_string()];
-
     let mut command = Command::new(&rustfmt)
-        .args(args)
+        .arg("--edition=2021")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

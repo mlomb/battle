@@ -4,20 +4,20 @@ use yaml_rust2::{Yaml, YamlLoader};
 
 #[derive(Debug)]
 pub struct AgentDef {
-    name: String,
-    src: Option<PathBuf>,
-    win_bin: Option<PathBuf>,
-    linux_bin: Option<PathBuf>,
+    pub name: String,
+    pub src: Option<PathBuf>,
+    pub win_bin: Option<PathBuf>,
+    pub linux_bin: Option<PathBuf>,
 }
 
 #[derive(Debug)]
 pub struct Env {
-    referee: Referee,
+    pub referee: Referee,
 
-    min_agents: u8,
-    max_agents: u8,
+    pub min_agents: u8,
+    pub max_agents: u8,
 
-    agents: Vec<AgentDef>,
+    pub agents: Vec<AgentDef>,
 }
 
 #[derive(Debug)]
@@ -50,7 +50,7 @@ impl Env {
 impl EnvParser {
     fn from_file(mut env_path: PathBuf) -> Result<EnvParser, EnvError> {
         // must be absolute to resolve relative paths
-        env_path = env_path.canonicalize().expect("to canonicalize path");
+        env_path = env_path.canonicalize().map_err(|_| EnvError::NotFound)?;
 
         let content = std::fs::read_to_string(env_path.clone()).map_err(|_| EnvError::NotFound)?;
         let docs = YamlLoader::load_from_str(&content).map_err(EnvError::ParseError)?;
@@ -64,10 +64,19 @@ impl EnvParser {
     }
 
     fn parse(self) -> Result<Env, EnvError> {
+        let min_agents = self.parse_agent_number("min_agents")?;
+        let max_agents = self.parse_agent_number("max_agents")?;
+
+        if min_agents > max_agents {
+            return Err(EnvError::BadField(
+                "'min_agents' must be less than or equal to 'max_agents'".to_owned(),
+            ));
+        }
+
         Ok(Env {
             referee: self.parse_referee()?,
-            min_agents: self.parse_agent_number("min_agents")?,
-            max_agents: self.parse_agent_number("max_agents")?,
+            min_agents,
+            max_agents,
             agents: self.parse_agents()?,
         })
     }
@@ -75,7 +84,7 @@ impl EnvParser {
     pub fn parse_referee(&self) -> Result<Referee, EnvError> {
         let referee_preset = self.doc["referee"]
             .as_str()
-            .ok_or(EnvError::BadReferee("Referee is missing".to_owned()))?;
+            .ok_or(EnvError::BadReferee("'referee' is missing".to_owned()))?;
 
         Referee::from_preset(referee_preset).map_err(|e| EnvError::BadReferee(e))
     }

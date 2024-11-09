@@ -11,11 +11,12 @@ pub mod run;
 
 use agent::Agent;
 use clap::{Parser, Subcommand};
+use console::style;
 use crossbeam_channel::bounded;
-use env::Env;
+use env::{Env, EnvError};
 use futures::{FutureExt, StreamExt};
 use inquire::{InquireError, MultiSelect, Select};
-use interactive::interactive;
+use interactive::build_command_interactive;
 use network::{Event, WorkError};
 use rayon::iter::{
     IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator,
@@ -35,16 +36,19 @@ use std::time::{Duration, Instant};
 #[command(author, version, about)]
 struct Args {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
+
+    /// The environment file to use
+    #[arg(short, long, default_value = "env.yml")]
+    env: PathBuf,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Runs the given configuration file
     Run {
-        /// The configuration file to run (.yml)
-        #[arg()]
-        config: PathBuf,
+        #[arg(short, long)]
+        agent: Vec<String>,
     },
     /// Starts a worker that listens for jobs in the local network (via P2P)
     Worker,
@@ -54,10 +58,50 @@ enum Commands {
 // https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/network.rs
 
 fn main() -> Result<(), Box<dyn Error>> {
-    interactive();
-    let env = Env::from_file(&PathBuf::from("env.yml")).unwrap();
+    let args = Args::parse();
 
-    println!("{:?}", env);
+    match Env::from_file(&args.env) {
+        Ok(env) => {
+            println!(
+                "{} Env file read {}",
+                style("[OK]").green().bold(),
+                style(args.env.display()).magenta()
+            );
+
+            let command = if let Some(cmd) = args.command {
+                cmd
+            } else {
+                Args::parse_from(build_command_interactive(args.env, env))
+                    .command
+                    .expect("a well constructed command")
+            };
+
+            match command {
+                Commands::Run { agent: agents } => {
+                    println!("Running agents: {:?}", agents);
+                }
+                Commands::Worker => panic!("Worker should not be invoked here"),
+            }
+        }
+        Err(err) => {
+            println!(
+                "{} {}",
+                style("[E]").red().bold(),
+                match err {
+                    EnvError::NotFound => {
+                        format!("Env file not found {}", style(args.env.display()).magenta())
+                    }
+                    EnvError::ParseError(e) => {
+                        format!("Error parsing the YAML file {}", style(e).red())
+                    }
+                    EnvError::BadReferee(e) => {
+                        format!("Bad referee: {}", style(e).red())
+                    }
+                    EnvError::BadField(e) => format!("Bad field: {}", style(e).red()),
+                }
+            );
+        }
+    }
 
     return Ok(());
 
