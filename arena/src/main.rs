@@ -66,6 +66,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match Env::from_file(&args.env) {
         Ok(env) => {
+            println!("{:?}", env);
+
             println!(
                 "{} Env file read {}. Found {} agents.",
                 style("[OK]").green().bold(),
@@ -108,6 +110,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                         format!("Bad agent: {}", style(e).red())
                     }
                     EnvError::BadField(e) => format!("Bad field: {}", style(e).red()),
+                    EnvError::BundleError {
+                        agent,
+                        src_path,
+                        error,
+                    } => {
+                        format!(
+                            "Error bundling agent {} ({}): {}",
+                            style(agent).magenta(),
+                            style(src_path.display()).cyan(),
+                            style(error).red()
+                        )
+                    }
                 }
             );
         }
@@ -117,7 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     //let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/cpp";
     let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/rust_main";
-    let args = bundler::BundlerArgs::default_from_path(entry);
+    let args = bundler::BundlerArgs::default_from_entry(entry.into());
     let bundle = bundler::bundle(&args)?;
     let exe = build::build_source(&bundle.source, bundle.language)?;
 
@@ -160,6 +174,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 loop {
                     let req = r.recv().unwrap();
                     //println!("Received: {:?}", req);
+                    /*
                     let args = req.referee.command(&req.agents);
                     let res = execute(args, Duration::from_secs(10));
 
@@ -177,6 +192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     };
 
                     u.send(res).unwrap();
+                    */
                 }
             });
         }

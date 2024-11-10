@@ -1,5 +1,10 @@
 use serde::Serialize;
-use std::{collections::HashMap, path::PathBuf, process::Command};
+use std::{
+    collections::HashMap,
+    fmt::{self, Formatter},
+    path::PathBuf,
+    process::Command,
+};
 use tempfile::TempDir;
 
 /// Represents an arbitrary executable.
@@ -31,6 +36,30 @@ pub struct Executable {
 }
 
 impl Executable {
+    /// Creates a new executable from a command prefix and a file.
+    pub fn from_prefix_file(command_prefix: Vec<String>, file: PathBuf) -> Self {
+        let filename = file.file_name().unwrap().to_str().unwrap().to_string();
+
+        let mut files = HashMap::new();
+        files.insert(filename, std::fs::read(&file).expect("failed to read file"));
+
+        Self {
+            command: command_prefix,
+            files,
+            tmp_workdir: None,
+        }
+    }
+
+    /// Creates a new executable that runs a JAR file ("java -jar main.jar")
+    pub fn from_jar(jar_path: PathBuf) -> Self {
+        Self::from_prefix_file(vec!["java".to_string(), "-jar".to_string()], jar_path)
+    }
+
+    /// Creates a new executable that runs a binary file (e.g. "main.exe")
+    pub fn from_binary(binary_path: PathBuf) -> Self {
+        Self::from_prefix_file(vec![], binary_path)
+    }
+
     /// Returns a ready-to-execute command.
     /// One may include additional arguments to the command.
     pub fn command(&mut self) -> Command {
@@ -58,6 +87,15 @@ impl Executable {
             "Files available in {:?}",
             self.tmp_workdir.as_ref().unwrap().path()
         );
+    }
+}
+
+impl fmt::Debug for Executable {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Executable")
+            .field("command", &self.command)
+            .field("files", &self.files.keys())
+            .finish()
     }
 }
 

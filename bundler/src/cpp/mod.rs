@@ -9,8 +9,13 @@ pub struct CppBundler {}
 impl Bundler for CppBundler {
     /// Checks if a file is a C/C++ entrypoint
     fn is_entrypoint(path: &Path) -> bool {
-        let name = path.file_name().unwrap_or_default().to_ascii_lowercase();
-        name == "main.cpp" || name == "main.c"
+        // let name = path.file_name().unwrap_or_default().to_ascii_lowercase();
+        // name == "main.cpp" || name == "main.c"
+        // TODO: revisar esto, queremos levantar main.cpp automaticamente pero no otros archivos cpp
+        // pero si son entrypoint validos
+        path.extension()
+            .map(|ext| ext.to_ascii_lowercase())
+            .map_or(false, |ext| ext == "cpp" || ext == "c")
     }
 
     fn bundle(main_path: &Path) -> Result<Bundle, Box<dyn Error>> {
