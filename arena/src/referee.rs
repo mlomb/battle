@@ -26,7 +26,6 @@ pub struct Referee {
 
 impl Referee {
     /// Creates a new referee from a curated list of referess available in the `referees` directory.
-    /// Note that only CodinGame contests are supported at the moment.
     pub fn from_preset<T: ToString>(preset: T) -> Result<Self, String> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("referees")
@@ -45,9 +44,13 @@ impl Referee {
     pub fn command(&mut self, agents: &Vec<Agent>) -> Command {
         let mut cmd = self.exe.command();
 
-        for (i, agent) in agents.iter().enumerate() {
-            cmd.arg(format!("-p{}", i + 1));
-            cmd.arg(agent.command());
+        match self.protocol {
+            Protocol::CodinGame => {
+                for (i, agent) in agents.iter().enumerate() {
+                    cmd.arg(format!("-p{}", i + 1));
+                    cmd.arg(agent.command());
+                }
+            }
         }
 
         cmd
