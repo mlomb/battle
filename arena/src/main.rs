@@ -1,5 +1,4 @@
 pub mod agent;
-pub mod build;
 pub mod command;
 pub mod env;
 pub mod executable;
@@ -10,8 +9,12 @@ pub mod param;
 pub mod referee;
 pub mod result;
 pub mod run;
+pub mod source_build;
 pub mod tournament;
 
+// TODO: errors and logging is lacking
+
+use crate::source_build::SourceBuilder;
 use agent::Agent;
 use clap::{Parser, Subcommand};
 use console::style;
@@ -71,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut a = env.referee.command(&vec![
                 //-
                 env.agents[2].command(),
-                env.agents[2].command(),
+                env.agents[0].command(),
                 env.agents[3].command(),
             ]);
             println!("{:?}", a);
@@ -138,24 +141,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     return Ok(());
 
-    //let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/cpp";
-    let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/rust_main";
-    let args = bundler::BundlerArgs::default_from_entry(entry.into());
-    let bundle = bundler::bundle(&args)?;
-    let exe = build::build_source(&bundle.source.code, bundle.source.language)?;
-
-    println!("EXE LEN: {:?}", exe.len());
-
-    // write file and run it
-
-    let exe_path = PathBuf::from("./test.exe");
-    std::fs::write(&exe_path, &exe)?;
-
-    let output = std::process::Command::new(&exe_path)
-        .status()
-        .expect("failed to execute process");
-
-    return Ok(());
     /*
     let rt = Runtime::new().unwrap();
     let _guard = rt.enter();

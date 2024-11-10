@@ -86,10 +86,6 @@ impl Executable {
         }
 
         self.tmp_workdir = Some(tmp);
-        println!(
-            "Files available in {:?}",
-            self.tmp_workdir.as_ref().unwrap().path()
-        );
     }
 }
 

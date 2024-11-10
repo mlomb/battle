@@ -1,17 +1,26 @@
-use bundler::source::Language;
+use crate::executable::Executable;
+use bundler::source::{Language, Source};
 use current_platform::CURRENT_PLATFORM;
 use std::process::Command;
 use tempfile::tempdir;
 
-/// Takes a source code string and returns the compiled binary
-pub fn build_source(src: &String, lang: Language) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    match lang {
-        Language::Cpp => build_cpp(src),
-        Language::Rust => build_rust(src),
+// TODO: errors
+
+pub trait SourceBuilder {
+    /// Compiles the source code for the current platform (where the code is running) and returns an Executable
+    fn build(&self) -> Result<Executable, Box<dyn std::error::Error>>;
+}
+
+impl SourceBuilder for Source {
+    fn build(&self) -> Result<Executable, Box<dyn std::error::Error>> {
+        match self.language {
+            Language::Cpp => build_cpp(&self.code),
+            Language::Rust => build_rust(&self.code),
+        }
     }
 }
 
-fn build_cpp(src: &String) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn build_cpp(src: &String) -> Result<Executable, Box<dyn std::error::Error>> {
     let temp_dir = tempdir()?;
     let src_path = temp_dir.path().join("main.cpp");
     let exe_path = temp_dir.path().join("main.exe");
@@ -37,21 +46,24 @@ fn build_cpp(src: &String) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     cmd.arg(format!("/Fo{}", obj_path.display().to_string()));
     cmd.arg(src_path);
 
-    println!("{:?}", cmd);
     let output = cmd.output().unwrap();
 
     if output.status.success() {
-        // read binary file
-        return Ok(std::fs::read(exe_path)?);
+        return Ok(Executable::from_binary(exe_path));
     } else {
         return Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
-            String::from_utf8(output.stderr).unwrap(),
+            format!(
+                "exit code {} ouput:{}\n{}",
+                output.status.code().unwrap(),
+                String::from_utf8(output.stdout).unwrap(),
+                String::from_utf8(output.stderr).unwrap()
+            ),
         )));
     }
 }
 
-fn build_rust(src: &String) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn build_rust(src: &String) -> Result<Executable, Box<dyn std::error::Error>> {
     let temp_dir = tempdir()?;
     let toml_path = temp_dir.path().join("Cargo.toml");
     let src_path = temp_dir.path().join("main.rs");
@@ -72,12 +84,16 @@ fn build_rust(src: &String) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         .unwrap();
 
     if output.status.success() {
-        // read binary file
-        return Ok(std::fs::read(target_path)?);
+        return Ok(Executable::from_binary(target_path));
     } else {
         return Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
-            String::from_utf8(output.stderr).unwrap(),
+            format!(
+                "exit code {} ouput:{}\n{}",
+                output.status.code().unwrap(),
+                String::from_utf8(output.stdout).unwrap(),
+                String::from_utf8(output.stderr).unwrap()
+            ),
         )));
     }
 }
@@ -90,6 +106,9 @@ const CARGO_TOML: &str = r#"
 name = "main"
 version = "0.1.0"
 edition = "2021"
+
+[profile.release]
+lto = true
 
 [[bin]]
 name = "main"
