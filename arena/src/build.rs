@@ -1,17 +1,13 @@
-use std::process::Command;
-
-use bundler::BundleLanguage;
+use bundler::source::Language;
 use current_platform::CURRENT_PLATFORM;
+use std::process::Command;
 use tempfile::tempdir;
 
 /// Takes a source code string and returns the compiled binary
-pub fn build_source(
-    src: &String,
-    lang: BundleLanguage,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn build_source(src: &String, lang: Language) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     match lang {
-        BundleLanguage::Cpp => build_cpp(src),
-        BundleLanguage::Rust => build_rust(src),
+        Language::Cpp => build_cpp(src),
+        Language::Rust => build_rust(src),
     }
 }
 

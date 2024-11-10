@@ -41,9 +41,9 @@ impl BasicGenerator {
             Some(MatchRequest {
                 referee: Referee::from_preset("cg-2024-summer-olympics").unwrap(),
                 agents: vec![
-                    Agent::new("mlomb-146-2.exe".into()),
-                    Agent::new("SMITS_v04.exe".into()),
-                    Agent::new("SMITS_v09.exe".into()),
+                    //Agent::from_source("mlomb-146-2.exe".into()),
+                    //Agent::from_source("SMITS_v04.exe".into()),
+                    //Agent::from_source("SMITS_v09.exe".into()),
                 ],
             })
         } else {

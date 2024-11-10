@@ -41,10 +41,13 @@ impl Executable {
         let filename = file.file_name().unwrap().to_str().unwrap().to_string();
 
         let mut files = HashMap::new();
-        files.insert(filename, std::fs::read(&file).expect("failed to read file"));
+        files.insert(
+            filename.clone(),
+            std::fs::read(&file).expect("failed to read file"),
+        );
 
         Self {
-            command: command_prefix,
+            command: [command_prefix, vec![filename]].concat(),
             files,
             tmp_workdir: None,
         }
@@ -90,6 +93,7 @@ impl Executable {
     }
 }
 
+// TODO: remove debug?
 impl fmt::Debug for Executable {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Executable")
