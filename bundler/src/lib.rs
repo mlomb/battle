@@ -6,12 +6,14 @@ pub mod bundler;
 mod cpp;
 mod parameter;
 mod rust;
+pub mod source;
 
 use bundler::Bundler;
 use clap::Parser;
 use cpp::CppBundler;
 use parameter::Parameter;
 use rust::RustBundler;
+use source::Source;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
@@ -33,21 +35,11 @@ impl BundlerArgs {
     }
 }
 
-/// The language of the bundled source code
-#[derive(Debug)]
-pub enum BundleLanguage {
-    Cpp,
-    Rust,
-}
-
 /// The result of bundling a project
 #[derive(Debug)]
 pub struct Bundle {
     /// The bundled source code
-    pub source: String,
-
-    /// The language of the bundled source code
-    pub language: BundleLanguage,
+    pub source: Source,
 
     /// Parameters found in the original source. Now available to set via standard arguments
     pub params: HashMap<String, Parameter>,
@@ -81,7 +73,7 @@ mod tests {
             entry: Some("test_cases/cpp".into()),
         })
         .expect("correct bundle");
-        println!("{}", bundle.source);
+        println!("{}", bundle.source.code);
     }
 
     #[test]
@@ -90,7 +82,7 @@ mod tests {
             entry: Some("test_cases/rust_main".into()),
         })
         .expect("correct bundle");
-        println!("{}", bundle.source);
+        println!("{}", bundle.source.code);
     }
 
     #[test]
@@ -99,6 +91,6 @@ mod tests {
             entry: Some("test_cases/rust_bin".into()),
         })
         .expect("correct bundle");
-        println!("{}", bundle.source);
+        println!("{}", bundle.source.code);
     }
 }

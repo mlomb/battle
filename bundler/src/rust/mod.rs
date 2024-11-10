@@ -2,7 +2,8 @@ mod format;
 mod visitors;
 
 use crate::bundler::Bundler;
-use crate::{Bundle, BundleLanguage};
+use crate::source::{Language, Source};
+use crate::Bundle;
 use cargo_metadata::MetadataCommand;
 use format::{format_code, FmtError};
 use quote::quote;
@@ -72,8 +73,10 @@ impl Bundler for RustBundler {
                 let source = source.replace("use wasm_bindgen::prelude::*;", "");
 
                 Ok(Bundle {
-                    source,
-                    language: BundleLanguage::Rust,
+                    source: Source {
+                        code: source,
+                        language: Language::Rust,
+                    },
                     params: HashMap::new(),
                     src_files,
                 })

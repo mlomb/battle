@@ -1,6 +1,10 @@
 mod expander;
 
-use crate::{bundler::Bundler, Bundle, BundleLanguage};
+use crate::{
+    bundler::Bundler,
+    source::{Language, Source},
+    Bundle,
+};
 use expander::CppExpander;
 use std::{error::Error, path::Path};
 
@@ -25,8 +29,10 @@ impl Bundler for CppBundler {
         let source = expander.expand_source(main_path)?.ok_or("No source")?;
 
         Ok(Bundle {
-            source: format!("{}\n{}", PRAGMAS, source),
-            language: BundleLanguage::Cpp,
+            source: Source {
+                code: format!("{}\n{}", PRAGMAS, source),
+                language: Language::Cpp,
+            },
             params: Default::default(),
             src_files: expander.files_included,
         })

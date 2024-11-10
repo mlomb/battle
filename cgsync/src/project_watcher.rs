@@ -36,7 +36,7 @@ impl ProjectWatcher {
         loop {
             // bundle the project
             match self.run_bundler() {
-                Ok(bundle) => code_tx.send(bundle.source).expect("a code receiver"),
+                Ok(bundle) => code_tx.send(bundle.source.code).expect("a code receiver"),
                 Err(err) => println!("{} Failed to bundle: {:?}", style("[E]").red(), err),
             }
 
