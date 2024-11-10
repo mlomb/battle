@@ -15,7 +15,7 @@ use rust::RustBundler;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[derive(Debug, Parser)]
@@ -23,15 +23,13 @@ pub struct BundlerArgs {
     /// Entry point file (main.cpp, Cargo.toml) or directory containing an entry file.
     /// If not provided, it will find an appropiate entry point in the current folder.
     #[arg(long)]
-    entry: Option<String>,
+    entry: Option<PathBuf>,
     // TODO: add flags: remove comments, etc
 }
 
 impl BundlerArgs {
-    pub fn default_from_path(path: &str) -> Self {
-        Self {
-            entry: Some(path.to_string()),
-        }
+    pub fn default_from_entry(entry: PathBuf) -> Self {
+        Self { entry: Some(entry) }
     }
 }
 
@@ -60,14 +58,13 @@ pub struct Bundle {
 
 /// Bundles a C++/Rust project directory into a single source unit
 pub fn bundle(args: &BundlerArgs) -> Result<Bundle, Box<dyn Error>> {
-    let entry = args.entry.clone().unwrap_or_else(|| ".".to_string());
-    let entry = Path::new(&entry);
+    let entry = args.entry.clone().unwrap_or_else(|| PathBuf::from("."));
 
-    if let Some(entry) = RustBundler::find_entrypoint(entry) {
+    if let Some(entry) = RustBundler::find_entrypoint(entry.as_path()) {
         return RustBundler::bundle(entry.as_path());
     }
 
-    if let Some(entry) = CppBundler::find_entrypoint(entry) {
+    if let Some(entry) = CppBundler::find_entrypoint(entry.as_path()) {
         return CppBundler::bundle(entry.as_path());
     }
 
@@ -81,7 +78,7 @@ mod tests {
     #[test]
     fn test_cpp_bundle() {
         let bundle = bundle(&BundlerArgs {
-            entry: Some("test_cases/cpp".to_string()),
+            entry: Some("test_cases/cpp".into()),
         })
         .expect("correct bundle");
         println!("{}", bundle.source);
@@ -90,7 +87,7 @@ mod tests {
     #[test]
     fn test_rust_main_bundle() {
         let bundle = bundle(&BundlerArgs {
-            entry: Some("test_cases/rust_main".to_string()),
+            entry: Some("test_cases/rust_main".into()),
         })
         .expect("correct bundle");
         println!("{}", bundle.source);
@@ -99,7 +96,7 @@ mod tests {
     #[test]
     fn test_rust_bin_bundle() {
         let bundle = bundle(&BundlerArgs {
-            entry: Some("test_cases/rust_bin".to_string()),
+            entry: Some("test_cases/rust_bin".into()),
         })
         .expect("correct bundle");
         println!("{}", bundle.source);

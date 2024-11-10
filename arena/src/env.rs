@@ -1,14 +1,15 @@
-use crate::{agent::Agent, referee::Referee};
-use std::path::PathBuf;
+use crate::{executable::Executable, referee::Referee};
+use bundler::{bundle, BundlerArgs};
+use std::{error::Error, path::PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
 
 #[derive(Debug)]
 pub struct AgentDef {
     pub name: String,
     // TODO: cmd for custom commands
-    pub src: Option<PathBuf>,
-    pub win_bin: Option<PathBuf>,
-    pub linux_bin: Option<PathBuf>,
+    pub source: Option<String>,
+    pub win_bin: Option<Executable>,
+    pub linux_bin: Option<Executable>,
 }
 
 #[derive(Debug)]
@@ -35,10 +36,17 @@ pub enum EnvError {
     BadAgent(String),
     /// Missing or invalid field
     BadField(String),
+
+    BundleError {
+        agent: String,
+        src_path: PathBuf,
+        error: Box<dyn Error>,
+    },
+    // TODO: agent error, y que tenga el string de agent y un error especifico :)
 }
 
 struct EnvParser {
-    /// The path to the .yml file
+    /// The path to the YAML file.
     /// This is used to resolve relative paths
     env_path: PathBuf,
 
@@ -92,7 +100,7 @@ impl EnvParser {
         })
     }
 
-    pub fn parse_referee(&self) -> Result<Referee, EnvError> {
+    fn parse_referee(&self) -> Result<Referee, EnvError> {
         let referee_preset = self.doc["referee"]
             .as_str()
             .ok_or(EnvError::BadReferee("'referee' is missing".to_owned()))?;
@@ -100,7 +108,7 @@ impl EnvParser {
         Referee::from_preset(referee_preset).map_err(|e| EnvError::BadReferee(e))
     }
 
-    pub fn parse_agents(&self) -> Result<Vec<AgentDef>, EnvError> {
+    fn parse_agents(&self) -> Result<Vec<AgentDef>, EnvError> {
         if let Some(agents) = self.doc["agents"].as_hash() {
             return agents
                 .iter()
@@ -111,7 +119,7 @@ impl EnvParser {
         Ok(vec![])
     }
 
-    pub fn parse_agent(&self, name: &str, a: &Yaml) -> Result<AgentDef, EnvError> {
+    fn parse_agent(&self, name: &str, a: &Yaml) -> Result<AgentDef, EnvError> {
         let parse_optional_path = |field: &str| -> Option<PathBuf> {
             a[field]
                 .as_str()
@@ -139,15 +147,28 @@ impl EnvParser {
             )));
         }
 
+        let source =
+            if let Some(src_path) = src.as_ref() {
+                let bundle = bundle(&BundlerArgs::default_from_entry(src_path.to_path_buf()))
+                    .map_err(|e| EnvError::BundleError {
+                        agent: name.to_owned(),
+                        src_path: src_path.clone(),
+                        error: e.into(),
+                    })?;
+                Some(bundle.source)
+            } else {
+                None
+            };
+
         Ok(AgentDef {
             name: name.to_owned(),
-            src,
-            win_bin,
-            linux_bin,
+            source,
+            win_bin: win_bin.map(Executable::from_binary),
+            linux_bin: linux_bin.map(Executable::from_binary),
         })
     }
 
-    pub fn parse_agent_number(&self, field: &str) -> Result<u8, EnvError> {
+    fn parse_agent_number(&self, field: &str) -> Result<u8, EnvError> {
         let n = self.doc[field]
             .as_i64()
             .ok_or(EnvError::BadField(format!("'{}' is missing", field)))?;
