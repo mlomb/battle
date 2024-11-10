@@ -21,9 +21,9 @@ fn main() {
     match bundle(&args.bundler_args) {
         Ok(bundle) => {
             if let Some(output) = args.output {
-                std::fs::write(output, bundle.source).expect("a writeable output file");
+                std::fs::write(output, bundle.source.code).expect("a writeable output file");
             } else {
-                println!("{}", bundle.source);
+                println!("{}", bundle.source.code);
             }
         }
         Err(err) => {
