@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod build;
 pub mod env;
+pub mod executable;
 pub mod interactive;
 pub mod network;
 pub mod optim;
