@@ -1,16 +1,7 @@
-use crate::{executable::Executable, referee::Referee};
+use crate::{agent::Agent, executable::Executable, referee::Referee};
 use bundler::{bundle, BundlerArgs};
 use std::{error::Error, path::PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
-
-#[derive(Debug)]
-pub struct AgentDef {
-    pub name: String,
-    // TODO: cmd for custom commands
-    pub source: Option<String>,
-    pub win_bin: Option<Executable>,
-    pub linux_bin: Option<Executable>,
-}
 
 #[derive(Debug)]
 pub struct Env {
@@ -19,7 +10,7 @@ pub struct Env {
     pub min_agents: u8,
     pub max_agents: u8,
 
-    pub agents: Vec<AgentDef>,
+    pub agents: Vec<Agent>,
 }
 
 #[derive(Debug)]
@@ -108,7 +99,7 @@ impl EnvParser {
         Referee::from_preset(referee_preset).map_err(|e| EnvError::BadReferee(e))
     }
 
-    fn parse_agents(&self) -> Result<Vec<AgentDef>, EnvError> {
+    fn parse_agents(&self) -> Result<Vec<Agent>, EnvError> {
         if let Some(agents) = self.doc["agents"].as_hash() {
             return agents
                 .iter()
@@ -119,7 +110,7 @@ impl EnvParser {
         Ok(vec![])
     }
 
-    fn parse_agent(&self, name: &str, a: &Yaml) -> Result<AgentDef, EnvError> {
+    fn parse_agent(&self, name: &str, a: &Yaml) -> Result<Agent, EnvError> {
         let parse_optional_path = |field: &str| -> Option<PathBuf> {
             a[field]
                 .as_str()
@@ -147,25 +138,24 @@ impl EnvParser {
             )));
         }
 
-        let source =
-            if let Some(src_path) = src.as_ref() {
-                let bundle = bundle(&BundlerArgs::default_from_entry(src_path.to_path_buf()))
-                    .map_err(|e| EnvError::BundleError {
+        if let Some(src_path) = src.as_ref() {
+            let bundle =
+                bundle(&BundlerArgs::default_from_entry(src_path.to_path_buf())).map_err(|e| {
+                    EnvError::BundleError {
                         agent: name.to_owned(),
                         src_path: src_path.clone(),
                         error: e.into(),
-                    })?;
-                Some(bundle.source)
-            } else {
-                None
-            };
+                    }
+                })?;
 
-        Ok(AgentDef {
-            name: name.to_owned(),
-            source,
-            win_bin: win_bin.map(Executable::from_binary),
-            linux_bin: linux_bin.map(Executable::from_binary),
-        })
+            Ok(Agent::from_source(name, bundle.source))
+        } else {
+            Ok(Agent::from_binaries(
+                name,
+                win_bin.map(|path| Executable::from_binary(path)),
+                linux_bin.map(|path| Executable::from_binary(path)),
+            ))
+        }
     }
 
     fn parse_agent_number(&self, field: &str) -> Result<u8, EnvError> {

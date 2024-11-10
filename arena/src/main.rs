@@ -16,6 +16,7 @@ use clap::{Parser, Subcommand};
 use console::style;
 use crossbeam_channel::bounded;
 use env::{Env, EnvError};
+use executable::Executable;
 use futures::{FutureExt, StreamExt};
 use inquire::{InquireError, MultiSelect, Select};
 use interactive::build_command_interactive;
@@ -65,8 +66,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     match Env::from_file(&args.env) {
-        Ok(env) => {
-            println!("{:?}", env);
+        Ok(mut env) => {
+            let mut a = env.referee.command(&env.agents);
+            println!("{:?}", a);
+            println!("{:?}", a.status());
 
             println!(
                 "{} Env file read {}. Found {} agents.",
@@ -133,7 +136,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/rust_main";
     let args = bundler::BundlerArgs::default_from_entry(entry.into());
     let bundle = bundler::bundle(&args)?;
-    let exe = build::build_source(&bundle.source, bundle.language)?;
+    let exe = build::build_source(&bundle.source.code, bundle.source.language)?;
 
     println!("EXE LEN: {:?}", exe.len());
 
