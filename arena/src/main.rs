@@ -9,6 +9,7 @@ pub mod param;
 pub mod referee;
 pub mod result;
 pub mod run;
+pub mod tournament;
 
 use agent::Agent;
 use clap::{Parser, Subcommand};
@@ -46,17 +47,19 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Runs the given configuration file
-    Run {
+    /// Runs a tournament
+    Tournament {
+        /// Tournament format
+        #[arg(value_enum, long)]
+        format: tournament::format::Format,
+
+        /// Agents to run the tournament with
         #[arg(short, long)]
         agent: Vec<String>, // ["agent1,agent2", "agent1,agent3"]
     },
     /// Starts a worker that listens for jobs in the local network (via P2P)
     Worker,
 }
-
-// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/main.rs
-// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/network.rs
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
@@ -79,8 +82,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             };
 
             match command {
-                Commands::Run { agent: agents } => {
-                    println!("Running agents: {:?}", agents);
+                Commands::Tournament { format, agent } => {
+                    println!("Running agents: {:?}", agent);
                 }
                 Commands::Worker => panic!("Worker should not be invoked here"),
             }
@@ -101,6 +104,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     EnvError::BadReferee(e) => {
                         format!("Bad referee: {}", style(e).red())
                     }
+                    EnvError::BadAgent(e) => {
+                        format!("Bad agent: {}", style(e).red())
+                    }
                     EnvError::BadField(e) => format!("Bad field: {}", style(e).red()),
                 }
             );
@@ -108,35 +114,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     return Ok(());
-
-    let options: Vec<&str> = vec![
-        "Banana",
-        "Apple",
-        "Strawberry",
-        "Grapes",
-        "Lemon",
-        "Tangerine",
-        "Watermelon",
-        "Orange",
-        "Pear",
-        "Avocado",
-        "Pineapple",
-    ];
-
-    let ans: Result<&str, InquireError> =
-        Select::new("What's your favorite fruit?", options).prompt();
-
-    let options = vec![
-        "Apple",
-        "Orange",
-        "Banana",
-        "Strawberry",
-        "Blueberry",
-        "Mango",
-        "Pineapple",
-    ];
-
-    let ans = MultiSelect::new("Select the fruits for your shopping list:", options).prompt();
 
     //let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/cpp";
     let entry = "C:/Users/Lombi/Desktop/bot-tools/bundler/test_cases/rust_main";
@@ -278,6 +255,9 @@ pub struct Work {
 pub struct WorkResult {
     pub id: WorkId,
 }
+
+// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/main.rs
+// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/network.rs
 
 async fn work() {
     let (mut network_client, mut network_events, mut network_loop) = network::new().await.unwrap();
