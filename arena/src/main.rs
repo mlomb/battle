@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod build;
+pub mod command;
 pub mod env;
 pub mod executable;
 pub mod interactive;
@@ -67,7 +68,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match Env::from_file(&args.env) {
         Ok(mut env) => {
-            let mut a = env.referee.command(&env.agents);
+            let mut a = env.referee.command(&vec![
+                //-
+                env.agents[2].command(),
+                env.agents[2].command(),
+                env.agents[3].command(),
+            ]);
             println!("{:?}", a);
             println!("{:?}", a.status());
 

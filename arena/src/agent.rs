@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use crate::executable::Executable;
 use bundler::source::Source;
 
@@ -38,9 +40,8 @@ impl Agent {
         }
     }
 
-    pub fn command(&mut self) -> String {
-        //self.path.to_str().unwrap().to_string()
-        return "".to_string();
+    pub fn command(&mut self) -> Command {
+        self.win_bin.as_mut().unwrap().command()
     }
 
     pub fn id(&self) -> String {
