@@ -1,4 +1,5 @@
-use crate::{executable::Executable, Agent};
+use crate::command::CommandExt;
+use crate::executable::Executable;
 use std::{path::Path, process::Command};
 
 // TODO: improve errors, we are returning strings
@@ -41,14 +42,14 @@ impl Referee {
         })
     }
 
-    pub fn command(&mut self, agents: &Vec<Agent>) -> Command {
+    pub fn command(&mut self, agents: &Vec<Command>) -> Command {
         let mut cmd = self.exe.command();
 
         match self.protocol {
             Protocol::CodinGame => {
                 for (i, agent) in agents.iter().enumerate() {
                     cmd.arg(format!("-p{}", i + 1));
-                    cmd.arg(agent.command());
+                    cmd.arg(agent.command_line_string());
                 }
             }
         }
