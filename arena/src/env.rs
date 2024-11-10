@@ -5,6 +5,7 @@ use yaml_rust2::{Yaml, YamlLoader};
 #[derive(Debug)]
 pub struct AgentDef {
     pub name: String,
+    // TODO: cmd for custom commands
     pub src: Option<PathBuf>,
     pub win_bin: Option<PathBuf>,
     pub linux_bin: Option<PathBuf>,
@@ -30,6 +31,8 @@ pub enum EnvError {
     NoAgents,
     /// The referee could not be obtained
     BadReferee(String),
+    /// The agent definition is invalid
+    BadAgent(String),
     /// Missing or invalid field
     BadField(String),
 }
@@ -122,11 +125,25 @@ impl EnvParser {
                 })
         };
 
+        let src = parse_optional_path("src");
+        let win_bin = parse_optional_path("win_bin");
+        let linux_bin = parse_optional_path("linux_bin");
+
+        let (s, w, l) = (src.is_some(), win_bin.is_some(), linux_bin.is_some());
+
+        // either src or win_bin/linux_bin must be provided
+        if (!s && !w && !l) || (s && (w || l)) {
+            return Err(EnvError::BadAgent(format!(
+                "Agent '{}' must provide either 'src' or 'win_bin'/'linux_bin'",
+                name
+            )));
+        }
+
         Ok(AgentDef {
             name: name.to_owned(),
-            src: parse_optional_path("src"),
-            win_bin: parse_optional_path("win_bin"),
-            linux_bin: parse_optional_path("linux_bin"),
+            src,
+            win_bin,
+            linux_bin,
         })
     }
 

@@ -1,7 +1,7 @@
 use console::style;
 use inquire::{Confirm, Select};
 
-use crate::env::Env;
+use crate::{env::Env, tournament};
 use std::{
     fmt::{Display, Formatter},
     path::PathBuf,
@@ -31,14 +31,37 @@ pub fn build_command_interactive(env_file: PathBuf, env: Env) -> Vec<String> {
         .expect("a valid option")
     {
         Options::SingleMatch => {
-            cmd.push("run".to_owned());
+            cmd.push("tournament".to_owned());
 
             for agent in prompt_agents(&env) {
                 cmd.push("-a".to_owned());
                 cmd.push(agent);
             }
         }
-        Options::Tournament => todo!(),
+        Options::Tournament => {
+            cmd.push("tournament".to_owned());
+
+            let formats = vec![
+                tournament::format::Format::RoundRobin,
+                tournament::format::Format::Gauntlet,
+            ];
+            let format = Select::new("Select tournament format", formats)
+                .prompt()
+                .expect("a valid format");
+
+            cmd.push("--format".to_owned());
+            cmd.push(match format {
+                tournament::format::Format::RoundRobin => "round-robin".to_owned(),
+                tournament::format::Format::Gauntlet => "gauntlet".to_owned(),
+            });
+
+            for agent in prompt_agents(&env) {
+                cmd.push("-a".to_owned());
+                cmd.push(agent);
+            }
+
+            // TODO: esta mal porque hay que elegir el pool de agents y no así
+        }
         Options::Optimize => todo!(),
     }
 
@@ -51,6 +74,7 @@ pub fn build_command_interactive(env_file: PathBuf, env: Env) -> Vec<String> {
         .prompt()
         .expect("a valid confirmation")
     {
+        println!("========================================");
         cmd
     } else {
         std::process::exit(0)
@@ -81,11 +105,12 @@ fn prompt_agents(env: &Env) -> Vec<String> {
         let mut options: Vec<String> = env.agents.iter().map(|agent| agent.name.clone()).collect();
         assert!(options.len() > 0);
 
-        if options.len() == 1 {
-            // if there is only one agent, select it by default
-            agents.push(options[0].clone());
-            break;
-        }
+        // the user may be confused by this
+        // if options.len() == 1 {
+        //     // if there is only one agent, select it by default
+        //     agents.push(options[0].clone());
+        //     break;
+        // }
 
         if i + 1 > env.min_agents {
             options.insert(0, agent_none.clone());
@@ -107,4 +132,10 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     }
 
     agents
+}
+
+enum AgentPrompt {
+    None,
+    Random,
+    Agent(String),
 }
