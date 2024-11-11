@@ -148,6 +148,7 @@ dependencies = [
  "futures",
  "inquire",
  "libp2p",
+ "pidfd",
  "rand 0.8.5",
  "rayon",
  "serde",
@@ -939,6 +940,17 @@ name = "fastrand"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "486f806e73c5707928240ddc295403b1b93c96a02038563881c4a2fd84b81ac4"
+
+[[package]]
+name = "fd-reactor"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a030235bc430f977b66e18f365efea552caaee650981ed2c4490c2892b048f8"
+dependencies = [
+ "bitflags 1.3.2",
+ "libc",
+ "once_cell",
+]
 
 [[package]]
 name = "fiat-crypto"
@@ -2494,6 +2506,16 @@ name = "percent-encoding"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
+
+[[package]]
+name = "pidfd"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd1c49cdc58d1424622ff3c1e1bf7b9176e4370ced14063cbc44cfb5b62a408"
+dependencies = [
+ "fd-reactor",
+ "libc",
+]
 
 [[package]]
 name = "pin-project"

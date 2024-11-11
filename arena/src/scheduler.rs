@@ -1,22 +1,17 @@
-use std::{collections::HashMap, pin::Pin};
-
-use futures::Stream;
 use skillratings::{
     trueskill::{trueskill_multi_team, TrueSkillConfig, TrueSkillRating},
     MultiTeamOutcome,
 };
-use std::task::{Context, Poll};
-
-use crate::{agent::Agent, referee::Referee};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct MatchRequest {
-    pub referee: Referee,
-    pub agents: Vec<Agent>,
+    pub agents: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct MatchResult {
-    pub(crate) agents: Vec<Agent>,
+    pub(crate) agents: Vec<String>,
     pub(crate) scores: Vec<u32>,
 }
 
@@ -24,7 +19,9 @@ pub trait ResultReceiver {
     fn receive_result(&mut self, result: MatchResult);
 }
 
-pub trait Generator {}
+pub trait Generator {
+    fn next_game(&mut self) -> Option<MatchRequest>;
+}
 
 pub struct BasicGenerator {
     count: u32,
@@ -34,18 +31,13 @@ impl BasicGenerator {
     pub fn new(count: u32) -> Self {
         BasicGenerator { count }
     }
+}
 
-    pub fn next_game(&mut self) -> Option<MatchRequest> {
+impl Generator for BasicGenerator {
+    fn next_game(&mut self) -> Option<MatchRequest> {
         if self.count > 0 {
             self.count -= 1;
-            Some(MatchRequest {
-                referee: Referee::from_preset("cg-2024-summer-olympics").unwrap(),
-                agents: vec![
-                    //Agent::from_source("mlomb-146-2.exe".into()),
-                    //Agent::from_source("SMITS_v04.exe".into()),
-                    //Agent::from_source("SMITS_v09.exe".into()),
-                ],
-            })
+            Some(MatchRequest { agents: vec![] })
         } else {
             None
         }
@@ -128,14 +120,17 @@ impl ResultReceiver for Summary {
                 // Free-for-all so a team with only one member
                 vec![self
                     .ratings
-                    .entry(agent.id())
+                    .entry(agent.clone())
                     .or_insert(TrueSkillRating::new())
                     .clone()],
                 MultiTeamOutcome::new(rank as usize),
             ));
 
             // fill rank
-            let entry = self.rank_counts.entry(agent.id()).or_insert(HashMap::new());
+            let entry = self
+                .rank_counts
+                .entry(agent.clone())
+                .or_insert(HashMap::new());
             let count = entry.entry(rank).or_insert(0);
             *count += 1;
         }
@@ -148,7 +143,7 @@ impl ResultReceiver for Summary {
 
         for (agent, new_rating) in result.agents.iter().zip(new_teams) {
             self.ratings
-                .insert(agent.id(), new_rating.first().unwrap().clone());
+                .insert(agent.clone(), new_rating.first().unwrap().clone());
         }
     }
 }
