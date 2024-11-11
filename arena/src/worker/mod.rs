@@ -1,4 +1,5 @@
 pub mod local;
+pub mod network;
 pub mod remote;
 
 use crate::scheduler::{MatchRequest, MatchResult};

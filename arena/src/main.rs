@@ -3,7 +3,6 @@ pub mod command;
 pub mod env;
 pub mod executable;
 pub mod interactive;
-pub mod network;
 pub mod optim;
 pub mod param;
 pub mod referee;
@@ -25,7 +24,6 @@ use executable::Executable;
 use futures::{FutureExt, StreamExt};
 use inquire::{InquireError, MultiSelect, Select};
 use interactive::build_command_interactive;
-use network::{Event, WorkError};
 use rayon::iter::{
     IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator,
 };
@@ -40,6 +38,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use worker::local::LocalWorkerPool;
+use worker::network::consumer::ConsumerPeer;
+use worker::network::producer::ProducerPeer;
 use worker::WorkerPool;
 
 #[derive(Parser, Debug)]
@@ -70,6 +70,14 @@ enum Commands {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    if let Some(arg) = args().nth(1) {
+        if arg == "worker" {
+            ConsumerPeer::new().run();
+        }
+    } else {
+        ProducerPeer::new().run();
+    }
+
     let args = Args::parse();
 
     match Env::from_file(&args.env) {
@@ -268,77 +276,4 @@ fn main() -> Result<(), Box<dyn Error>> {
     // https://github.com/dreignier/game-ultimate-tictactoe/blob/master/src/main/java/com/codingame/gameengine/runner/CommandLineInterface.java
 
     Ok(())
-}
-
-type WorkId = u64;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Work {
-    pub id: WorkId,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WorkResult {
-    pub id: WorkId,
-}
-
-// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/main.rs
-// https://github.com/libp2p/rust-libp2p/blob/master/examples/file-sharing/src/network.rs
-
-async fn work() {
-    let (mut network_client, mut network_events, mut network_loop) = network::new().await.unwrap();
-
-    if args().len() > 1 {
-        println!("Worker mode");
-        //network_client.set_work_slots(2);
-    }
-
-    tokio::spawn(network_loop.run());
-
-    // lock rw int
-    let active_threads = Arc::new(Mutex::new(0));
-
-    loop {
-        //network_client.send_work(Work { num: 123 }).await;
-        match network_events.next().await {
-            Some(Event::WorkRequested { sender }) => {
-                if args().len() > 1 {
-                    sender.send(None).unwrap();
-                } else {
-                    sender.send(Some(Work { id: 123 })).unwrap();
-                }
-            }
-            Some(Event::DoWork { work, sender }) => {
-                let active_threads = active_threads.clone();
-
-                if *active_threads.lock().unwrap() >= 2 {
-                    sender.send(Err(WorkError::WorkerIsBusy)).unwrap();
-                    continue;
-                }
-
-                thread::spawn(move || {
-                    *active_threads.lock().unwrap() += 1;
-
-                    println!("PREV: Workers active: {}", *active_threads.lock().unwrap());
-                    thread::sleep(Duration::from_secs(2));
-                    println!("NEXT: Workers active: {}", *active_threads.lock().unwrap());
-
-                    *active_threads.lock().unwrap() -= 1;
-                    sender.send(Ok(WorkResult { id: 123 })).unwrap();
-                });
-            }
-            Some(Event::WorkDone { result }) => match result {
-                Ok(work) => println!("Work done: {:?}", work),
-                Err(err) => {
-                    // asd
-                    match err {
-                        WorkError::WorkerIsBusy => {}
-                        e => println!("Work failed: {:?}", e),
-                    }
-                }
-            },
-            // Some(e) => println!("E: {:?}", e),
-            None => {}
-        }
-    }
 }
