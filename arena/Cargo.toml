@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 child_wait_timeout = "0.1.0"
 clap = { version = "4.5.19", features = ["derive"] }
-libp2p = { version = "0.52", features = ["tcp", "quic", "tls", "dns", "noise", "yamux", "websocket", "ping", "macros", "gossipsub", "mdns", "tokio", "request-response", "json", "identify", "floodsub"] }
+libp2p = { version = "0.52", features = ["tcp", "cbor", "quic", "tls", "dns", "noise", "yamux", "websocket", "ping", "macros", "gossipsub", "mdns", "tokio", "request-response", "json", "identify", "floodsub"] }
 futures = "0.3.21"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.40.0", features = ["io-std", "macros", "rt-multi-thread"] }
