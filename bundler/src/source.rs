@@ -1,12 +1,14 @@
+use serde::{Deserialize, Serialize};
+
 /// The language of the bundled source code
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Language {
     Cpp,
     Rust,
 }
 
 /// The final source code of a bundle
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Source {
     /// The code
     pub code: String,

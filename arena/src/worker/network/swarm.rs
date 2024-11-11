@@ -24,9 +24,28 @@ use tokio::select;
 #[derive(Debug)]
 pub enum Event {
     /// The local node is now listening on the given multiaddr.
-    ListeningOn { multiaddr: Multiaddr },
+    ListeningOn { address: Multiaddr },
     /// A connection to a peer has been established.
     PeerConnected { peer_id: PeerId },
+    /// A message request has been received from a peer.
+    MessageRequestReceived {
+        peer_id: PeerId,
+        message: MessageRequest,
+        sender: oneshot::Sender<MessageResponse>,
+    },
+    /// A message response has been received from a peer.
+    MessageResponseReceived {
+        peer_id: PeerId,
+        message: MessageResponse,
+    },
+}
+
+#[derive(Debug)]
+pub enum Command {
+    SendRequest {
+        peer_id: PeerId,
+        request: MessageRequest,
+    },
 }
 
 // A custom network behaviour that combines mDNS with RequestResponse
@@ -39,6 +58,7 @@ struct Behaviour {
 /// A node in a libp2p Swarm. It allows sending and receiving network messages.
 pub struct SwarmNode {
     /// The Tokio runtime in which the Swarm loop is running
+    #[allow(dead_code)]
     runtime: Runtime,
 
     /// Sender for commands to the Swarm loop
@@ -89,9 +109,6 @@ impl SwarmNode {
 
             // Listen on all interfaces and whatever port the OS assigns
             swarm
-                .listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse().unwrap())
-                .unwrap();
-            swarm
                 .listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
                 .unwrap();
 
@@ -113,15 +130,14 @@ impl SwarmNode {
     pub fn next(&mut self) -> Event {
         self.event_receiver.recv().unwrap()
     }
-}
 
-#[derive(Debug)]
-pub enum Command {}
-
-pub struct Client {
-    sender: mpsc::Sender<Command>,
+    pub fn send(&self, peer_id: PeerId, request: MessageRequest) {
+        self.command_sender
+            .clone()
+            .try_send(Command::SendRequest { peer_id, request })
+            .unwrap();
+    }
 }
-impl Client {}
 
 pub struct EventLoop {
     /// The libp2p Swarm
@@ -154,11 +170,13 @@ impl EventLoop {
     ) {
         match event {
             SwarmEvent::NewListenAddr { address, .. } => {
-                println!("Local node is listening on {}", address);
+                self.event_sender
+                    .send(Event::ListeningOn { address })
+                    .unwrap();
             }
             SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                 for (peer_id, _multiaddr) in list {
-                    self.swarm.dial(peer_id).unwrap();
+                    self.swarm.dial(peer_id).ok();
                 }
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
@@ -166,12 +184,70 @@ impl EventLoop {
                     .send(Event::PeerConnected { peer_id })
                     .unwrap();
             }
-            SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(x)) => {
-                println!("RequestResponse event: {:?}", x);
+            SwarmEvent::Behaviour(BehaviourEvent::RequestResponse(rr)) => match rr {
+                request_response::Event::Message { peer, message } => match message {
+                    request_response::Message::Request {
+                        request_id,
+                        request,
+                        channel,
+                    } => {
+                        let (sender, receiver) = oneshot::channel();
+                        self.event_sender
+                            .send(Event::MessageRequestReceived {
+                                peer_id: peer,
+                                message: request,
+                                sender,
+                            })
+                            .unwrap();
+                        let response = receiver.await.unwrap();
+                        self.swarm
+                            .behaviour_mut()
+                            .request_response
+                            .send_response(channel, response)
+                            .unwrap();
+                    }
+                    request_response::Message::Response {
+                        request_id,
+                        response,
+                    } => {
+                        self.event_sender
+                            .send(Event::MessageResponseReceived {
+                                peer_id: peer,
+                                message: response,
+                            })
+                            .unwrap();
+                    }
+                },
+                request_response::Event::OutboundFailure {
+                    peer,
+                    request_id,
+                    error,
+                } => {
+                    println!("Outbound failure: {:?}", error);
+                }
+                request_response::Event::InboundFailure {
+                    peer,
+                    request_id,
+                    error,
+                } => {
+                    println!("Inbound failure: {:?}", error);
+                }
+                request_response::Event::ResponseSent { .. } => {}
+            },
+            a => {
+                println!("Unhandled event: {:?}", a);
             }
-            _ => {}
         }
     }
 
-    fn handle_command(&mut self, command: Command) {}
+    fn handle_command(&mut self, command: Command) {
+        match command {
+            Command::SendRequest { peer_id, request } => {
+                self.swarm
+                    .behaviour_mut()
+                    .request_response
+                    .send_request(&peer_id, request);
+            }
+        }
+    }
 }

@@ -1,9 +1,10 @@
 use crate::{agent::Agent, executable::Executable, referee::Referee};
 use bundler::{bundle, BundlerArgs};
+use serde::{Deserialize, Serialize};
 use std::{error::Error, path::PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Env {
     pub referee: Referee,
 

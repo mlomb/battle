@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::{self, Formatter},
@@ -8,7 +8,7 @@ use std::{
 use tempfile::TempDir;
 
 /// Represents an arbitrary executable.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Executable {
     /// The base command to execute.
     ///
@@ -32,6 +32,7 @@ pub struct Executable {
     /// It is reused across executions.
     /// Upon drop, the directory is removed.
     #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
     tmp_workdir: Option<TempDir>,
 }
 
