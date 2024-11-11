@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::command::CommandExt;
 use crate::executable::Executable;
 use std::{path::Path, process::Command};
@@ -6,7 +8,7 @@ use std::{path::Path, process::Command};
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Protocol {
     /// CodinGame referee protocol compatible with cg-brutaltester.
     /// See: https://github.com/dreignier/cg-brutaltester
@@ -16,7 +18,7 @@ pub enum Protocol {
 }
 
 /// A referee (a program) that runs a match between agents (other programs) and collects the results.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Referee {
     /// The protocol used by the referee
     protocol: Protocol,
