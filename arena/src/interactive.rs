@@ -53,6 +53,7 @@ pub fn build_command_interactive(env_file: PathBuf, env: Env) -> Vec<String> {
             cmd.push(match format {
                 tournament::format::Format::RoundRobin => "round-robin".to_owned(),
                 tournament::format::Format::Gauntlet => "gauntlet".to_owned(),
+                tournament::format::Format::Matchmaking => todo!(),
             });
 
             for agent in prompt_agents(&env) {

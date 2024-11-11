@@ -7,10 +7,11 @@ pub mod network;
 pub mod optim;
 pub mod param;
 pub mod referee;
-pub mod result;
 pub mod run;
+pub mod scheduler;
 pub mod source_build;
 pub mod tournament;
+pub mod worker;
 
 // TODO: errors and logging is lacking
 
@@ -29,8 +30,8 @@ use rayon::iter::{
     IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator,
 };
 use referee::Referee;
-use result::{BasicGenerator, Generator, MatchRequest, MatchResult, ResultReceiver, Summary};
 use run::{execute, ExecutionResult};
+use scheduler::{BasicGenerator, Generator, MatchRequest, MatchResult, ResultReceiver, Summary};
 use serde::{Deserialize, Serialize};
 use std::env::args;
 use std::error::Error;
@@ -38,6 +39,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use worker::local::LocalWorkerPool;
+use worker::WorkerPool;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -71,6 +74,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match Env::from_file(&args.env) {
         Ok(mut env) => {
+            let lwp = LocalWorkerPool::new(env, 8);
+
+            let mut i = 0;
+            loop {
+                i += 1;
+
+                lwp.poll_send(Some(MatchRequest {
+                    agents: vec![i.to_string()],
+                }));
+            }
+
+            /*
             let mut a = env.referee.command(&vec![
                 //-
                 env.agents[2].command(),
@@ -101,6 +116,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 Commands::Worker => panic!("Worker should not be invoked here"),
             }
+            */
         }
         Err(err) => {
             println!(
@@ -169,7 +185,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let req = r.recv().unwrap();
                     //println!("Received: {:?}", req);
                     /*
-                    let args = req.referee.command(&req.agents);
+                    let args = req.agents.command(&req.agents);
                     let res = execute(args, Duration::from_secs(10));
 
                     let scores = res
