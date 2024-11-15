@@ -1,30 +1,33 @@
 use child_wait_timeout::ChildWT;
 use serde::{Deserialize, Serialize};
 use std::{
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, ErrorKind, Read},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
 
-pub trait Execute {
-    fn execute(&mut self, timeout: Duration) -> Result<ExecutionResult, ExecutionError>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Status {
+    Exited(i32),
+    Timeout,
+    IoError(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
-    pub exit_code: i32,
+    pub status: Status,
     pub stdout: String,
     pub stderr: String,
     pub duration: Duration,
-    pub timed_out: bool,
 }
 
-pub enum ExecutionError {
-    // -
+pub trait Execute {
+    /// Executes the command and waits for it to finish or the timeout to expire.
+    fn execute(&mut self, timeout: Duration) -> ExecutionResult;
 }
 
 impl Execute for Command {
-    fn execute(&mut self, timeout: Duration) -> Result<ExecutionResult, ExecutionError> {
+    fn execute(&mut self, timeout: Duration) -> ExecutionResult {
         let start = Instant::now();
 
         let mut child = self
@@ -36,8 +39,8 @@ impl Execute for Command {
         let status = child.wait_timeout(timeout);
         let duration = start.elapsed();
 
-        let stdout = read_pipe(child.stdout);
-        let stderr = read_pipe(child.stderr);
+        let stdout = read_pipe_lines(child.stdout);
+        let stderr = read_pipe_lines(child.stderr);
 
         // Temporal fix!
         let stdout = stdout
@@ -49,29 +52,28 @@ impl Execute for Command {
             .collect::<Vec<&str>>()
             .join("\n");
 
-        match status {
-            Ok(exit_status) => Ok(ExecutionResult {
-                exit_code: exit_status.code().unwrap_or(-1),
-                stdout,
-                stderr,
-                duration,
-                timed_out: false,
-            }),
-            Err(err) => Ok(ExecutionResult {
-                exit_code: -1,
-                stdout,
-                stderr,
-                duration,
-                timed_out: err.kind() == std::io::ErrorKind::TimedOut,
-            }),
+        let status = match status {
+            Ok(exit_status) => match exit_status.code() {
+                Some(code) => Status::Exited(code),
+                None => Status::Exited(-1),
+            },
+            Err(io_err) if io_err.kind() == ErrorKind::TimedOut => Status::Timeout,
+            Err(io_err) => Status::IoError(io_err.to_string()),
+        };
+
+        ExecutionResult {
+            status,
+            stdout,
+            stderr,
+            duration,
         }
     }
 }
 
-fn read_pipe<R: Read>(reader: Option<R>) -> String {
+fn read_pipe_lines<R: Read>(reader: Option<R>) -> String {
     BufReader::new(reader.expect("to take pipe"))
         .lines()
-        .map(|l| l.unwrap())
+        .map(|l| l.unwrap_or("(error reading pipe)".to_string()))
         .collect::<Vec<String>>()
         .join("\n")
 }
