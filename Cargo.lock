@@ -149,6 +149,7 @@ dependencies = [
  "env_logger",
  "inquire",
  "log",
+ "num_cpus",
  "pidfd",
  "rand",
  "rayon",

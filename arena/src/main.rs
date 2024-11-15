@@ -3,21 +3,19 @@ pub mod env;
 pub mod exec;
 pub mod game;
 pub mod interactive;
+pub mod local_worker;
 pub mod optim;
-pub mod param;
 pub mod referee;
 pub mod scheduler;
 pub mod tournament;
-pub mod worker;
-
-// TODO: errors and logging is lacking
 
 use clap::{Parser, Subcommand};
 use console::style;
-use crossbeam_channel::select;
 use distributed_channel::{start_consumer_node, NodeSetup};
 use env::{Env, EnvError};
 use game::{run_game, GameResult, GameSetup};
+use interactive::build_command_interactive;
+use local_worker::LocalGameWorker;
 use log::{info, LevelFilter};
 use std::error::Error;
 use std::path::PathBuf;
@@ -35,21 +33,32 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Runs a tournament
+    /// Execute a tournament with the specified configuration
     Tournament {
-        /// Tournament format
+        /// Specifies the tournament format to use
         #[arg(value_enum, long)]
         format: tournament::format::Format,
 
-        /// Agents to run the tournament with
+        /// List of agents participating in the tournament
         #[arg(short, long)]
         agent: Vec<String>, // ["agent1,agent2", "agent1,agent3"]
+
+        /// Number of threads to use for running games.
+        /// Cannot be used with `network`.
+        /// If set to 0, the default will be the number of logical CPUs minus 1
+        #[arg(long, group = "execution_mode", default_value = "0")]
+        threads: usize,
+
+        /// Use worker nodes in the P2P network for game execution.
+        /// If enabled, games will ONLY run on worker nodes, so ensure at least one worker is available
+        #[arg(long, group = "execution_mode")]
+        network: bool,
     },
-    /// Starts a worker that listens for jobs in the local network (via P2P)
+    /// Start a worker node to listen for games on the local P2P network
     Worker {
-        /// Number of threads to use
-        /// If 0, the number of threads will be the number of logical CPUs - 1
-        #[arg(short, long, default_value = "0")]
+        /// Number of threads to allocate for the worker.
+        /// If set to 0, the default will be the number of logical CPUs minus 1
+        #[arg(long, default_value = "0")]
         threads: usize,
     },
 }
@@ -66,8 +75,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     setup.protocol = "/mlomb/bot-tools/arena/1".to_string();
 
     if let Some(Commands::Worker { threads }) = args.command {
-        info!("Starting worker");
-        start_consumer_node::<Env, GameSetup, GameResult>(setup, threads, run_game);
+        info!("Starting worker node...");
+        start_consumer_node::<Env, GameSetup, GameResult>(setup, get_threads(threads), run_game);
         return Ok(());
     }
 
@@ -77,39 +86,51 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "{} Env file read {}. Found {} agents.",
                 style("[OK]").green().bold(),
                 style(args.env.display()).magenta(),
-                0 //style(env.agents.len()).cyan(),
+                style(env.agents.len()).cyan(),
             );
 
-            let (_node, tx, rx) = setup.into_producer::<Env, GameSetup, GameResult>(env);
-
-            loop {
-                select! {
-                    recv(rx) -> res => {
-                        let res = res.unwrap();
-                        println!("Received: {:?}", res);
-                    },
-                    send(tx, GameSetup::new()) -> res => {
-                        let res = res.unwrap();
-                    },
-                }
-            }
-
-            /*
             let command = if let Some(cmd) = args.command {
                 cmd
             } else {
-                Args::parse_from(build_command_interactive(args.env, env))
+                Args::parse_from(build_command_interactive(args.env, &env))
                     .command
                     .expect("a well constructed command")
             };
 
             match command {
-                Commands::Tournament { format, agent } => {
+                Commands::Worker { .. } => unreachable!(),
+                Commands::Tournament {
+                    format,
+                    agent,
+                    network,
+                    threads,
+                } => {
                     println!("Running agents: {:?}", agent);
+
+                    let (_node, tx, rx) = if network {
+                        let (_node, tx, rx) =
+                            setup.into_producer::<Env, GameSetup, GameResult>(env);
+                        (Some(_node), tx, rx)
+                    } else {
+                        let (tx, rx) = crossbeam_channel::unbounded();
+                        LocalGameWorker::new(env, threads as u32);
+
+                        (None, tx, rx)
+                    };
+
+                    loop {
+                        crossbeam_channel::select! {
+                            recv(rx) -> res => {
+                                let res = res.unwrap();
+                                println!("Received: {:?}", res);
+                            },
+                            send(tx, GameSetup::new()) -> res => {
+                                let res = res.unwrap();
+                            },
+                        }
+                    }
                 }
-                Commands::Worker => panic!("Worker should not be invoked here"),
             }
-            */
         }
         Err(err) => {
             println!(
@@ -149,4 +170,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn get_threads(mut threads: usize) -> usize {
+    if threads == 0 {
+        threads = (num_cpus::get_physical() - 2).max(1);
+    }
+    info!("Using {}", style(format!("{} threads", threads)).cyan());
+    threads
 }
