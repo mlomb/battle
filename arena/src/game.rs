@@ -73,7 +73,7 @@ impl GameSetup {
 
 pub fn run_game(env: Arc<Mutex<Env>>, setup: GameSetup) -> GameResult {
     let mut cmd = setup.command(&mut env.lock().unwrap());
-    let result = cmd.execute(std::time::Duration::from_secs(15));
+    let result = cmd.execute(std::time::Duration::from_secs(40));
 
     GameResult {
         scores: vec![],

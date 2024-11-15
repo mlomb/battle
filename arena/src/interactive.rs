@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-pub fn build_command_interactive(env_file: PathBuf, env: Env) -> Vec<String> {
+pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
     let mut cmd = vec![];
 
     // push binary name
@@ -103,7 +103,7 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     let mut agents = vec![];
 
     for i in 0..env.max_agents {
-        let mut options: Vec<String> = vec![]; // env.agents.iter().map(|agent| agent.name.clone()).collect();
+        let mut options: Vec<String> = env.agents.iter().map(|agent| agent.name.clone()).collect();
         assert!(options.len() > 0);
 
         // the user may be confused by this
