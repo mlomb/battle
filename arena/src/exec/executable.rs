@@ -5,7 +5,7 @@ use super::{
 };
 use bundler::source::Source;
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 /// An executable
 ///
@@ -14,7 +14,7 @@ use std::process::Command;
 pub enum Executable {
     /// A generic executable that can be run on any platform (e.g. java, python)
     GenericCommand(ExecutableCommand),
-    /// An executable that requires a different command for each platform (e.g. main.exe)
+    /// An executable that requires a different command for each platform (e.g. main.exe, ./main)
     PlatformCommand {
         windows: Option<ExecutableCommand>,
         unix: Option<ExecutableCommand>,
@@ -29,10 +29,18 @@ pub enum Executable {
 
 #[derive(Debug)]
 pub enum ExecutableError {
-    /// The executable cannot run on the current platform
-    UnsupportedPlatform,
     /// The source code could not compile
     BuildFailed(BuildError),
+    /// The executable cannot run on the current platform
+    UnsupportedPlatform,
+    /// The name of the file is invalid
+    InvalidFileName(PathBuf),
+    /// The file was not found
+    FileNotFound(PathBuf),
+    /// Failed to initialize the temporary directory
+    TempDirFailed(String),
+    /// Failed to write the file to disk
+    WriteFileFailed(String),
 }
 
 impl Executable {

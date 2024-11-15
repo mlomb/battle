@@ -1,4 +1,4 @@
-use super::executable_command::{ExecutableCommand, ExecutableCommandError};
+use super::executable_command::ExecutableCommand;
 use bundler::source::{Language, Source};
 use current_platform::CURRENT_PLATFORM;
 use std::{path::PathBuf, process::Command};
@@ -12,8 +12,9 @@ pub enum BuildError {
         stdout: String,
         stderr: String,
     },
-    /// There was a problem constructing the [`ExecutableCommand`]
-    CommandError(ExecutableCommandError),
+    /// There was a problem constructing the [`ExecutableCommand`].
+    /// This is a string to avoid recursion
+    CommandError(String),
     /// Some I/O error occurred
     IoError(std::io::Error),
 }
@@ -89,7 +90,8 @@ fn execute_build_command(
     let output = build_command.output()?;
 
     if output.status.success() {
-        return ExecutableCommand::from_binary(target_binary).map_err(BuildError::CommandError);
+        return ExecutableCommand::from_binary(target_binary)
+            .map_err(|e| BuildError::CommandError(format!("{:?}", e)));
     } else {
         return Err(BuildError::CompilerErrored {
             exit_code: output.status.code(),
