@@ -1,3 +1,4 @@
+use super::{command::ToCommand, executable::ExecutableError};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -7,8 +8,6 @@ use std::{
     process::Command,
 };
 use tempfile::TempDir;
-
-use super::{command::ToCommand, executable::ExecutableError};
 
 /// A command that can be executed. It includes all the necessary files to run it.
 #[derive(Serialize, Deserialize)]
@@ -38,14 +37,6 @@ pub struct ExecutableCommand {
     tmp_workdir: Option<TempDir>,
 }
 
-#[derive(Debug)]
-pub enum ExecutableCommandError {
-    /// The name of the file is invalid
-    InvalidFileName(PathBuf),
-    /// The file was not found
-    FileNotFound(PathBuf),
-}
-
 impl ExecutableCommand {
     /// Creates a new executable from a command prefix and a file.
     ///
@@ -59,15 +50,15 @@ impl ExecutableCommand {
     pub fn from_prefix_file(
         command_prefix: Vec<String>,
         file: PathBuf,
-    ) -> Result<Self, ExecutableCommandError> {
+    ) -> Result<Self, ExecutableError> {
         let filename = file
             .file_name()
-            .ok_or_else(|| ExecutableCommandError::InvalidFileName(file.clone()))?
+            .ok_or_else(|| ExecutableError::InvalidFileName(file.clone()))?
             .to_string_lossy()
             .to_string();
 
         let content =
-            std::fs::read(&file).map_err(|_| ExecutableCommandError::FileNotFound(file.clone()))?;
+            std::fs::read(&file).map_err(|_| ExecutableError::FileNotFound(file.clone()))?;
 
         let mut files = HashMap::new();
         files.insert(filename.clone(), content);
@@ -80,44 +71,46 @@ impl ExecutableCommand {
     }
 
     /// Creates a new executable that runs a JAR file ("java -jar main.jar")
-    pub fn from_jar(jar_path: PathBuf) -> Result<Self, ExecutableCommandError> {
+    pub fn from_jar(jar_path: PathBuf) -> Result<Self, ExecutableError> {
         Self::from_prefix_file(vec!["java".to_string(), "-jar".to_string()], jar_path)
     }
 
     /// Creates a new executable that runs a binary file (e.g. "main.exe")
-    pub fn from_binary(binary_path: PathBuf) -> Result<Self, ExecutableCommandError> {
+    pub fn from_binary(binary_path: PathBuf) -> Result<Self, ExecutableError> {
         Self::from_prefix_file(vec![], binary_path)
     }
 
-    /// Initializes the temporal directory and writes the files to it.  
-    fn initialize_files(&mut self) {
-        if self.tmp_workdir.is_some() {
-            return;
+    /// Initializes the temporal directory and writes the files to it
+    fn initialize_files(&mut self) -> Result<(), ExecutableError> {
+        if self.tmp_workdir.is_none() {
+            info!(
+                "Initializing executable {}, files: {:?} ({} bytes)",
+                self.command[0],
+                self.files.keys(),
+                self.files.values().map(|v| v.len()).sum::<usize>()
+            );
+
+            let tmp = TempDir::new()
+                .map_err(|io_err| ExecutableError::TempDirFailed(io_err.to_string()))?;
+
+            // write files to disk
+            for (name, content) in &self.files {
+                let path = tmp.path().join(name);
+                std::fs::write(&path, content)
+                    .map_err(|io_err| ExecutableError::WriteFileFailed(io_err.to_string()))?;
+            }
+
+            self.tmp_workdir = Some(tmp);
         }
 
-        info!(
-            "Initializing executable {}, files: {:?} ({} bytes)",
-            self.command[0],
-            self.files.keys(),
-            self.files.values().map(|v| v.len()).sum::<usize>()
-        );
-
-        let tmp = TempDir::new().expect("failed to create temporary directory");
-
-        // write files to disk
-        for (name, content) in &self.files {
-            let path = tmp.path().join(name);
-            std::fs::write(&path, content).expect("failed to write file");
-        }
-
-        self.tmp_workdir = Some(tmp);
+        Ok(())
     }
 }
 
 impl ToCommand for ExecutableCommand {
     fn command(&mut self) -> Result<Command, ExecutableError> {
         // populate tmp_workdir
-        self.initialize_files();
+        self.initialize_files()?;
 
         let mut cmd = Command::new(&self.command[0]);
         cmd.args(&self.command[1..]);
@@ -141,6 +134,7 @@ impl fmt::Debug for ExecutableCommand {
         f.debug_struct("Executable")
             .field("command", &self.command)
             .field("files", &self.files.keys())
+            .field("tmp_workdir", &self.tmp_workdir)
             .finish()
     }
 }
