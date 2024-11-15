@@ -1,12 +1,13 @@
 use child_wait_timeout::ChildWT;
 use core::str;
+use serde::{Deserialize, Serialize};
 use std::{
     io::{BufRead, BufReader, ErrorKind, Read},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
     pub exit_code: i32,
     pub stdout: String,
@@ -15,11 +16,10 @@ pub struct ExecutionResult {
     pub timed_out: bool,
 }
 
-pub fn execute(args: Vec<String>, timeout: Duration) -> ExecutionResult {
+pub fn execute(mut cmd: Command, timeout: Duration) -> ExecutionResult {
     let start = Instant::now();
 
-    let mut child = Command::new(args[0].to_string())
-        .args(args.iter().skip(1))
+    let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

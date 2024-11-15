@@ -1,9 +1,8 @@
+use super::WorkerPool;
 use crate::env::Env;
 use crate::scheduler::{MatchRequest, MatchResult};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-
-use super::WorkerPool;
 
 pub struct LocalWorkerPool {
     input_tx: Sender<MatchRequest>,
