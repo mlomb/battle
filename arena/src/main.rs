@@ -1,7 +1,8 @@
 pub mod agent;
 pub mod command;
 pub mod env;
-pub mod executable;
+pub mod exec;
+pub mod game;
 pub mod interactive;
 pub mod optim;
 pub mod param;
@@ -14,33 +15,15 @@ pub mod worker;
 
 // TODO: errors and logging is lacking
 
-use crate::source_build::SourceBuilder;
-use agent::Agent;
 use clap::{Parser, Subcommand};
 use console::style;
-use crossbeam_channel::bounded;
+use crossbeam_channel::select;
+use distributed_channel::{start_consumer_node, NodeSetup};
 use env::{Env, EnvError};
-use executable::Executable;
-use futures::{FutureExt, StreamExt};
-use inquire::{InquireError, MultiSelect, Select};
-use interactive::build_command_interactive;
-use rayon::iter::{
-    IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator,
-};
-use referee::Referee;
-use run::{execute, ExecutionResult};
-use scheduler::{BasicGenerator, Generator, MatchRequest, MatchResult, ResultReceiver, Summary};
-use serde::{Deserialize, Serialize};
-use std::env::args;
+use game::{run_game, GameResult, GameSetup};
+use log::{info, LevelFilter};
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
-use worker::local::LocalWorkerPool;
-use worker::network::consumer::ConsumerPeer;
-use worker::network::producer::ProducerPeer;
-use worker::WorkerPool;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -66,50 +49,55 @@ enum Commands {
         agent: Vec<String>, // ["agent1,agent2", "agent1,agent3"]
     },
     /// Starts a worker that listens for jobs in the local network (via P2P)
-    Worker,
+    Worker {
+        /// Number of threads to use
+        /// If 0, the number of threads will be the number of logical CPUs - 1
+        #[arg(short, long, default_value = "0")]
+        threads: usize,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    if let Some(arg) = args().nth(1) {
-        if arg == "worker" {
-            ConsumerPeer::new().run();
-        }
-    } else {
-        ProducerPeer::new().run();
-    }
+    env_logger::Builder::new()
+        .filter_module("distributed_channel", LevelFilter::Trace)
+        .filter_module("arena", LevelFilter::Trace)
+        .init();
 
     let args = Args::parse();
 
+    let mut setup = NodeSetup::default();
+    setup.protocol = "/mlomb/bot-tools/arena/1".to_string();
+
+    if let Some(Commands::Worker { threads }) = args.command {
+        info!("Starting worker");
+        start_consumer_node::<Env, GameSetup, GameResult>(setup, threads, run_game);
+        return Ok(());
+    }
+
     match Env::from_file(&args.env) {
-        Ok(mut env) => {
-            let lwp = LocalWorkerPool::new(env, 8);
-
-            let mut i = 0;
-            loop {
-                i += 1;
-
-                lwp.poll_send(Some(MatchRequest {
-                    agents: vec![i.to_string()],
-                }));
-            }
-
-            /*
-            let mut a = env.referee.command(&vec![
-                //-
-                env.agents[2].command(),
-                env.agents[0].command(),
-                env.agents[3].command(),
-            ]);
-            println!("{:?}", a);
-            println!("{:?}", a.status());
-
+        Ok(env) => {
             println!(
                 "{} Env file read {}. Found {} agents.",
                 style("[OK]").green().bold(),
                 style(args.env.display()).magenta(),
-                style(env.agents.len()).cyan(),
+                0 //style(env.agents.len()).cyan(),
             );
 
+            let (_node, tx, rx) = setup.into_producer::<Env, GameSetup, GameResult>(env);
+
+            loop {
+                select! {
+                    recv(rx) -> res => {
+                        let res = res.unwrap();
+                        println!("Received: {:?}", res);
+                    },
+                    send(tx, GameSetup::new()) -> res => {
+                        let res = res.unwrap();
+                    },
+                }
+            }
+
+            /*
             let command = if let Some(cmd) = args.command {
                 cmd
             } else {
@@ -162,118 +150,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             );
         }
     }
-
-    return Ok(());
-
-    /*
-    let rt = Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let handle = work();
-    rt.block_on(handle);
-    */
-
-    //let args = Args::parse();
-    //println!("{:?}", args);
-
-    fn smth(gen: &mut BasicGenerator) {
-        let mut summary = Summary::new();
-
-        // It is necessary to explicit the type due a bug in rust-analyzer
-        // https://github.com/rust-lang/rust-analyzer/issues/15984
-        let (s, r) = bounded::<MatchRequest>(1);
-        let (u, v) = bounded::<MatchResult>(1);
-
-        for i in 0..8 {
-            let r = r.clone();
-            let u = u.clone();
-            std::thread::spawn(move || {
-                println!("Starting thread: {}", i);
-
-                loop {
-                    let req = r.recv().unwrap();
-                    //println!("Received: {:?}", req);
-                    /*
-                    let args = req.agents.command(&req.agents);
-                    let res = execute(args, Duration::from_secs(10));
-
-                    let scores = res
-                        .stdout
-                        .split("\n")
-                        .take(3)
-                        .map(|x| x.parse().unwrap())
-                        .collect();
-
-                    // ExecutionResult → MatchResult
-                    let res = MatchResult {
-                        agents: req.agents.clone(),
-                        scores,
-                    };
-
-                    u.send(res).unwrap();
-                    */
-                }
-            });
-        }
-
-        let mut next_req = None;
-
-        // TODO: split in two threads
-        loop {
-            if let None = next_req {
-                next_req = gen.next_game();
-            }
-
-            if let Some(req) = next_req.take() {
-                crossbeam_channel::select! {
-                    recv(v) -> res => {
-                        summary.receive_result(res.unwrap());
-                        summary.print();
-                    },
-                    send(s, req) -> res => {
-                        next_req = None;
-                        assert!(res.is_ok());
-                    },
-                }
-            } else {
-                unimplemented!();
-                //crossbeam_channel::select! {
-                //    recv(v) -> msg => {
-                //        println!("received at main: {:?}", msg);
-                //    },
-                //    default(Duration::from_secs(1)) => {
-                //        println!("timeout");
-                //    },
-                //}
-            }
-        }
-
-        drop(s);
-
-        //let pool = rayon::ThreadPoolBuilder::new()
-        //    .num_threads(8)
-        //    .build()
-        //    .unwrap();
-        //let a = gen.par_bridge().map(|req| {
-        //    let args = req.referee.command(req.agents);
-        //
-        //    execute(args, Duration::from_secs(10))
-        //});
-        //
-        //// gen.pepito();
-        //a.for_each(|x| {
-        //    println!("x: {:?}", x);
-        //});
-    }
-
-    let mut gen = BasicGenerator::new(10000);
-    smth(&mut gen);
-
-    // TODO: un generador y receptor de resultados a la vez?
-    //       y despues otro que solo recibe resultados, para el summary clasico a parte de lo otro
-
-    // -
-
-    // https://github.com/dreignier/game-ultimate-tictactoe/blob/master/src/main/java/com/codingame/gameengine/runner/CommandLineInterface.java
 
     Ok(())
 }

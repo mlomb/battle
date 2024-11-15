@@ -1,10 +1,9 @@
-use std::process::Command;
-
-use crate::{executable::Executable, source_build::SourceBuilder};
+use crate::exec::{command::ToCommand, executable::Executable, source_builder::SourceBuilder};
 use bundler::source::Source;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Agent {
     /// The name of the agent
     pub name: String,

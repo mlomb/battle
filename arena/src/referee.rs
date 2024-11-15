@@ -8,7 +8,7 @@ use std::{path::Path, process::Command};
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Protocol {
     /// CodinGame referee protocol compatible with cg-brutaltester.
     /// See: https://github.com/dreignier/cg-brutaltester
@@ -18,7 +18,7 @@ pub enum Protocol {
 }
 
 /// A referee (a program) that runs a match between agents (other programs) and collects the results.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Referee {
     /// The protocol used by the referee
     protocol: Protocol,
@@ -44,12 +44,12 @@ impl Referee {
         })
     }
 
-    pub fn command(&mut self, agents: &Vec<Command>) -> Command {
+    pub fn command(&mut self, agent_cmds: &Vec<Command>) -> Command {
         let mut cmd = self.exe.command();
 
         match self.protocol {
             Protocol::CodinGame => {
-                for (i, agent) in agents.iter().enumerate() {
+                for (i, agent) in agent_cmds.iter().enumerate() {
                     cmd.arg(format!("-p{}", i + 1));
                     cmd.arg(agent.command_line_string());
                 }

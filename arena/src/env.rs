@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, path::PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Env {
     pub referee: Referee,
 
@@ -44,12 +44,6 @@ struct EnvParser {
 
     /// The parsed YAML document
     doc: Yaml,
-}
-
-impl Env {
-    pub fn from_file(env_path: &PathBuf) -> Result<Env, EnvError> {
-        EnvParser::from_file(env_path.clone())?.parse()
-    }
 }
 
 impl EnvParser {
@@ -169,5 +163,15 @@ impl EnvParser {
         }
 
         Ok(n as u8)
+    }
+}
+
+impl Env {
+    pub fn from_file(env_path: &PathBuf) -> Result<Env, EnvError> {
+        EnvParser::from_file(env_path.clone())?.parse()
+    }
+
+    pub fn get_agent<T: ToString>(&mut self, name: T) -> Option<&mut Agent> {
+        self.agents.iter_mut().find(|a| a.name == name.to_string())
     }
 }
