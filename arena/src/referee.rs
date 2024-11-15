@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
-
-use crate::command::CommandExt;
-use crate::executable::Executable;
 use std::{path::Path, process::Command};
+
+use crate::exec::{
+    command::{CommandExt, ToCommand},
+    executable::{Executable, ExecutableError},
+    executable_command::ExecutableCommand,
+};
 
 // TODO: improve errors, we are returning strings
 
@@ -40,12 +43,12 @@ impl Referee {
 
         Ok(Self {
             protocol: Protocol::CodinGame,
-            exe: Executable::from_jar(path),
+            exe: Executable::from_command(ExecutableCommand::from_jar(path).unwrap()),
         })
     }
 
     pub fn command(&mut self, agent_cmds: &Vec<Command>) -> Command {
-        let mut cmd = self.exe.command();
+        let mut cmd = self.exe.command().unwrap();
 
         match self.protocol {
             Protocol::CodinGame => {

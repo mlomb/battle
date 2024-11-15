@@ -38,6 +38,7 @@ pub struct ExecutableCommand {
     tmp_workdir: Option<TempDir>,
 }
 
+#[derive(Debug)]
 pub enum ExecutableCommandError {
     /// The name of the file is invalid
     InvalidFileName(PathBuf),

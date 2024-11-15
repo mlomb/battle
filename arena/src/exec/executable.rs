@@ -4,11 +4,13 @@ use super::{
     source_builder::{BuildError, SourceBuilder},
 };
 use bundler::source::Source;
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 
 /// An executable
 ///
 /// This struct implements the [`ToCommand`] trait, that returns a command that can be executed.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Executable {
     /// A generic executable that can be run on any platform (e.g. java, python)
     GenericCommand(ExecutableCommand),
@@ -25,8 +27,9 @@ pub enum Executable {
     },
 }
 
+#[derive(Debug)]
 pub enum ExecutableError {
-    /// The executable can't run on the current platform
+    /// The executable cannot run on the current platform
     UnsupportedPlatform,
     /// The source code could not compile
     BuildFailed(BuildError),

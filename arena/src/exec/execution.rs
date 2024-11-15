@@ -8,8 +8,11 @@ use std::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Status {
+    /// The process exited with the given code
     Exited(i32),
+    /// The process timed out and was killed
     Timeout,
+    /// An I/O error occurred while waiting for the process to finish
     IoError(String),
 }
 
