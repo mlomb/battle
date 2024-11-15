@@ -1,6 +1,9 @@
 use crate::{
     env::Env,
-    run::{execute, ExecutionResult},
+    exec::{
+        command::ToCommand,
+        execution::{Execute, ExecutionResult},
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -59,7 +62,8 @@ impl GameSetup {
             agent_cmds.push(
                 env.get_agent(ga.name.clone())
                     .expect("agent to exist")
-                    .command(),
+                    .command()
+                    .expect("command to succeed"),
             );
         }
 
@@ -68,9 +72,11 @@ impl GameSetup {
 }
 
 pub fn run_game(env: Arc<Mutex<Env>>, setup: GameSetup) -> GameResult {
-    let cmd = setup.command(&mut env.lock().unwrap());
+    let mut cmd = setup.command(&mut env.lock().unwrap());
+    let result = cmd.execute(std::time::Duration::from_secs(15));
 
-    let r = execute(cmd, std::time::Duration::from_secs(15));
-
-    GameResult { scores: vec![], r }
+    GameResult {
+        scores: vec![],
+        r: result,
+    }
 }

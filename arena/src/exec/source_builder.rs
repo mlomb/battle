@@ -4,9 +4,8 @@ use current_platform::CURRENT_PLATFORM;
 use std::{path::PathBuf, process::Command};
 use tempfile::tempdir;
 
+#[derive(Debug)]
 pub enum BuildError {
-    /// Some IO error occurred
-    Io(std::io::Error),
     /// The compiler did not exit successfully
     CompilerErrored {
         exit_code: Option<i32>,
@@ -15,6 +14,8 @@ pub enum BuildError {
     },
     /// There was a problem constructing the [`ExecutableCommand`]
     CommandError(ExecutableCommandError),
+    /// Some I/O error occurred
+    IoError(std::io::Error),
 }
 
 pub trait SourceBuilder {
@@ -126,6 +127,6 @@ time = "0.3.22"
 
 impl From<std::io::Error> for BuildError {
     fn from(e: std::io::Error) -> Self {
-        BuildError::Io(e)
+        BuildError::IoError(e)
     }
 }

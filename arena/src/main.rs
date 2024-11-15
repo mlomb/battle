@@ -1,5 +1,4 @@
 pub mod agent;
-pub mod command;
 pub mod env;
 pub mod exec;
 pub mod game;
@@ -7,9 +6,7 @@ pub mod interactive;
 pub mod optim;
 pub mod param;
 pub mod referee;
-pub mod run;
 pub mod scheduler;
-pub mod source_build;
 pub mod tournament;
 pub mod worker;
 

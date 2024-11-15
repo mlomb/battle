@@ -1,4 +1,8 @@
-use crate::{agent::Agent, executable::Executable, referee::Referee};
+use crate::{
+    agent::Agent,
+    exec::{executable::Executable, executable_command::ExecutableCommand},
+    referee::Referee,
+};
 use bundler::{bundle, BundlerArgs};
 use serde::{Deserialize, Serialize};
 use std::{error::Error, path::PathBuf};
@@ -133,24 +137,24 @@ impl EnvParser {
             )));
         }
 
-        if let Some(src_path) = src.as_ref() {
-            let bundle =
-                bundle(&BundlerArgs::default_from_entry(src_path.to_path_buf())).map_err(|e| {
-                    EnvError::BundleError {
+        let executable =
+            if let Some(src_path) = src.as_ref() {
+                let bundle = bundle(&BundlerArgs::default_from_entry(src_path.to_path_buf()))
+                    .map_err(|e| EnvError::BundleError {
                         agent: name.to_owned(),
                         src_path: src_path.clone(),
                         error: e.into(),
-                    }
-                })?;
+                    })?;
 
-            Ok(Agent::from_source(name, bundle.source))
-        } else {
-            Ok(Agent::from_binaries(
-                name,
-                win_bin.map(|path| Executable::from_binary(path)),
-                linux_bin.map(|path| Executable::from_binary(path)),
-            ))
-        }
+                Executable::from_source(bundle.source)
+            } else {
+                Executable::from_platform_command(
+                    win_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
+                    linux_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
+                )
+            };
+
+        Ok(Agent::new(name, executable))
     }
 
     fn parse_agent_number(&self, field: &str) -> Result<u8, EnvError> {
