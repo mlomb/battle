@@ -3,11 +3,11 @@ pub mod env;
 pub mod exec;
 pub mod game;
 pub mod interactive;
-pub mod local_worker;
 pub mod optim;
 pub mod referee;
 pub mod scheduler;
 pub mod tournament;
+pub mod worker_pool;
 
 use clap::{Parser, Subcommand};
 use console::style;
@@ -15,10 +15,10 @@ use distributed_channel::{start_consumer_node, NodeSetup};
 use env::{Env, EnvError};
 use game::{run_game, GameResult, GameSetup};
 use interactive::build_command_interactive;
-use local_worker::LocalGameWorker;
 use log::{info, LevelFilter};
 use std::error::Error;
 use std::path::PathBuf;
+use worker_pool::{get_threads, WorkerPool};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -105,28 +105,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                     network,
                     threads,
                 } => {
-                    println!("Running agents: {:?}", agent);
-
-                    let (_node, tx, rx) = if network {
-                        let (_node, tx, rx) =
-                            setup.into_producer::<Env, GameSetup, GameResult>(env);
-                        (Some(_node), tx, rx)
+                    let worker_pool = if network {
+                        WorkerPool::make_networked(env, setup)
                     } else {
-                        let (tx, rx) = crossbeam_channel::unbounded();
-                        LocalGameWorker::new(env, threads as u32);
-
-                        (None, tx, rx)
+                        WorkerPool::make_local(env, get_threads(threads))
                     };
 
+                    println!("Running agents: {:?}", agent);
+
                     loop {
-                        crossbeam_channel::select! {
-                            recv(rx) -> res => {
-                                let res = res.unwrap();
-                                println!("Received: {:?}", res);
-                            },
-                            send(tx, GameSetup::new()) -> res => {
-                                let res = res.unwrap();
-                            },
+                        match worker_pool.submit_or_receive(GameSetup::new()) {
+                            None => {
+                                println!("Game sent!");
+                            }
+                            Some(result) => {
+                                println!("Game result: {:?}", result);
+                            }
                         }
                     }
                 }
@@ -170,12 +164,4 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-fn get_threads(mut threads: usize) -> usize {
-    if threads == 0 {
-        threads = (num_cpus::get_physical() - 2).max(1);
-    }
-    info!("Using {}", style(format!("{} threads", threads)).cyan());
-    threads
 }
