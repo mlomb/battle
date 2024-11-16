@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 
 use crate::exec::{
     command::{CommandExt, ToCommand},
-    executable::{Executable, ExecutableError},
+    executable::Executable,
     executable_command::ExecutableCommand,
 };
 
