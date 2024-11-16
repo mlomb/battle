@@ -16,7 +16,7 @@ pub struct WorkerPool {
 
 impl WorkerPool {
     pub fn make_local(env: Env, threads: usize) -> Self {
-        info!("Using a local thread pool...");
+        info!("Using a local thread pool");
 
         let local_worker = LocalGameWorker::new(env, threads);
 
@@ -29,7 +29,7 @@ impl WorkerPool {
     }
 
     pub fn make_networked(env: Env, setup: NodeSetup) -> Self {
-        info!("Using a networked worker pool...");
+        info!("Using a networked worker pool");
 
         let (node, input_tx, output_rx) = setup.into_producer::<Env, GameSetup, GameResult>(env);
 
@@ -41,10 +41,14 @@ impl WorkerPool {
         }
     }
 
-    pub fn submit_or_receive(&self, setup: GameSetup) -> Option<GameResult> {
-        crossbeam_channel::select! {
-            recv(self.output_rx) -> res => res.ok(),
-            send(self.input_tx, setup) -> _ => None,
+    pub fn submit_or_receive(&self, setup: Option<GameSetup>) -> Option<GameResult> {
+        if let Some(setup) = setup {
+            crossbeam_channel::select! {
+                recv(self.output_rx) -> res => res.ok(),
+                send(self.input_tx, setup) -> _ => None,
+            }
+        } else {
+            self.output_rx.recv().ok()
         }
     }
 }

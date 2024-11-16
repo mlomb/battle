@@ -113,8 +113,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     println!("Running agents: {:?}", agent);
 
+                    let generator = format;
+
                     loop {
-                        match worker_pool.submit_or_receive(GameSetup::new()) {
+                        match worker_pool.submit_or_receive(Some(GameSetup::new())) {
                             None => {
                                 println!("Game sent!");
                             }

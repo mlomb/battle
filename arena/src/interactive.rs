@@ -1,7 +1,6 @@
+use crate::{env::Env, tournament};
 use console::style;
 use inquire::{Confirm, Select};
-
-use crate::{env::Env, tournament};
 use std::{
     fmt::{Display, Formatter},
     path::PathBuf,
@@ -133,10 +132,4 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     }
 
     agents
-}
-
-enum AgentPrompt {
-    None,
-    Random,
-    Agent(String),
 }
