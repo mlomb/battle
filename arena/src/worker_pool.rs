@@ -44,6 +44,7 @@ impl WorkerPool {
     pub fn submit_or_receive(&self, setup: Option<GameSetup>) -> Option<GameResult> {
         if let Some(setup) = setup {
             crossbeam_channel::select! {
+                // TODO: really handle the failure
                 recv(self.output_rx) -> res => res.ok(),
                 send(self.input_tx, setup) -> _ => None,
             }

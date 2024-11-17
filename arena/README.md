@@ -26,3 +26,10 @@ agents:
 ```bash
 arena tournament
 ```
+
+# TODO
+
+- [ ] **Add parameter optimization mode**
+- [ ] Write `Database` to disk (something like `(time)-(info).arenadb`), then load to:
+    - [ ] Resume tournament/optimization
+    - [ ] Open UI to view results (`arena view xyz.arenadb`)
