@@ -20,6 +20,7 @@ use interactive::build_command_interactive;
 use log::{info, LevelFilter};
 use std::error::Error;
 use std::path::PathBuf;
+use tournament::Tournament;
 use worker_pool::{get_threads, WorkerPool};
 
 #[derive(Parser, Debug)]
@@ -39,7 +40,7 @@ enum Commands {
     Tournament {
         /// Specifies the tournament format to use
         #[arg(value_enum, long)]
-        format: tournament::format::Format,
+        format: tournament::Format,
 
         /// List of agents participating in the tournament
         #[arg(short, long)]
@@ -107,22 +108,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                     network,
                     threads,
                 } => {
+                    let mut tournament = Tournament::new(format, env.max_agents);
+                    let mut database = Database::new();
+
                     let worker_pool = if network {
                         WorkerPool::make_networked(env, setup)
                     } else {
                         WorkerPool::make_local(env, get_threads(threads))
                     };
 
-                    let mut database = Database::new();
-
-                    println!("Running agents: {:?}", agent);
-
+                    let mut next_game = tournament.next();
                     loop {
-                        match worker_pool.submit_or_receive(Some(GameSetup::new())) {
+                        match worker_pool.submit_or_receive(next_game.clone()) {
                             None => {
-                                //
+                                // game has been submitted!
+                                next_game = tournament.next();
                             }
                             Some(result) => {
+                                // result has been received!
                                 database.receive_result(&result);
                                 println!("{}", database);
                             }
