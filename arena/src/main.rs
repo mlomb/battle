@@ -1,16 +1,18 @@
+// TODO: remove all pub and check for unused code
 pub mod agent;
+pub mod database;
 pub mod env;
 pub mod exec;
 pub mod game;
 pub mod interactive;
 pub mod optim;
 pub mod referee;
-pub mod scheduler;
 pub mod tournament;
 pub mod worker_pool;
 
 use clap::{Parser, Subcommand};
 use console::style;
+use database::Database;
 use distributed_channel::{start_consumer_node, NodeSetup};
 use env::{Env, EnvError};
 use game::{run_game, GameResult, GameSetup};
@@ -45,7 +47,7 @@ enum Commands {
 
         /// Number of threads to use for running games.
         /// Cannot be used with `network`.
-        /// If set to 0, the default will be the number of logical CPUs minus 1
+        /// If set to 0, the default will be the number of logical CPUs minus 2
         #[arg(long, group = "execution_mode", default_value = "0")]
         threads: usize,
 
@@ -57,7 +59,7 @@ enum Commands {
     /// Start a worker node to listen for games on the local P2P network
     Worker {
         /// Number of threads to allocate for the worker.
-        /// If set to 0, the default will be the number of logical CPUs minus 1
+        /// If set to 0, the default will be the number of logical CPUs minus 2
         #[arg(long, default_value = "0")]
         threads: usize,
     },
@@ -111,17 +113,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                         WorkerPool::make_local(env, get_threads(threads))
                     };
 
-                    println!("Running agents: {:?}", agent);
+                    let mut database = Database::new();
 
-                    let generator = format;
+                    println!("Running agents: {:?}", agent);
 
                     loop {
                         match worker_pool.submit_or_receive(Some(GameSetup::new())) {
                             None => {
-                                println!("Game sent!");
+                                //
                             }
                             Some(result) => {
-                                println!("Game result: {:?}", result);
+                                database.receive_result(&result);
+                                println!("{}", database);
                             }
                         }
                     }
