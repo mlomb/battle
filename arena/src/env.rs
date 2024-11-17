@@ -12,8 +12,8 @@ use yaml_rust2::{Yaml, YamlLoader};
 pub struct Env {
     pub referee: Referee,
 
-    pub min_agents: u8,
-    pub max_agents: u8,
+    pub min_agents: usize,
+    pub max_agents: usize,
 
     pub agents: Vec<Agent>,
 }
@@ -157,7 +157,7 @@ impl EnvParser {
         Ok(Agent::new(name, executable))
     }
 
-    fn parse_agent_number(&self, field: &str) -> Result<u8, EnvError> {
+    fn parse_agent_number(&self, field: &str) -> Result<usize, EnvError> {
         let n = self.doc[field]
             .as_i64()
             .ok_or(EnvError::BadField(format!("'{}' is missing", field)))?;
@@ -166,7 +166,7 @@ impl EnvParser {
             return Err(EnvError::BadField(format!("'{}' must be positive", field)));
         }
 
-        Ok(n as u8)
+        Ok(n as usize)
     }
 }
 

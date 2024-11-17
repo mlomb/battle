@@ -7,7 +7,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     process::Command,
     sync::{Arc, Mutex},
 };
@@ -39,22 +38,12 @@ pub struct GameAgentResult {
 
 impl GameSetup {
     pub fn new() -> Self {
-        Self {
-            agents: vec![
-                GameAgent {
-                    name: "v04".to_string(),
-                    //params: HashMap::new(),
-                },
-                GameAgent {
-                    name: "v09".to_string(),
-                    //params: HashMap::new(),
-                },
-                GameAgent {
-                    name: "v09".to_string(),
-                    //params: HashMap::new(),
-                },
-            ],
-        }
+        Self { agents: vec![] }
+    }
+
+    pub fn with_agent(mut self, name: String) -> Self {
+        self.agents.push(GameAgent { name });
+        self
     }
 
     pub fn command(&self, env: &mut Env) -> Command {

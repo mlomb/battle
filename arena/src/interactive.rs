@@ -40,19 +40,16 @@ pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
         Options::Tournament => {
             cmd.push("tournament".to_owned());
 
-            let formats = vec![
-                tournament::format::Format::RoundRobin,
-                tournament::format::Format::Gauntlet,
-            ];
+            let formats = vec![tournament::Format::RoundRobin, tournament::Format::Gauntlet];
             let format = Select::new("Select tournament format", formats)
                 .prompt()
                 .expect("a valid format");
 
             cmd.push("--format".to_owned());
             cmd.push(match format {
-                tournament::format::Format::RoundRobin => "round-robin".to_owned(),
-                tournament::format::Format::Gauntlet => "gauntlet".to_owned(),
-                tournament::format::Format::Matchmaking => todo!(),
+                tournament::Format::RoundRobin => "round-robin".to_owned(),
+                tournament::Format::Gauntlet => "gauntlet".to_owned(),
+                tournament::Format::Matchmaking => todo!(),
             });
 
             for agent in prompt_agents(&env) {
