@@ -17,7 +17,7 @@ use distributed_channel::{start_consumer_node, NodeSetup};
 use env::{Env, EnvError};
 use game::{run_game, GameResult, GameSetup};
 use interactive::build_command_interactive;
-use log::{info, LevelFilter};
+use log::{error, info, LevelFilter};
 use std::error::Error;
 use std::path::PathBuf;
 use tournament::Tournament;
@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match Env::from_file(&args.env) {
         Ok(env) => {
-            println!(
+            info!(
                 "{} Env file read {}. Found {} agents.",
                 style("[OK]").green().bold(),
                 style(args.env.display()).magenta(),
@@ -108,7 +108,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                     network,
                     threads,
                 } => {
-                    let mut tournament = Tournament::new(format, env.max_agents);
+                    let mut tournament = Tournament::new(
+                        format,
+                        agent
+                            .into_iter()
+                            .map(|a| a.split(',').map(|s| s.to_string()).collect())
+                            .collect(),
+                    );
                     let mut database = Database::new();
 
                     let worker_pool = if network {
@@ -125,49 +131,47 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 next_game = tournament.next();
                             }
                             Some(result) => {
-                                // result has been received!
-                                database.receive_result(&result);
-                                println!("{}", database);
+                                match result {
+                                    Ok(data) => {
+                                        // result has been received!
+                                        database.receive_result(&data);
+                                        println!("{}", database);
+                                    }
+                                    Err(e) => {
+                                        error!("Error running game: {:?}", style(e).red());
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        Err(err) => {
-            println!(
-                "{} {}",
-                style("[E]").red().bold(),
-                match err {
-                    EnvError::NotFound => {
-                        format!("Env file not found {}", style(args.env.display()).magenta())
-                    }
-                    EnvError::ParseError(e) => {
-                        format!("Error parsing the YAML file {}", style(e).red())
-                    }
-                    EnvError::NoAgents =>
-                        format!("No agents provided. Please provide at least one."),
-                    EnvError::BadReferee(e) => {
-                        format!("Bad referee: {}", style(e).red())
-                    }
-                    EnvError::BadAgent(e) => {
-                        format!("Bad agent: {}", style(e).red())
-                    }
-                    EnvError::BadField(e) => format!("Bad field: {}", style(e).red()),
-                    EnvError::BundleError {
-                        agent,
-                        src_path,
-                        error,
-                    } => {
-                        format!(
-                            "Error bundling agent {} ({}): {}",
-                            style(agent).magenta(),
-                            style(src_path.display()).cyan(),
-                            style(error).red()
-                        )
-                    }
-                }
-            );
+        Err(EnvError::NotFound) => {
+            error!("Env file not found {}", style(args.env.display()).magenta())
+        }
+        Err(EnvError::ParseError(e)) => {
+            error!("Error parsing the YAML file {}", style(e).red())
+        }
+        Err(EnvError::NoAgents) => error!("No agents provided. Please provide at least one."),
+        Err(EnvError::BadReferee(e)) => {
+            error!("Bad referee: {}", style(e).red())
+        }
+        Err(EnvError::BadAgent(e)) => {
+            error!("Bad agent: {}", style(e).red())
+        }
+        Err(EnvError::BadField(e)) => error!("Bad field: {}", style(e).red()),
+        Err(EnvError::BundleError {
+            agent,
+            src_path,
+            error,
+        }) => {
+            error!(
+                "Error bundling agent {} ({}): {}",
+                style(agent).magenta(),
+                style(src_path.display()).cyan(),
+                style(error).red()
+            )
         }
     }
 

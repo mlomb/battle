@@ -27,7 +27,7 @@ pub enum Executable {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutableError {
     /// The source code could not compile
     BuildFailed(BuildError),

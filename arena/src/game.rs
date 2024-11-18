@@ -2,6 +2,7 @@ use crate::{
     env::Env,
     exec::{
         command::ToCommand,
+        executable::ExecutableError,
         execution::{Execute, ExecutionResult},
     },
 };
@@ -24,10 +25,12 @@ pub struct GameSetup {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameResult {
+pub struct GameResultData {
     pub agents: Vec<GameAgentResult>,
     pub r: ExecutionResult,
 }
+
+pub type GameResult = Result<GameResultData, ExecutableError>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameAgentResult {
@@ -46,15 +49,14 @@ impl GameSetup {
         self
     }
 
-    pub fn command(&self, env: &mut Env) -> Command {
+    pub fn command(&self, env: &mut Env) -> Result<Command, ExecutableError> {
         let mut agent_cmds = vec![];
 
         for ga in &self.agents {
             agent_cmds.push(
                 env.get_agent(ga.name.clone())
                     .expect("agent to exist")
-                    .command()
-                    .expect("command to succeed"),
+                    .command()?,
             );
         }
 
@@ -63,7 +65,7 @@ impl GameSetup {
 }
 
 pub fn run_game(env: Arc<Mutex<Env>>, setup: GameSetup) -> GameResult {
-    let mut cmd = setup.command(&mut env.lock().unwrap());
+    let mut cmd = setup.command(&mut env.lock().unwrap())?;
     let result = cmd.execute(std::time::Duration::from_secs(40));
     let scores = result
         .stdout
@@ -72,7 +74,7 @@ pub fn run_game(env: Arc<Mutex<Env>>, setup: GameSetup) -> GameResult {
         .filter_map(Result::ok)
         .collect::<Vec<i32>>();
 
-    GameResult {
+    Ok(GameResultData {
         agents: setup
             .agents
             .iter()
@@ -83,5 +85,5 @@ pub fn run_game(env: Arc<Mutex<Env>>, setup: GameSetup) -> GameResult {
             })
             .collect(),
         r: result,
-    }
+    })
 }
