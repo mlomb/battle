@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 
 use crate::exec::{
     command::{CommandExt, ToCommand},
-    executable::Executable,
+    executable::{Executable, ExecutableError},
     executable_command::ExecutableCommand,
 };
 
@@ -47,7 +47,7 @@ impl Referee {
         })
     }
 
-    pub fn command(&mut self, agent_cmds: &Vec<Command>) -> Command {
+    pub fn command(&mut self, agent_cmds: &Vec<Command>) -> Result<Command, ExecutableError> {
         let mut cmd = self.exe.command().unwrap();
 
         match self.protocol {
@@ -59,6 +59,6 @@ impl Referee {
             }
         }
 
-        cmd
+        Ok(cmd)
     }
 }

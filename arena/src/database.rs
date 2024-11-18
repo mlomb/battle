@@ -1,4 +1,4 @@
-use crate::game::{GameAgent, GameResult};
+use crate::game::{GameAgent, GameResultData};
 use skillratings::{
     trueskill::{trueskill_multi_team, TrueSkillConfig, TrueSkillRating},
     MultiTeamOutcome,
@@ -35,7 +35,7 @@ impl Database {
         }
     }
 
-    pub fn receive_result(&mut self, result: &GameResult) {
+    pub fn receive_result(&mut self, result: &GameResultData) {
         let mut scores = result.agents.iter().map(|a| a.score).collect::<Vec<_>>();
         scores.sort_by_key(|&score| std::cmp::Reverse(score)); // TODO: ASC or DESC
         scores.dedup();

@@ -1,5 +1,6 @@
 use crate::game::GameSetup;
 use clap::ValueEnum;
+use rand::seq::SliceRandom;
 use std::fmt::Display;
 
 /// Tournament format
@@ -22,14 +23,33 @@ pub struct Tournament {
 }
 
 impl Tournament {
-    pub fn new(format: Format, agents_per_encounter: usize) -> Self {
+    pub fn new(format: Format, agents: Vec<Vec<String>>) -> Self {
         let cycle_matches = match format {
-            Format::RoundRobin => (0..agents_per_encounter)
-                .map(|i| GameSetup::new())
-                .collect(),
-            Format::Gauntlet => (0..agents_per_encounter)
-                .map(|i| GameSetup::new())
-                .collect(),
+            Format::RoundRobin => {
+                let mut matches = vec![GameSetup::new()];
+
+                // for each player slot (player 0, player 1, ...)
+                for p in 0..agents.len() {
+                    // copy matches with fixed number of slots
+                    let previous_matches = matches.clone();
+                    // clear matches
+                    matches.clear();
+
+                    // for each agent option (agent 0, agent 1, ...)
+                    for i in 0..agents[p].len() {
+                        // copy all previous matches and add the new agent to the end
+                        for match_setup in &previous_matches {
+                            matches.push(match_setup.clone().with_agent(agents[p][i].clone()));
+                        }
+                    }
+                }
+
+                // shuffle for fun
+                matches.shuffle(&mut rand::thread_rng());
+
+                matches
+            }
+            Format::Gauntlet => (0..1).map(|i| GameSetup::new()).collect(),
             Format::Matchmaking => todo!(),
         };
         Self {
@@ -50,7 +70,7 @@ impl Display for Format {
         match self {
             Format::RoundRobin => write!(f, "Round Robin (all vs all)"),
             Format::Gauntlet => write!(f, "Gauntlet (first vs all)"),
-            Format::Matchmaking => write!(f, "Matchmaking"),
+            Format::Matchmaking => write!(f, "Matchmaking (seed based on uncertainty)"),
         }
     }
 }

@@ -1,10 +1,11 @@
 use super::executable_command::ExecutableCommand;
 use bundler::source::{Language, Source};
 use current_platform::CURRENT_PLATFORM;
+use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, process::Command};
 use tempfile::tempdir;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BuildError {
     /// The compiler did not exit successfully
     CompilerErrored {
@@ -16,7 +17,7 @@ pub enum BuildError {
     /// This is a string to avoid recursion
     CommandError(String),
     /// Some I/O error occurred
-    IoError(std::io::Error),
+    IoError(String),
 }
 
 pub trait SourceBuilder {
@@ -49,7 +50,7 @@ fn build_cpp(src: &String) -> Result<ExecutableCommand, BuildError> {
         .debug(false)
         .target(CURRENT_PLATFORM)
         .host(CURRENT_PLATFORM)
-        .out_dir(temp_dir)
+        .out_dir(temp_dir.path()) // do not pass temp_dir directly, since it causes a drop
         .warnings(false)
         .cargo_metadata(false); // silence
 
@@ -129,6 +130,6 @@ time = "0.3.22"
 
 impl From<std::io::Error> for BuildError {
     fn from(e: std::io::Error) -> Self {
-        BuildError::IoError(e)
+        BuildError::IoError(format!("{:?}", e))
     }
 }
