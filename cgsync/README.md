@@ -23,7 +23,7 @@ Then use `cgsync` the same way you would use `bundler`. Open the folder of your 
 cgsync
 ```
 
-When changes are made, `cgsync` will bundle and send the code to the browser automatically.
+When changes are made, `cgsync` will bundle and send the code to the browser automatically. Don't forget to click the extension to initiate the connection.
 
 ## How it works
 
