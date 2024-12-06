@@ -22,7 +22,7 @@ artifactId=$(mvn -f /repo/pom.xml help:evaluate -Dexpression=project.artifactId 
 version=$(mvn -f /repo/pom.xml help:evaluate -Dexpression=project.version -q -DforceStdout)
 
 target=/repo/target/$artifactId-$version-jar-with-dependencies.jar
-output=/target/$artifactId.jar
+output=/target/cg-$artifactId.jar
 
 mvn -f /repo/pom.xml package
 mv $target $output
