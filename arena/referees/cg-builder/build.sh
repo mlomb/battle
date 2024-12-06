@@ -1,6 +1,6 @@
 #!/bin/bash
 
-git clone https://github.com/CodinGame/$1 /repo
+git clone $1 /repo
 
 # edit pom.xml
 sed -i "/<\/dependencies>/e cat /pom-dependencies.xml" /repo/pom.xml
@@ -20,6 +20,7 @@ cp /CommandLineInterface.java $cli_dir/CommandLineInterface.java
 # gather info
 artifactId=$(mvn -f /repo/pom.xml help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
 version=$(mvn -f /repo/pom.xml help:evaluate -Dexpression=project.version -q -DforceStdout)
+
 target=/repo/target/$artifactId-$version-jar-with-dependencies.jar
 output=/target/$artifactId.jar
 
