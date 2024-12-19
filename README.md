@@ -45,10 +45,26 @@ A new CodinGame contest huh?
 
 4. Develop your bot.
 
+5. Now, you want to test changes to your bot. You can create snapshots of your code running `bundler --output versions/v1.cpp` in the project folder. This gives you a self-contained file with the current code.
+
+6. Once you have multiple snapshots (versions or features), create a new **arena environment file** named `env.yml` in the project folder. For example:  
+```yml
+referee: cg-2023-fall-fish # make sure to use the correct referee (read note below)
+min_agents: 2 # and the correct number of agents per game
+max_agents: 2
+
+agents:
+  latest: # name of the agent
+    src: main.cpp
+  v1:
+    src: versions/v1.cpp
+  some-feature:
+    src: versions/sf.cpp
+  # ... add every agent you want
+```
+
+7. arena...
+</details>
 
 > [!NOTE]
 > To use the `arena` command to test your bot, make sure a referee is available (see the [arena README](arena)).
-
-
-5. arena...
-</details>
