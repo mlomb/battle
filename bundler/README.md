@@ -31,10 +31,12 @@ When the entry point is a folder, the bundler will look for a `main.cpp` or `Car
 bundler --entry src
 bundler --entry src/main.cpp
 bundler --entry main.cpp # (inside src/)
+bundler # (looks for main.cpp inside src/)
 
 bundler --entry mycrate
 bundler --entry mycrate/Cargo.toml
 bundler --entry Cargo.toml # (inside mycrate/)
+bundler # (looks for Cargo.toml inside mycrate/)
 ```
 
 ## Parameters
