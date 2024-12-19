@@ -63,8 +63,11 @@ agents:
   # ... add every agent you want
 ```
 
-7. arena...
+7. Now run the `arena` command in the folder that contains the `env.yml` file. It will guide you through the process of building the proper command to run tournaments. For example:  
+```sh
+arena tournament --format round-robin -a latest -a v1
+```
 </details>
 
 > [!NOTE]
-> To use the `arena` command to test your bot, make sure a referee is available (see the [arena README](arena)).
+> To use the `arena` command to test your bot, make sure a referee is available (see the [arena README](arena)). TLDR, you have to wait until I push a build of the referee (and trust me) or build it yourself.
