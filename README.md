@@ -63,7 +63,7 @@ agents:
   # ... add every agent you want
 ```
 
-7. Now run the `arena` command in the folder that contains the `env.yml` file. It will guide you through the process of building the proper command to run tournaments. For example:  
+7. Run the `arena` command in the folder that contains the `env.yml` file. It will guide you through the process of constructing the proper command to run the tournament you want. For example:  
 ```sh
 arena tournament --format round-robin -a latest -a v1
 ```
