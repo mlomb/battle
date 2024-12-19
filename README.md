@@ -34,14 +34,13 @@ A new CodinGame contest huh?
 <br>
 
 1. Prepare a new **project folder** for you bot. It can be a C++ or Rust project.
-  - **C++**: make sure the folder contains a `main.cpp` file.
-  - **Rust**: make sure the folder contains a `Cargo.toml` file.
+    - **C++**: make sure the folder contains a `main.cpp` file.
+    - **Rust**: make sure the folder contains a `Cargo.toml` file.
 
 
 2. Make sure you have the [CG Local Extension](https://github.com/jmerle/cg-local-ext#install) installed in your browser:  
-- [**Chrome** extension][link-cws] [<img valign="middle" src="https://img.shields.io/chrome-web-store/v/ihakjfajoihlncbnggmcmmeabclpfdgo.svg?label=%20">][link-cws]  
-- [**Firefox** add-on][link-amo] [<img valign="middle" src="https://img.shields.io/amo/v/cg-local.svg?label=%20">][link-amo]  
-This will allow you to sync local code with the CodinGame IDE effortlessly.
+    - [**Chrome** extension][link-cws] [<img valign="middle" src="https://img.shields.io/chrome-web-store/v/ihakjfajoihlncbnggmcmmeabclpfdgo.svg?label=%20">][link-cws]  
+    - [**Firefox** add-on][link-amo] [<img valign="middle" src="https://img.shields.io/amo/v/cg-local.svg?label=%20">][link-amo]  
 
 3. Run `cgsync` in the project folder. This will watch your code and sync it with the browser IDE. **After the command is run, click the extension to initiate the connection.**
 
