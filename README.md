@@ -20,7 +20,7 @@ cargo install --path cgsync
 cargo install --path arena
 ```
 
-# TLDR: Example workflow
+# Example workflow
 
 This section explains the _expected/recommended_ workflow to use the tools. For more information and complex use cases, refer to the READMEs of each tool.
 
