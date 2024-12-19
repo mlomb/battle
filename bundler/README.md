@@ -28,15 +28,17 @@ The entry point can be defined using `--entry` pointing to an entry file. Howeve
 When the entry point is a folder, the bundler will look for a `main.cpp` or `Cargo.toml` in the folder specified by `--entry`.
 
 ```sh
+# C++
 bundler --entry src
 bundler --entry src/main.cpp
-bundler --entry main.cpp # (inside src/)
-bundler # (looks for main.cpp inside src/)
+bundler --entry main.cpp
+bundler # (looks for main.cpp inside cwd)
 
+# Rust
 bundler --entry mycrate
 bundler --entry mycrate/Cargo.toml
-bundler --entry Cargo.toml # (inside mycrate/)
-bundler # (looks for Cargo.toml inside mycrate/)
+bundler --entry Cargo.toml
+bundler # (looks for Cargo.toml inside cwd)
 ```
 
 ## Parameters
@@ -81,5 +83,5 @@ TODO
 - [ ] Basic dead code elimination to reduce size. Probably too hard, maybe for C++ macros and basic heuristics?
 - [ ] Cleaning like
     - [ ] Remove duplicate includes (e.g. `#include <iostream>` twice)
-- [ ] Add support for other compiled languages?
+- [ ] Add support for other languages?
 
