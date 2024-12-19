@@ -30,6 +30,11 @@ When the entry point is a folder, the bundler will look for a `main.cpp` or `Car
 ```sh
 bundler --entry src
 bundler --entry src/main.cpp
+cd src && bundler --entry main.cpp
+
+bundler --entry mycrate
+bundler --entry mycrate/Cargo.toml
+cd mycrate && bundler --entry Cargo.toml
 ```
 
 ## Parameters

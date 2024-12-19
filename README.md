@@ -33,9 +33,7 @@ This section explains the _expected/recommended_ workflow to use the tools. For 
 A new CodinGame contest huh?
 <br>
 
-1. Prepare a new **project folder** for you bot, you can use any build system you want. It can be a C++ or Rust project.
-    - **C++**: make sure the folder contains a `main.cpp` file.
-    - **Rust**: make sure the folder contains a `Cargo.toml` file.
+1. Prepare a new **project folder** for you bot, you can use any build system you want. It can be a C++ or Rust project (see [What is a project?](bundler/README.md#what-is-a-project)).
 
 2. Make sure you have the [CG Local Extension](https://github.com/jmerle/cg-local-ext#install) installed in your browser:  
     - [**Chrome** extension][link-cws] [<img valign="middle" src="https://img.shields.io/chrome-web-store/v/ihakjfajoihlncbnggmcmmeabclpfdgo.svg?label=%20">][link-cws]  
@@ -46,6 +44,8 @@ A new CodinGame contest huh?
 4. Develop your bot.
 
 5. Now, you want to test changes to your bot. You can create snapshots of your code running `bundler --output versions/v1.cpp` in the project folder. This gives you a self-contained file with the current code.
+
+_In the future, you will be able to define parameters in the code and testing will be a lot easier._
 
 6. Once you have multiple snapshots (versions or features), create a new **arena environment file** named `env.yml` in the project folder. For example:  
 ```yml
