@@ -1,6 +1,6 @@
 #!/bin/bash
 
-git clone $1 /repo
+git clone $2 /repo
 
 # edit pom.xml
 sed -i "/<\/dependencies>/e cat /pom-dependencies.xml" /repo/pom.xml
@@ -15,7 +15,7 @@ rm -rf /repo/src/main/resources
 # copy CLI files
 cli_dir=/repo/src/main/java/com/codingame/gameengine/runner
 mkdir -p $cli_dir
-cp /CommandLineInterface.java $cli_dir/CommandLineInterface.java
+cp CLI/$1 $cli_dir/CommandLineInterface.java
 
 # gather info
 artifactId=$(mvn -f /repo/pom.xml help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
