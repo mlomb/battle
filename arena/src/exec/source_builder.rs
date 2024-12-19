@@ -1,6 +1,10 @@
+use crate::exec::command::CommandExt;
+
 use super::executable_command::ExecutableCommand;
 use bundler::source::{Language, Source};
+use console::style;
 use current_platform::CURRENT_PLATFORM;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, process::Command};
 use tempfile::tempdir;
@@ -88,6 +92,11 @@ fn execute_build_command(
     mut build_command: Command,
     target_binary: PathBuf,
 ) -> Result<ExecutableCommand, BuildError> {
+    info!(
+        "Build command: {}",
+        style(build_command.command_line_string()).cyan()
+    );
+
     let output = build_command.output()?;
 
     if output.status.success() {

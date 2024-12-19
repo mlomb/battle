@@ -13,6 +13,7 @@ use std::{path::PathBuf, process::Command};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Executable {
     /// A generic executable that can be run on any platform (e.g. java, python)
+    /// It usually requires a pre-installed software to run
     GenericCommand(ExecutableCommand),
     /// An executable that requires a different command for each platform (e.g. main.exe, ./main)
     PlatformCommand {
