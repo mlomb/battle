@@ -20,7 +20,7 @@ pub struct Env {
 
 #[derive(Debug)]
 pub enum EnvError {
-    /// The .yml file was not found
+    /// The .yaml file was not found
     NotFound,
     /// Error parsing the YAML file
     ParseError(yaml_rust2::ScanError),

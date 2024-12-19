@@ -2,7 +2,7 @@
 
 TODO
 
-## Environment
+## Environment definition
 
 ...
 
@@ -21,11 +21,19 @@ agents:
     win_bin: ../bots/other.exe
 ```
 
+## Referees
+
+A
+
 ## Tournament
 
 ```bash
 arena tournament
 ```
+
+## Parameter optimization
+
+TODO!
 
 ## FAQ
 

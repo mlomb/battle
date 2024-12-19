@@ -47,7 +47,7 @@ A new CodinGame contest huh?
 
 _In the future, you will be able to define parameters in the code and testing will be a lot easier._
 
-6. Once you have multiple snapshots (versions or features), create a new **arena environment file** named `env.yml` in the project folder. For example:  
+6. Once you have multiple snapshots (versions or features), create a new **arena environment file** named `env.yaml` in the project folder. For example:  
 ```yml
 referee: cg-2023-fall-fish # make sure to use the correct referee (read note below)
 min_agents: 2 # and the correct number of agents per game
@@ -63,11 +63,11 @@ agents:
   # ... add every agent you want
 ```
 
-7. Run the `arena` command in the folder that contains the `env.yml` file. It will guide you through the process of constructing the proper command to run the tournament you want. For example:  
+7. Run the `arena` command in the folder that contains the `env.yaml` file. It will guide you through the process of constructing the proper command to run the tournament you want. For example:  
 ```sh
 arena tournament --format round-robin -a latest -a v1
 ```
 </details>
 
 > [!NOTE]
-> To use the `arena` command to test your bot, make sure a referee is available (see the [arena README](arena)). TLDR, you have to wait until I push a build of the referee (and trust me) or build it yourself.
+> To use the `arena` command to test your bot, make sure a referee is available (see [arena/README.md](arena)). TLDR, you have to wait until I push a build of the referee (and trust me) or build it yourself.

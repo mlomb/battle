@@ -13,7 +13,7 @@ pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
     cmd.push(std::env::args().next().unwrap());
 
     // push env file, if not default
-    if env_file.to_string_lossy() != "env.yml" {
+    if env_file.to_string_lossy() != "env.yaml" {
         cmd.push("--env".to_owned());
         cmd.push(env_file.to_str().unwrap().to_owned());
     }

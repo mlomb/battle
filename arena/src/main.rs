@@ -30,7 +30,7 @@ struct Args {
     command: Option<Commands>,
 
     /// The environment file to use
-    #[arg(short, long, default_value = "env.yml")]
+    #[arg(short, long, default_value = "env.yaml")]
     env: PathBuf,
 }
 
