@@ -1,12 +1,7 @@
-# verified
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CGjupoulton/WinterChallenge2024-Cellularena
-
-exit
-
-# unverified
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2023-SeabedSecurity
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2024-SeleniaCity
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SummerChallenge2024Olymbits
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2023-SeabedSecurity
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2022
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2023
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2022-KeepOffTheGrass
