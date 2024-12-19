@@ -21,6 +21,19 @@ agents:
     win_bin: ../bots/other.exe
 ```
 
+> [!NOTE]
+> If your IDE supports the [yaml-language-server](https://github.com/redhat-developer/yaml-language-server) (use the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) for VSCode), then you can enable schema validation by adding the following line to the top of the `env.yaml` file: 
+> ```yaml
+> # yaml-language-server: $schema=https://raw.githubusercontent.com/mlomb/bot-tools/refs/heads/main/arena/env.schema.json
+> ```
+> In VSCode, you can associate the schema globally editing your user or workspace settings:
+> ```json
+> "yaml.schemas": {
+>  "https://raw.githubusercontent.com/mlomb/bot-tools/refs/heads/main/arena/env.schema.json": "env.yaml",
+> }
+> ```
+
+
 ## Referees
 
 A
