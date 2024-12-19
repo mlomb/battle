@@ -27,6 +27,19 @@ agents:
 arena tournament
 ```
 
+## FAQ
+
+<details>
+<summary>Why make snapshots of code, instead of saving binaries?</summary>
+<br>
+
+You may think this is obvious. Well, it is, however I known some people (including myself) that used to save binaries instead of code, even knowing that is a bad idea. Just plain laziness I guess (or the lack of a bundler). Here are some reasons why you should save code instead of binaries:
+
+- You can go back and inspect older versions: have them in version control, restore them, diff them, compile them in other platforms, etc.
+
+Binaries give you one advantage though: you can share binaries with other people without sharing the code. The arena supports binaries for this reason, however I do not adivse this, since some may consider it cheating.
+</details>
+
 # TODO
 
 - [ ] **Add parameter optimization mode**
