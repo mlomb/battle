@@ -22,7 +22,7 @@ cargo install --path arena
 
 # TLDR: Example workflow
 
-This section explains the expected workflow to use the tools. For more information and complex use cases, refer to the READMEs of each tool.
+This section explains the _expected/recommended_ workflow to use the tools. For more information and complex use cases, refer to the READMEs of each tool.
 
 [link-cws]: https://chromewebstore.google.com/detail/cg-local/ihakjfajoihlncbnggmcmmeabclpfdgo
 [link-amo]: https://addons.mozilla.org/en-US/firefox/addon/cg-local/
@@ -33,10 +33,9 @@ This section explains the expected workflow to use the tools. For more informati
 A new CodinGame contest huh?
 <br>
 
-1. Prepare a new **project folder** for you bot. It can be a C++ or Rust project.
+1. Prepare a new **project folder** for you bot, you can use any build system you want. It can be a C++ or Rust project.
     - **C++**: make sure the folder contains a `main.cpp` file.
     - **Rust**: make sure the folder contains a `Cargo.toml` file.
-
 
 2. Make sure you have the [CG Local Extension](https://github.com/jmerle/cg-local-ext#install) installed in your browser:  
     - [**Chrome** extension][link-cws] [<img valign="middle" src="https://img.shields.io/chrome-web-store/v/ihakjfajoihlncbnggmcmmeabclpfdgo.svg?label=%20">][link-cws]  
@@ -46,8 +45,10 @@ A new CodinGame contest huh?
 
 4. Develop your bot.
 
-> [!NOTE]  
+
+> [!NOTE]
 > To use the `arena` command to test your bot, make sure a referee is available (see the [arena README](arena)).
+
 
 5. arena...
 </details>
