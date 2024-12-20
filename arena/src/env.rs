@@ -16,9 +16,6 @@ use yaml_rust2::{Yaml, YamlLoader};
 pub struct Env {
     pub referee: Referee,
 
-    pub min_agents: usize,
-    pub max_agents: usize,
-
     pub agents: Vec<Agent>,
 }
 
@@ -72,26 +69,13 @@ impl EnvParser {
 
     fn parse(self) -> Result<Env, EnvError> {
         let referee = self.parse_referee()?;
-        let min_agents = self.parse_agent_number("min_agents")?;
-        let max_agents = self.parse_agent_number("max_agents")?;
         let agents = self.parse_agents()?;
-
-        if min_agents > max_agents {
-            return Err(EnvError::BadField(
-                "'min_agents' must be less than or equal to 'max_agents'".to_owned(),
-            ));
-        }
 
         if agents.len() == 0 {
             return Err(EnvError::NoAgents);
         }
 
-        Ok(Env {
-            referee,
-            min_agents,
-            max_agents,
-            agents,
-        })
+        Ok(Env { referee, agents })
     }
 
     fn parse_referee(&self) -> Result<Referee, EnvError> {
