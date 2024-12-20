@@ -3,7 +3,11 @@ use crate::{
     exec::{executable::Executable, executable_command::ExecutableCommand},
     referee::Referee,
 };
-use bundler::{bundle, BundlerArgs};
+use bundler::{
+    bundle,
+    source::{Language, Source},
+    BundlerArgs,
+};
 use serde::{Deserialize, Serialize};
 use std::{error::Error, path::PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
@@ -137,8 +141,20 @@ impl EnvParser {
             )));
         }
 
-        let executable =
-            if let Some(src_path) = src.as_ref() {
+        let executable = if let Some(src_path) = src.as_ref() {
+            let source = if src_path.extension() == Some("rs".as_ref()) {
+                // we assume that Rust source is already bundled
+                std::fs::read_to_string(src_path.clone())
+                    .map(|src| Source {
+                        code: src,
+                        language: Language::Rust,
+                    })
+                    .map_err(|err| EnvError::BundleError {
+                        agent: name.to_owned(),
+                        src_path: src_path.clone(),
+                        error: Box::new(err),
+                    })?
+            } else {
                 let bundle = bundle(&BundlerArgs::default_from_entry(src_path.to_path_buf()))
                     .map_err(|e| EnvError::BundleError {
                         agent: name.to_owned(),
@@ -146,13 +162,16 @@ impl EnvParser {
                         error: e.into(),
                     })?;
 
-                Executable::from_source(bundle.source)
-            } else {
-                Executable::from_platform_command(
-                    win_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
-                    linux_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
-                )
+                bundle.source
             };
+
+            Executable::from_source(source)
+        } else {
+            Executable::from_platform_command(
+                win_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
+                linux_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
+            )
+        };
 
         Ok(Agent::new(name, executable))
     }
