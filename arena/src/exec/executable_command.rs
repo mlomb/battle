@@ -72,7 +72,15 @@ impl ExecutableCommand {
 
     /// Creates a new executable that runs a JAR file ("java -jar main.jar")
     pub fn from_jar(jar_path: PathBuf) -> Result<Self, ExecutableError> {
-        Self::from_prefix_file(vec!["java".to_string(), "-jar".to_string()], jar_path)
+        Self::from_prefix_file(
+            vec![
+                "java".to_string(),
+                // This is due CodinGame engine accessing internal classes which is not supported in modern Java
+                "--add-opens java.base/java.lang=ALL-UNNAMED".to_string(),
+                "-jar".to_string(),
+            ],
+            jar_path,
+        )
     }
 
     /// Creates a new executable that runs a binary file (e.g. "main.exe")
