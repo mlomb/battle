@@ -26,8 +26,8 @@ public class CommandLineInterface {
                     .addOption("p1", true, "Required. Player 1 command line")
                     .addOption("p2", true, "Required. Player 2 command line")
                     // it is the responsibility of the caller to know if the game supports 2, 3 or 4 players
-                    .addOption("p3", true, "Required. Player 3 command line (if applies)")
-                    .addOption("p4", true, "Required. Player 4 command line (if applies)")
+                    .addOption("p3", true, "Player 3 command line (if applies)")
+                    .addOption("p4", true, "Player 4 command line (if applies)")
                     .addOption("l", true, "File output for logs")
                     .addOption("s", true, "Referee seed");
 
