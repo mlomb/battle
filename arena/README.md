@@ -31,7 +31,7 @@ If you want to distribute the computation, look at the [execution mode](#executi
 ## Tournament
 
 > [!NOTE]
-> I recommend you to set up your env file and let the `arena` command guide you instead of constructing the command yourself.
+> I recommend you to set up your env file and let the `arena` command guide you instead of constructing the command yourself. It will check for problems in your env file too.
 
 The base command for running tournaments is `arena tournament`.
 
@@ -39,13 +39,16 @@ You **must** specify the following options:
 
 - `--format`: The format of the tournament.
     - `round-robin`: All agents play against each other.
-    - `gauntlet`: One agent plays against all others.
+    - `gauntlet`: First agent passed plays against all others.
     - `matchmaking`: TODO
-- `-a` or `--agent`: The agent to include in the tournament. You can specify multiple agents.
+- `-a <name>` or `--agent <name>`: The agents to include in the tournament. The name must match agents defined in the environment file. You can specify as many agents you want. Agents for a match will be chosen based on the tournament format.
+    - e.g. `--agent latest --agent v1 --agent v2`
+    - e.g. `-a latest -a v1 -a v2`
 
 You **may** specify the following options:
 
-- `--threads N` or `--network`: The execution mode. See [execution mode](#execution-mode-local-vs-p2p).
+- `--N <number>` or `--games <number>`: The number of matches to run. By default, it is `0`, which means it will run matches until stopped.
+- `--threads <number>` or `--network`: The execution mode. See [execution mode](#execution-mode-local-vs-p2p).
 
 ## Parameter optimization
 
@@ -96,4 +99,4 @@ Note that by default, `--threads` has a value of `0`, which means it will use th
     - [ ] Resume tournament/optimization
     - [ ] Open UI to view results (`arena view xyz.arenadb`)
     - or maybe have a more human readable format?
-
+- [ ] Add `--players` flag to control how many players should play in a match. $min\_players <= players <= max\_players$
