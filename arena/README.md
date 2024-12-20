@@ -190,10 +190,10 @@ TODO! We must implement parameters in the bundler first
 <summary>How is source code compiled?</summary>
 <br>
 
-**C++**: using the `cc` crate, that autodetects the MSVC/g++ compiler.  
-**Rust**: invoking `cargo build --release`.
-
-You may want to look at [source_builder.rs](./src/exec/source_builder.rs).
+> **C++**: using the `cc` crate, that autodetects the MSVC/g++ compiler.  
+> **Rust**: invoking `cargo build --release`.
+> 
+> You may want to look at [source_builder.rs](./src/exec/source_builder.rs).
 
 </details>
 
@@ -201,11 +201,11 @@ You may want to look at [source_builder.rs](./src/exec/source_builder.rs).
 <summary>Why make snapshots of code, instead of saving binaries?</summary>
 <br>
 
-You may think this is obvious. Well, it is, however I known some people (including myself) that used to save binaries instead of code, even knowing that is a bad idea. Just plain laziness I guess (or the lack of a bundler).
-
-Storing code snapshots allows you to go back and inspect older versions: have them in version control, inspect them, restore them, diff them, compile them in other platforms, etc.
-
-Binaries give you one advantage though: you can share binaries with other people without sharing the code. The arena supports binaries for this reason, however I do not adivse this, since some may consider it cheating.
+> You may think this is obvious. Well, it is, however I known some people (including myself) that used to save binaries instead of code, even knowing that is a bad idea. Just plain laziness I guess (or the lack of a bundler).
+> 
+> Storing code snapshots allows you to go back and inspect older versions: have them in version control, inspect them, restore them, diff them, compile them in other platforms, etc.
+> 
+> Binaries give you one advantage though: you can share binaries with other people without sharing the code. The arena supports binaries for this reason, however I do not adivse this, since some may consider it cheating.
 </details>
 
 ## TODO
