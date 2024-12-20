@@ -256,18 +256,6 @@ impl EnvParser {
             ));
         }
     }
-
-    fn parse_agent_number(&self, field: &str) -> Result<usize, EnvError> {
-        let n = self.doc[field]
-            .as_i64()
-            .ok_or(EnvError::BadField(format!("'{}' is missing", field)))?;
-
-        if n <= 0 {
-            return Err(EnvError::BadField(format!("'{}' must be positive", field)));
-        }
-
-        Ok(n as usize)
-    }
 }
 
 impl Env {
