@@ -13,6 +13,7 @@ The arena allows automated testing of bots.
 - Run tournaments between agents
   - round-robin (all vs all)
   - gauntlet (one vs all)
+  - ~~matchmaking~~ (TODO)
 - Computation can be...
   - paralellized using multiple threads
   - distributed using P2P workers 🚀
@@ -21,25 +22,30 @@ The arena allows automated testing of bots.
 
 ## Usage
 
-To run the arena, you need to have a referee for the game you want and agents to play the game.
-
-env and run cmd
+Create an [environment file](#environment-definition) (`env.yaml`) in your project folder. Then run `arena` to be guided through the process of creating a tournament or jump to the [tournament section](#tournament).
 
 ## Environment definition
 
-...
+An environment file (`env.yaml`) is a [YAML](https://yaml.org) file that defines [the referee](#referees) and [the agents](#agents) that will play the game.
+
+During a contest, you will add and remove agents from this file to test them against each other. Usually, you will snapshot your code each time you submit or make a big change to your bot. This can be done using the [bundler](../bundler) tool (e.g. `bundler --output versions/v15.cpp`).
+
+
+ Take a look at the following `env.yaml` file:
 
 ```yaml
 referee: cg-winter-2024-sprawl
 
 agents:
   latest:
-    src: ../bots/main.cpp
+    src: main.cpp
   v15:
-    src: ../bots/v15.cpp
+    src: versions/v15.cpp
   other:
-    win_bin: ../bots/other.exe
+    win_bin: other/other.exe
 ```
+
+In this example, three agents are defined, two by source code and one by an executable. The referee is selected by key from the available referees. For more complex definitions, jump to the [referees section](#referees), or jump to the [agents section](#agents) .
 
 > [!NOTE]
 > If your IDE supports the [yaml-language-server](https://github.com/redhat-developer/yaml-language-server) (use the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) for VSCode), then you can enable schema validation by adding the following line at the top of the `env.yaml` file:
@@ -77,6 +83,10 @@ If you want to add referee to the list, please open an issue. I will not merge P
 Currently, you can't specify 
 
 Eventually, the idea is that you can define a referee the same way you can define agents.
+
+## Agents
+
+Agents!
 
 ## Tournament
 
