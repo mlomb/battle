@@ -76,7 +76,8 @@ impl ExecutableCommand {
             vec![
                 "java".to_string(),
                 // This is due CodinGame engine accessing internal classes which is not supported in modern Java
-                "--add-opens java.base/java.lang=ALL-UNNAMED".to_string(),
+                "--add-opens".to_string(),
+                "java.base/java.lang=ALL-UNNAMED".to_string(),
                 "-jar".to_string(),
             ],
             jar_path,
