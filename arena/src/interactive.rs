@@ -98,7 +98,7 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     let agent_none: String = style("None").red().to_string();
     let mut agents = vec![];
 
-    for i in 0..env.max_agents {
+    for i in 0..env.referee.max_agents {
         let mut options: Vec<String> = env.agents.iter().map(|agent| agent.name.clone()).collect();
         assert!(options.len() > 0);
 
@@ -109,12 +109,12 @@ fn prompt_agents(env: &Env) -> Vec<String> {
         //     break;
         // }
 
-        if i + 1 > env.min_agents {
+        if i + 1 > env.referee.min_agents {
             options.insert(0, agent_none.clone());
         }
 
         let agent = Select::new(
-            &format!("Select agent #{} ({} max)", i + 1, env.max_agents),
+            &format!("Select agent #{} ({} max)", i + 1, env.referee.max_agents),
             options,
         )
         .prompt()

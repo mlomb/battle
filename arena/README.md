@@ -7,7 +7,7 @@ TODO
 ...
 
 ```yaml
-referee: cg-2024-summer-olympics
+referee: cg-winter-2024-sprawl
 
 min_agents: 2
 max_agents: 2
@@ -36,7 +36,21 @@ agents:
 
 ## Referees
 
-A
+The referee is the program that implements the game rules. It starts each of the agents and runs the game.
+
+
+### Available referees
+
+| Platform | Season | Contest | **Key** | Players |
+|----------|--------|---------|---------|-----------|
+| CodinGame | Winter 2024 | [Cellularena](https://www.codingame.com/contests/winter-challenge-2024) | `cg-winter-2024-sprawl` | 2 |
+| CodinGame | Fall 2023 | [Seabed Security](https://www.codingame.com/multiplayer/bot-programming/seabed-security) | `cg-fall-2023-fish` | 2 |
+
+### Custom referee
+
+Currently, you can't specify 
+
+Eventually, the idea is that you can define a referee the same way you can define agents.
 
 ## Tournament
 
@@ -46,7 +60,7 @@ arena tournament
 
 ## Parameter optimization
 
-TODO!
+TODO! We must implement parameters in the bundler first
 
 ## FAQ
 
@@ -61,8 +75,9 @@ Storing code snapshots allows you to go back and inspect older versions: have th
 Binaries give you one advantage though: you can share binaries with other people without sharing the code. The arena supports binaries for this reason, however I do not adivse this, since some may consider it cheating.
 </details>
 
-# TODO
+## TODO
 
+- [ ] Handle all kind of errors better. Mostly related to crashes, timeouts, lost P2P packets, etc.
 - [ ] **Add parameter optimization mode**
 - [ ] Write `Database` to disk (something like `(time)-(info).arenadb`), then load to:
     - [ ] Resume tournament/optimization

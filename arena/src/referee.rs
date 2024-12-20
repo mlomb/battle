@@ -28,10 +28,17 @@ pub struct Referee {
 
     /// The path to the referee executable
     exe: Executable,
+
+    /// The minimum number of agents required by the referee
+    pub min_agents: usize,
+
+    /// The maximum number of agents accepted by the referee
+    pub max_agents: usize,
 }
 
 impl Referee {
     /// Creates a new referee from a curated list of referess available in the `referees` directory.
+    /// For now, only CodinGame referees are supported.
     pub fn from_preset<T: ToString>(preset: T) -> Result<Self, String> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("referees")
@@ -41,9 +48,23 @@ impl Referee {
             return Err(format!("Referee not found: {}", path.to_string_lossy()));
         }
 
+        let (min_agents, max_agents) = match preset.to_string().as_str() {
+            "cg-fall-2023-fish" => (2, 2),
+            "cg-winter-2024-sprawl" => (2, 2),
+            _ => {
+                log::warn!("Referee preset available '{}', but min/max agents is unknown. Assuming min=2, max=4.", preset.to_string());
+                (2, 4)
+            }
+        };
+
+        assert!(min_agents >= 1);
+        assert!(min_agents <= max_agents);
+
         Ok(Self {
             protocol: Protocol::CodinGame,
             exe: Executable::from_command(ExecutableCommand::from_jar(path).unwrap()),
+            min_agents,
+            max_agents,
         })
     }
 
