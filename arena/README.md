@@ -45,7 +45,7 @@ agents:
     win_bin: other/other.exe
 ```
 
-In this example, three agents are defined, two by source code and one by an executable. The referee is selected by key from the available referees. For more complex definitions, jump to the [referees section](#referees), or jump to the [agents section](#agents) .
+In this example, three agents are defined, two by source code and one by an executable. The referee is selected by key from the [available referees](#available-referees). For more complex definitions, jump to the [referees section](#referees), or jump to the [agents section](#agents) .
 
 > [!NOTE]
 > If your IDE supports the [yaml-language-server](https://github.com/redhat-developer/yaml-language-server) (use the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) for VSCode), then you can enable schema validation by adding the following line at the top of the `env.yaml` file:
@@ -84,9 +84,94 @@ Currently, you can't specify
 
 Eventually, the idea is that you can define a referee the same way you can define agents.
 
+CG protocol
+
 ## Agents
 
-Agents!
+An agent is a program that respects the referee's protocol so it can play the game.
+
+There are two ways to define an agent:
+
+1. Provide the source code `src` and let the arena compile it for you.
+2. Provide a command `cmd` that will run your agent. Parameters are appended at the end of the command.
+
+The following table shows some examples of agent definitions:
+
+<table>
+<tr>
+<th>Description</th>
+<th>Examples</th>
+</tr>
+<tr>
+<td>
+
+Define an agent pointing to a [project entry point](../bundler#what-is-a-project) or bundled source code. **The recommended way.**
+
+</td>
+<td>
+
+```yaml
+agents:
+  latest:
+    src: main.cpp
+  v15:
+    src: versions/v15.cpp
+  nntest:
+    src: tests/nn.cpp
+    files:
+      nn.bin: tests/network.bin
+  rust_entry:
+    src: cratebot/
+  rust_bundled:
+    src: bundled.rs
+```
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+Define an agent using an arbitrary command.
+
+</td>
+<td>
+
+```yaml
+agents:
+  pybot:
+    cmd: python bot.py
+    files:
+      bot.py: ../bots/bot.py
+```
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+Define an agent using an already compiled binary file.
+
+</td>
+<td>
+
+```yaml
+agents:
+  pybot:
+    cmd:
+      win: ./bot.exe
+      linux: ./bot
+    files:
+      bot.exe: ./release/bot.exe
+      bot: ./release/bot
+```
+
+</td>
+</tr>
+</table>
+
+To every agent, you can pass a `files` key that maps the files that will be copied to the agent's working directory. This is needed when you use a command to run, since the arena can't determine which files are needed. You can also use this to attach assets, like neural networks.
 
 ## Tournament
 
