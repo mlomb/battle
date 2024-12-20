@@ -1,6 +1,29 @@
 # arena
 
-TODO
+The arena allows automated testing of bots.
+
+[GIF terminal]
+
+### Features
+
+- Supports both Linux and Windows
+- Agents can be defined either by source code or executables
+  - source code is automatically bundled (see [bundler](../bundler)) and compiled
+  - executables are chosen based on the platform
+- Run tournaments between agents
+  - round-robin (all vs all)
+  - gauntlet (one vs all)
+- Computation can be...
+  - paralellized using multiple threads
+  - distributed using P2P workers 🚀
+- It has an interactive mode that guides you through the process of creating the tournament you want
+- Referees included and ready to be used
+
+## Usage
+
+To run the arena, you need to have a referee for the game you want and agents to play the game.
+
+env and run cmd
 
 ## Environment definition
 
@@ -8,9 +31,6 @@ TODO
 
 ```yaml
 referee: cg-winter-2024-sprawl
-
-min_agents: 2
-max_agents: 2
 
 agents:
   latest:
@@ -33,18 +53,24 @@ agents:
 > }
 > ```
 
-
 ## Referees
 
-The referee is the program that implements the game rules. It starts each of the agents and runs the game.
+The referee is the program that implements the game rules. It starts each of the agents and runs a match.
 
 
 ### Available referees
 
+For ease of use, some referees are already compiled and ready to be used in [referees/](referees/).
+
+> [!WARNING]
+> Running untrusted binaries (referees) is not safe, including the ones located at [referees/](referees/). I encourage you to build the referees yourself. You can find a reproducible script to build CodinGame referees inside the [referees/cg-builder](referees/cg-builder) folder.
+
 | Platform | Season | Contest | **Key** | Players |
 |----------|--------|---------|---------|-----------|
-| CodinGame | Winter 2024 | [Cellularena](https://www.codingame.com/contests/winter-challenge-2024) | `cg-winter-2024-sprawl` | 2 |
-| CodinGame | Fall 2023 | [Seabed Security](https://www.codingame.com/multiplayer/bot-programming/seabed-security) | `cg-fall-2023-fish` | 2 |
+| CodinGame | Winter 2024 | [Cellularena](https://www.codingame.com/contests/winter-challenge-2024) | **`cg-winter-2024-sprawl`** | 2 |
+| CodinGame | Fall 2023 | [Seabed Security](https://www.codingame.com/multiplayer/bot-programming/seabed-security) | **`cg-fall-2023-fish`** | 2 |
+
+If you want to add referee to the list, please open an issue. I will not merge PRs with binary files.
 
 ### Custom referee
 
@@ -82,3 +108,5 @@ Binaries give you one advantage though: you can share binaries with other people
 - [ ] Write `Database` to disk (something like `(time)-(info).arenadb`), then load to:
     - [ ] Resume tournament/optimization
     - [ ] Open UI to view results (`arena view xyz.arenadb`)
+    - or maybe have a more human readable format?
+
