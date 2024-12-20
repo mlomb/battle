@@ -6,6 +6,7 @@ use console::style;
 use current_platform::CURRENT_PLATFORM;
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::{path::PathBuf, process::Command};
 use tempfile::tempdir;
 
@@ -26,19 +27,22 @@ pub enum BuildError {
 
 pub trait SourceBuilder {
     /// Compiles the source code for the current platform (where the code is running) and returns an [`ExecutableCommand`]
-    fn build(&self) -> Result<ExecutableCommand, BuildError>;
+    fn build(&self, assets: HashMap<String, Vec<u8>>) -> Result<ExecutableCommand, BuildError>;
 }
 
 impl SourceBuilder for Source {
-    fn build(&self) -> Result<ExecutableCommand, BuildError> {
+    fn build(&self, assets: HashMap<String, Vec<u8>>) -> Result<ExecutableCommand, BuildError> {
         match self.language {
-            Language::Cpp => build_cpp(&self.code),
-            Language::Rust => build_rust(&self.code),
+            Language::Cpp => build_cpp(&self.code, assets),
+            Language::Rust => build_rust(&self.code, assets),
         }
     }
 }
 
-fn build_cpp(src: &String) -> Result<ExecutableCommand, BuildError> {
+fn build_cpp(
+    src: &String,
+    assets: HashMap<String, Vec<u8>>,
+) -> Result<ExecutableCommand, BuildError> {
     let temp_dir = tempdir()?;
     let src_path = temp_dir.path().join("main.cpp");
     let exe_path = temp_dir.path().join("main.exe");
@@ -64,10 +68,13 @@ fn build_cpp(src: &String) -> Result<ExecutableCommand, BuildError> {
     cmd.arg(format!("/Fo{}", obj_path.display().to_string()));
     cmd.arg(src_path);
 
-    execute_build_command(cmd, exe_path)
+    execute_build_command(cmd, exe_path, assets)
 }
 
-fn build_rust(src: &String) -> Result<ExecutableCommand, BuildError> {
+fn build_rust(
+    src: &String,
+    assets: HashMap<String, Vec<u8>>,
+) -> Result<ExecutableCommand, BuildError> {
     let temp_dir = tempdir()?;
     let toml_path = temp_dir.path().join("Cargo.toml");
     let src_path = temp_dir.path().join("main.rs");
@@ -85,12 +92,13 @@ fn build_rust(src: &String) -> Result<ExecutableCommand, BuildError> {
         .arg("--release")
         .current_dir(temp_dir.path());
 
-    execute_build_command(cmd, target_path)
+    execute_build_command(cmd, target_path, assets)
 }
 
 fn execute_build_command(
     mut build_command: Command,
     target_binary: PathBuf,
+    assets: HashMap<String, Vec<u8>>,
 ) -> Result<ExecutableCommand, BuildError> {
     info!(
         "Build command: {}",
@@ -100,7 +108,7 @@ fn execute_build_command(
     let output = build_command.output()?;
 
     if output.status.success() {
-        return ExecutableCommand::from_binary(target_binary)
+        return ExecutableCommand::from_binary(target_binary, assets)
             .map_err(|e| BuildError::CommandError(format!("{:?}", e)));
     } else {
         return Err(BuildError::CompilerErrored {

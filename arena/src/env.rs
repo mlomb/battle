@@ -9,7 +9,7 @@ use bundler::{
     BundlerArgs,
 };
 use serde::{Deserialize, Serialize};
-use std::{error::Error, path::PathBuf};
+use std::{collections::HashMap, error::Error, path::PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -98,34 +98,73 @@ impl EnvParser {
     }
 
     fn parse_agent(&self, name: &str, a: &Yaml) -> Result<Agent, EnvError> {
-        let parse_optional_path = |field: &str| -> Option<PathBuf> {
-            a[field]
-                .as_str()
-                .map(|path| PathBuf::from(path))
-                .map(|path| {
-                    if path.is_absolute() {
-                        path
-                    } else {
-                        self.env_path.parent().unwrap().join(path)
-                    }
-                })
-        };
+        let files = self.parse_agent_files(a)?;
+        let src = self.parse_src(&a["src"], name, &files)?;
+        let cmd = self.parse_cmd(&a["cmd"], name, &files)?;
 
-        let src = parse_optional_path("src");
-        let win_bin = parse_optional_path("win_bin");
-        let linux_bin = parse_optional_path("linux_bin");
-
-        let (s, w, l) = (src.is_some(), win_bin.is_some(), linux_bin.is_some());
-
-        // either src or win_bin/linux_bin must be provided
-        if (!s && !w && !l) || (s && (w || l)) {
+        if src.is_some() && cmd.is_some() {
             return Err(EnvError::BadAgent(format!(
-                "Agent '{}' must provide either 'src' or 'win_bin'/'linux_bin'",
+                "Agent '{}' cannot provide both 'src' and 'cmd'",
                 name
             )));
         }
 
-        let executable = if let Some(src_path) = src.as_ref() {
+        let executable = src.or(cmd).ok_or(EnvError::BadAgent(format!(
+            "Agent '{}' must provide either 'src' or 'cmd'",
+            name
+        )))?;
+
+        Ok(Agent::new(name, executable))
+    }
+
+    fn parse_path(&self, path: &Yaml) -> Option<PathBuf> {
+        path.as_str().map(|path| PathBuf::from(path)).map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                self.env_path.parent().unwrap().join(path)
+            }
+        })
+    }
+
+    fn parse_agent_files(&self, a: &Yaml) -> Result<HashMap<String, Vec<u8>>, EnvError> {
+        match &a["files"] {
+            Yaml::BadValue => Ok(HashMap::new()), // missing means empty
+            Yaml::Hash(linked_hash_map) => {
+                let files = linked_hash_map
+                    .iter()
+                    .map(|(name, path)| {
+                        let name = name
+                            .as_str()
+                            .ok_or(EnvError::BadAgent(format!("Invalid file name {:?}", name)))?
+                            .to_owned();
+                        let path = self
+                            .parse_path(path)
+                            .ok_or(EnvError::BadAgent(format!("Invalid file path {:?}", path)))?;
+
+                        let content = std::fs::read(&path).map_err(|_| {
+                            EnvError::BadAgent(format!("Failed to read file {:?}", path))
+                        })?;
+
+                        Ok((name, content))
+                    })
+                    .collect::<Result<_, EnvError>>()?;
+
+                Ok(files)
+            }
+            _ => Err(EnvError::BadAgent(
+                "Invalid 'files' field, expected mapping".to_owned(),
+            )),
+        }
+    }
+
+    fn parse_src(
+        &self,
+        src: &Yaml,
+        name: &str,
+        files: &HashMap<String, Vec<u8>>,
+    ) -> Result<Option<Executable>, EnvError> {
+        if let Some(src_path) = self.parse_path(src) {
             let source = if src_path.extension() == Some("rs".as_ref()) {
                 // we assume that Rust source is already bundled
                 std::fs::read_to_string(src_path.clone())
@@ -149,15 +188,73 @@ impl EnvParser {
                 bundle.source
             };
 
-            Executable::from_source(source)
+            Ok(Some(Executable::from_source(source, files.clone())))
         } else {
-            Executable::from_platform_command(
-                win_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
-                linux_bin.map(|path| ExecutableCommand::from_binary(path).unwrap()),
-            )
-        };
+            Ok(None)
+        }
+    }
 
-        Ok(Agent::new(name, executable))
+    fn parse_cmd(
+        &self,
+        cmd: &Yaml,
+        _name: &str,
+        files: &HashMap<String, Vec<u8>>,
+    ) -> Result<Option<Executable>, EnvError> {
+        match cmd {
+            Yaml::BadValue => Ok(None), // can be missing
+            Yaml::Hash(hash) => {
+                let parse_platform_cmd = |platform: &str| {
+                    hash.get(&Yaml::String(platform.to_owned()))
+                        .map(|cmd| self.parse_cmd_line(cmd))
+                        .transpose()?
+                        .map(|parts| ExecutableCommand::from_cmd(parts, files.clone()))
+                        .transpose()
+                        .map_err(|e| {
+                            EnvError::BadAgent(format!(
+                                "Failed to create {} command: {:?}",
+                                platform, e
+                            ))
+                        })
+                };
+
+                let windows = parse_platform_cmd("win")?;
+                let unix = parse_platform_cmd("unix")?;
+
+                Ok(Some(Executable::from_platform_command(windows, unix)))
+            }
+            Yaml::Array(_) => self.parse_cmd_line(cmd).and_then(|parts| {
+                ExecutableCommand::from_cmd(parts, files.clone())
+                    .map(Executable::from_command)
+                    .map(Some)
+                    .map_err(|e| {
+                        EnvError::BadAgent(format!("Failed to create generic command: {:?}", e))
+                    })
+            }),
+            _ => Err(EnvError::BadAgent(
+                "Invalid 'cmd' field, expected array".to_owned(),
+            )),
+        }
+    }
+
+    fn parse_cmd_line(&self, cmd: &Yaml) -> Result<Vec<String>, EnvError> {
+        if let Some(parts) = cmd.as_vec() {
+            parts
+                .iter()
+                .map(|part| match part {
+                    Yaml::Real(f) => Ok(f.clone()),
+                    Yaml::Integer(n) => Ok(n.to_string()),
+                    Yaml::String(s) => Ok(s.clone()),
+                    _ => Err(EnvError::BadField(format!(
+                        "Invalid command line part {:?}",
+                        part
+                    ))),
+                })
+                .collect()
+        } else {
+            return Err(EnvError::BadField(
+                "Invalid cmd line, expected array".to_owned(),
+            ));
+        }
     }
 
     fn parse_agent_number(&self, field: &str) -> Result<usize, EnvError> {

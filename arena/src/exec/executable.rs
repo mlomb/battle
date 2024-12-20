@@ -5,7 +5,7 @@ use super::{
 };
 use bundler::source::Source;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, process::Command};
+use std::{collections::HashMap, path::PathBuf, process::Command};
 
 /// An executable
 ///
@@ -25,6 +25,8 @@ pub enum Executable {
         source: Source,
         /// The compiled executable, lazily initialized when `command` is called.
         executable: Option<ExecutableCommand>,
+        /// Additional files required for execution
+        assets: HashMap<String, Vec<u8>>,
     },
 }
 
@@ -56,10 +58,11 @@ impl Executable {
         Executable::PlatformCommand { windows, unix }
     }
 
-    pub fn from_source(source: Source) -> Self {
+    pub fn from_source(source: Source, assets: HashMap<String, Vec<u8>>) -> Self {
         Executable::Source {
             source,
             executable: None,
+            assets,
         }
     }
 }
@@ -74,10 +77,18 @@ impl ToCommand for Executable {
                     .ok_or(ExecutableError::UnsupportedPlatform)?
                     .command()
             }
-            Executable::Source { executable, source } => {
+            Executable::Source {
+                executable,
+                source,
+                assets,
+            } => {
                 if executable.is_none() {
                     // build from source
-                    *executable = Some(source.build().map_err(ExecutableError::BuildFailed)?);
+                    *executable = Some(
+                        source
+                            .build(assets.clone())
+                            .map_err(ExecutableError::BuildFailed)?,
+                    );
                 }
                 // unwrap is safe because we just set it
                 executable.as_mut().unwrap().command()
