@@ -20,6 +20,8 @@ The arena crate allows automated testing of bots.
 - It has an interactive mode that guides you through the process of creating the tournament you want
 - Referees included and ready to be used
 
+Check out the [TODO list](#todo) for upcoming features.
+
 ## Usage
 
 Create an [environment file](#environment-definition) (`env.yaml`) in your project folder. Then run `arena` to be guided through the process of creating a tournament or jump to the [tournament section](#tournament).
@@ -183,6 +185,17 @@ arena tournament
 TODO! We must implement parameters in the bundler first
 
 ## FAQ
+
+<details>
+<summary>How is source code compiled?</summary>
+<br>
+
+**C++**: using the `cc` crate, that autodetects the MSVC/g++ compiler.  
+**Rust**: invoking `cargo build --release`.
+
+You may want to look at [source_builder.rs](./src/exec/source_builder.rs).
+
+</details>
 
 <details>
 <summary>Why make snapshots of code, instead of saving binaries?</summary>
