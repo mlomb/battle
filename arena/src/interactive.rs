@@ -57,7 +57,7 @@ pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
                 cmd.push(agent);
             }
 
-            prompt_runner(&mut cmd, &env);
+            prompt_runner(&mut cmd);
 
             // TODO: esta mal porque hay que elegir el pool de agents y no así
         }
@@ -133,7 +133,7 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     agents
 }
 
-fn prompt_runner(cmd: &mut Vec<String>, env: &Env) {
+fn prompt_runner(cmd: &mut Vec<String>) {
     enum RunOptions {
         Local,
         Network,
