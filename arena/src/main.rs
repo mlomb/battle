@@ -48,7 +48,7 @@ enum Commands {
 
         /// Number of threads to use for running games.
         /// Cannot be used with `network`.
-        /// If set to 0, the default will be the number of logical CPUs minus 2
+        /// If set to 0, the default will be the number of physical CPUs minus 2
         #[arg(long, group = "execution_mode", default_value = "0")]
         threads: usize,
 
@@ -60,7 +60,7 @@ enum Commands {
     /// Start a worker node to listen for games on the local P2P network
     Worker {
         /// Number of threads to allocate for the worker.
-        /// If set to 0, the default will be the number of logical CPUs minus 2
+        /// If set to 0, the default will be the number of physical CPUs minus 2
         #[arg(long, default_value = "0")]
         threads: usize,
     },

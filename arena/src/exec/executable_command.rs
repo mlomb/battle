@@ -44,12 +44,14 @@ impl ExecutableCommand {
     /// ```no_run
     /// Executable::from_prefix_file(
     ///     vec!["java".to_string(), "-jar".to_string()],
-    ///     PathBuf::from("main.jar")
+    ///     PathBuf::from("main.jar"),
+    ///     HashMap::new(),
     /// );
     /// ```
     pub fn from_prefix_file(
         command_prefix: Vec<String>,
         file: PathBuf,
+        assets: HashMap<String, Vec<u8>>,
     ) -> Result<Self, ExecutableError> {
         let filename = file
             .file_name()
@@ -60,7 +62,7 @@ impl ExecutableCommand {
         let content =
             std::fs::read(&file).map_err(|_| ExecutableError::FileNotFound(file.clone()))?;
 
-        let mut files = HashMap::new();
+        let mut files = assets.clone();
         files.insert(filename.clone(), content);
 
         Ok(Self {
@@ -81,12 +83,27 @@ impl ExecutableCommand {
                 "-jar".to_string(),
             ],
             jar_path,
+            HashMap::new(),
         )
     }
 
     /// Creates a new executable that runs a binary file (e.g. "main.exe")
-    pub fn from_binary(binary_path: PathBuf) -> Result<Self, ExecutableError> {
-        Self::from_prefix_file(vec![], binary_path)
+    pub fn from_binary(
+        binary_path: PathBuf,
+        assets: HashMap<String, Vec<u8>>,
+    ) -> Result<Self, ExecutableError> {
+        Self::from_prefix_file(vec![], binary_path, assets)
+    }
+
+    pub fn from_cmd(
+        command: Vec<String>,
+        files: HashMap<String, Vec<u8>>,
+    ) -> Result<Self, ExecutableError> {
+        Ok(Self {
+            command,
+            files,
+            tmp_workdir: None,
+        })
     }
 
     /// Initializes the temporal directory and writes the files to it

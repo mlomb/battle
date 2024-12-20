@@ -134,7 +134,7 @@ agents:
   pybot:
     cmd:
       win: ./bot.exe
-      linux: ./bot
+      unix: ./bot
     files:
       bot.exe: ./release/bot.exe
       bot: ./release/bot
