@@ -1,6 +1,6 @@
 # arena
 
-The arena allows automated testing of bots.
+The arena crate allows automated testing of bots.
 
 [GIF terminal]
 
@@ -28,7 +28,7 @@ Create an [environment file](#environment-definition) (`env.yaml`) in your proje
 
 An environment file (`env.yaml`) is a [YAML](https://yaml.org) file that defines [the referee](#referees) and [the agents](#agents) that will play the game.
 
-During a contest, you will add and remove agents from this file to test them against each other. Usually, you will snapshot your code each time you submit or make a big change to your bot. This can be done using the [bundler](../bundler) tool (e.g. `bundler --output versions/v15.cpp`).
+During a contest, you will add and remove agents from this file to test them against each other. Usually, you will snapshot your code each time you submit or make a big change to your bot. This can be done using the [bundler](../bundler) tool (e.g. `bundler --output versions/v3.cpp`).
 
 
  Take a look at the following `env.yaml` file:
@@ -39,13 +39,15 @@ referee: cg-winter-2024-sprawl
 agents:
   latest:
     src: main.cpp
-  v15:
-    src: versions/v15.cpp
-  other:
-    win_bin: other/other.exe
+  v3:
+    src: versions/v3.cpp
+  starterbot:
+    cmd: python starter.py
+    files:
+        starter.py: ../bots/starter.py
 ```
 
-In this example, three agents are defined, two by source code and one by an executable. The referee is selected by key from the [available referees](#available-referees). For more complex definitions, jump to the [referees section](#referees), or jump to the [agents section](#agents) .
+In this example, three agents are defined, two by source code and one by a custom command. The referee is selected by key from the [available referees](#available-referees). For more complex definitions, jump to the [referees section](#referees), or jump to the [agents section](#agents) .
 
 > [!NOTE]
 > If your IDE supports the [yaml-language-server](https://github.com/redhat-developer/yaml-language-server) (use the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) for VSCode), then you can enable schema validation by adding the following line at the top of the `env.yaml` file:
@@ -61,8 +63,7 @@ In this example, three agents are defined, two by source code and one by an exec
 
 ## Referees
 
-The referee is the program that implements the game rules. It starts each of the agents and runs a match.
-
+The referee is the program that implements the game rules. It follows a [protocol to communicate with the arena](./src/referee.rs#L16-L20), and a protocol to communicate with the agents that the agents must respect. It is responsible for starting the agent processes, running the game, and deciding the winner.
 
 ### Available referees
 
@@ -78,13 +79,11 @@ For ease of use, some referees are already compiled and ready to be used in [ref
 
 If you want to add referee to the list, please open an issue. I will not merge PRs with binary files.
 
-### Custom referee
+### Custom referees
 
-Currently, you can't specify 
+Currently, you can't specify custom referees. Eventually, the idea is that you can define a referee the same way you can define agents. After all, a referee is just a program like any other.
 
-Eventually, the idea is that you can define a referee the same way you can define agents.
-
-CG protocol
+You can add your own CodinGame JAR referees to the [referees/](referees/) folder and use them by specifying the key (file name) in the environment file.
 
 ## Agents
 
