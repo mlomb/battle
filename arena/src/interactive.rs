@@ -57,6 +57,8 @@ pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
                 cmd.push(agent);
             }
 
+            prompt_runner(&mut cmd, &env);
+
             // TODO: esta mal porque hay que elegir el pool de agents y no así
         }
         Options::Optimize => todo!(),
@@ -129,4 +131,52 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     }
 
     agents
+}
+
+fn prompt_runner(cmd: &mut Vec<String>, env: &Env) {
+    enum RunOptions {
+        Local,
+        Network,
+    }
+
+    impl Display for RunOptions {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                RunOptions::Local => write!(f, "Run on this machine (threaded)"),
+                RunOptions::Network => {
+                    write!(
+                        f,
+                        "Run on P2P nodes in the network {}",
+                        style("(requires running nodes)").bold().to_string()
+                    )
+                }
+            }
+        }
+    }
+
+    let runner = Select::new(
+        "Select where to run matches",
+        vec![RunOptions::Local, RunOptions::Network],
+    )
+    .prompt()
+    .expect("a runner to be selected");
+
+    match runner {
+        RunOptions::Local => {
+            // ask for the number of threads
+            let threads = inquire::Text::new("How many threads?")
+                .with_default("-1")
+                .with_help_message("Use -1 to use physical cores - 2")
+                .prompt()
+                .expect("a valid number")
+                .parse::<i32>()
+                .expect("a valid number");
+
+            cmd.push("--threads".to_owned());
+            cmd.push(threads.to_string());
+        }
+        RunOptions::Network => cmd.push("--network".to_owned()),
+    }
+
+    println!("Selected runner: {}", runner);
 }
