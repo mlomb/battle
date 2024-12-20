@@ -22,6 +22,8 @@ cargo install --path cgsync
 cargo install --path arena
 ```
 
+To update, pull the latest changes and run the commands again.
+
 # Example workflow
 
 This section explains the _expected/recommended_ workflow to use the tools. For more information and complex use cases, refer to the READMEs of each tool.
@@ -70,4 +72,4 @@ arena tournament --format round-robin -a latest -a v1
 </details>
 
 > [!NOTE]
-> To use the `arena` command to test your bot, make sure a referee is available (see [arena/README.md](arena/README.md#available-referees)). TLDR, you have to wait until I push a build of the referee (and trust me) or build it yourself.
+> To use the `arena` command to test your bot, make sure a referee is available (see [arena/ENV.md](arena/ENV.md#available-referees)). TLDR, you have to wait until I push a build of the referee (and trust me) or build it yourself.
