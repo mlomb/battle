@@ -51,9 +51,7 @@ _In the future, you will be able to define parameters in the code and testing wi
 
 6. Once you have multiple snapshots (versions or features), create a new **arena environment file** named `env.yaml` in the project folder. For example:  
 ```yml
-referee: cg-2023-fall-fish # make sure to use the correct referee (read note below)
-min_agents: 2 # and the correct number of agents per game
-max_agents: 2
+referee: cg-fall-2023-fish # make sure to use the correct referee (read note below)
 
 agents:
   latest: # name of the agent
@@ -72,4 +70,4 @@ arena tournament --format round-robin -a latest -a v1
 </details>
 
 > [!NOTE]
-> To use the `arena` command to test your bot, make sure a referee is available (see [arena/README.md](arena)). TLDR, you have to wait until I push a build of the referee (and trust me) or build it yourself.
+> To use the `arena` command to test your bot, make sure a referee is available (see [arena/README.md](arena/README.md#available-referees)). TLDR, you have to wait until I push a build of the referee (and trust me) or build it yourself.
