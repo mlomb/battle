@@ -36,6 +36,9 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Print all the information from the environment file.
+    /// This lets you check that the environment file is being read as you expect.
+    Env,
     /// Execute a tournament with the specified configuration
     Tournament {
         /// Specifies the tournament format to use
@@ -101,7 +104,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             };
 
             match command {
-                Commands::Worker { .. } => unreachable!(),
+                Commands::Env {} => println!("{}", env),
+                Commands::Worker { .. } => unreachable!(), // handled above without reading an env
                 Commands::Tournament {
                     format,
                     agent,

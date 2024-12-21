@@ -1,5 +1,4 @@
-use crate::exec::command::CommandExt;
-
+use super::command::CommandExt;
 use super::executable_command::ExecutableCommand;
 use bundler::source::{Language, Source};
 use console::style;

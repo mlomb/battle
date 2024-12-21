@@ -5,7 +5,7 @@ use super::{
 };
 use bundler::source::Source;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, process::Command};
+use std::{collections::HashMap, fmt::Display, path::PathBuf, process::Command};
 
 /// An executable
 ///

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{path::Path, process::Command};
+use std::{fmt::Display, path::Path, process::Command};
 
 use crate::exec::{
     command::{CommandExt, ToCommand},
@@ -24,10 +24,10 @@ pub enum Protocol {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Referee {
     /// The protocol used by the referee
-    protocol: Protocol,
+    pub protocol: Protocol,
 
     /// The path to the referee executable
-    exe: Executable,
+    pub exe: Executable,
 
     /// The minimum number of agents required by the referee
     pub min_agents: usize,
@@ -52,8 +52,8 @@ impl Referee {
             "cg-fall-2023-fish" => (2, 2),
             "cg-winter-2024-sprawl" => (2, 2),
             _ => {
-                log::warn!("Referee preset available '{}', but min/max agents is unknown. Assuming min=2, max=4.", preset.to_string());
-                (2, 4)
+                log::warn!("Referee file available '{}', but min/max agents is unknown. Assuming min=max=2.", preset.to_string());
+                (2, 2)
             }
         };
 

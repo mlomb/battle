@@ -10,6 +10,7 @@ pub struct Agent {
     /// The name of the agent
     pub name: String,
 
+    /// The executable that runs the agent
     pub executable: Executable,
 }
 

@@ -159,7 +159,14 @@ impl fmt::Debug for ExecutableCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Executable")
             .field("command", &self.command)
-            .field("files", &self.files.keys())
+            .field(
+                "files",
+                &self
+                    .files
+                    .iter()
+                    .map(|(name, content)| format!("{}: {} bytes", name, content.len()))
+                    .collect::<Vec<_>>(),
+            )
             .field("tmp_workdir", &self.tmp_workdir)
             .finish()
     }
