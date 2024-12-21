@@ -23,33 +23,43 @@ pub struct Tournament {
 }
 
 impl Tournament {
-    pub fn new(format: Format, agents: Vec<Vec<String>>) -> Self {
+    pub fn new(format: Format, agents: Vec<String>, min_agents: usize, max_agents: usize) -> Self {
         let cycle_matches = match format {
             Format::RoundRobin => {
-                let mut matches = vec![GameSetup::new()];
+                let mut matches = vec![];
+                let mut matches_accum = vec![GameSetup::new()];
+
+                assert!(min_agents == 2, "Implement for more than 2 agents :)");
+                assert!(max_agents == 2, "Implement for more than 2 agents :)");
 
                 // for each player slot (player 0, player 1, ...)
-                for p in 0..agents.len() {
+                for p in 1..=max_agents {
                     // copy matches with fixed number of slots
-                    let previous_matches = matches.clone();
+                    let previous_matches = matches_accum.clone();
                     // clear matches
-                    matches.clear();
+                    matches_accum.clear();
 
-                    // for each agent option (agent 0, agent 1, ...)
-                    for i in 0..agents[p].len() {
+                    // for each agent option
+                    for next_agent in &agents {
                         // copy all previous matches and add the new agent to the end
                         for match_setup in &previous_matches {
-                            matches.push(match_setup.clone().with_agent(agents[p][i].clone()));
+                            if !match_setup.agents.iter().any(|a| &a.name == next_agent) {
+                                matches_accum
+                                    .push(match_setup.clone().with_agent(next_agent.clone()));
+                            }
                         }
+                    }
+
+                    if p >= min_agents && p <= max_agents {
+                        matches.append(&mut matches_accum.clone());
                     }
                 }
 
                 // shuffle for fun
                 matches.shuffle(&mut rand::thread_rng());
-
                 matches
             }
-            Format::Gauntlet => (0..1).map(|i| GameSetup::new()).collect(),
+            Format::Gauntlet => todo!(),
             Format::Matchmaking => todo!(),
         };
         Self {

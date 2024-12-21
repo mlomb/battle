@@ -47,7 +47,7 @@ enum Commands {
 
         /// List of agents participating in the tournament
         #[arg(short, long)]
-        agent: Vec<String>, // ["agent1,agent2", "agent1,agent3"]
+        agent: Vec<String>,
 
         /// Number of threads to use for running games.
         /// Cannot be used with `network`.
@@ -114,10 +114,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 } => {
                     let mut tournament = Tournament::new(
                         format,
-                        agent
-                            .into_iter()
-                            .map(|a| a.split(',').map(|s| s.to_string()).collect())
-                            .collect(),
+                        agent,
+                        env.referee.min_agents,
+                        env.referee.max_agents,
                     );
                     let mut database = Database::new();
 
