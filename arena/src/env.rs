@@ -267,6 +267,11 @@ impl Env {
     pub fn get_agent<T: ToString>(&mut self, name: T) -> Option<&mut Agent> {
         self.agents.iter_mut().find(|a| a.name == name.to_string())
     }
+
+    /// Get a list of the available agents
+    pub fn get_agent_names(&self) -> Vec<String> {
+        self.agents.iter().map(|a| a.name.clone()).collect()
+    }
 }
 
 impl Display for Env {

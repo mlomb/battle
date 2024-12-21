@@ -1,6 +1,6 @@
 use crate::{env::Env, tournament};
 use console::style;
-use inquire::{Confirm, Select};
+use inquire::{Confirm, MultiSelect, Select};
 use std::{
     fmt::{Display, Formatter},
     path::PathBuf,
@@ -52,12 +52,12 @@ pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
                 tournament::Format::Matchmaking => todo!(),
             });
 
-            for agent in prompt_agents(&env) {
+            for agent in prompt_multi_agents(&env) {
                 cmd.push("-a".to_owned());
                 cmd.push(agent);
             }
 
-            prompt_runner(&mut cmd);
+            prompt_execution_mode(&mut cmd);
 
             // TODO: esta mal porque hay que elegir el pool de agents y no así
         }
@@ -101,7 +101,7 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     let mut agents = vec![];
 
     for i in 0..env.referee.max_agents {
-        let mut options: Vec<String> = env.agents.iter().map(|agent| agent.name.clone()).collect();
+        let mut options: Vec<String> = env.get_agent_names();
         assert!(options.len() > 0);
 
         // the user may be confused by this
@@ -133,17 +133,24 @@ fn prompt_agents(env: &Env) -> Vec<String> {
     agents
 }
 
-fn prompt_runner(cmd: &mut Vec<String>) {
-    enum RunOptions {
+fn prompt_multi_agents(env: &Env) -> Vec<String> {
+    MultiSelect::new("Select agents", env.get_agent_names())
+        .with_help_message("Use space to select, enter to confirm")
+        .prompt()
+        .expect("agents to be selected")
+}
+
+fn prompt_execution_mode(cmd: &mut Vec<String>) {
+    enum ExecutionMode {
         Local,
         Network,
     }
 
-    impl Display for RunOptions {
+    impl Display for ExecutionMode {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
             match self {
-                RunOptions::Local => write!(f, "Run on this machine (threaded)"),
-                RunOptions::Network => {
+                ExecutionMode::Local => write!(f, "Run on this machine (threaded)"),
+                ExecutionMode::Network => {
                     write!(
                         f,
                         "Run on P2P nodes in the network {}",
@@ -156,13 +163,13 @@ fn prompt_runner(cmd: &mut Vec<String>) {
 
     let runner = Select::new(
         "Select where to run matches",
-        vec![RunOptions::Local, RunOptions::Network],
+        vec![ExecutionMode::Local, ExecutionMode::Network],
     )
     .prompt()
     .expect("a runner to be selected");
 
     match runner {
-        RunOptions::Local => {
+        ExecutionMode::Local => {
             // ask for the number of threads
             let threads = inquire::Text::new("How many threads?")
                 .with_default("-1")
@@ -175,7 +182,7 @@ fn prompt_runner(cmd: &mut Vec<String>) {
             cmd.push("--threads".to_owned());
             cmd.push(threads.to_string());
         }
-        RunOptions::Network => cmd.push("--network".to_owned()),
+        ExecutionMode::Network => cmd.push("--network".to_owned()),
     }
 
     println!("Selected runner: {}", runner);
