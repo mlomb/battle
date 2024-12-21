@@ -10,7 +10,7 @@ pub enum Format {
     RoundRobin,
     /// The first agent plays against every other agent
     Gauntlet,
-    /// ASD
+    /// NOT IMPLEMENTED YET
     Matchmaking,
 }
 

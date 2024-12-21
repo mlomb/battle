@@ -8,8 +8,9 @@ use bundler::{
     source::{Language, Source},
     BundlerArgs,
 };
+use console::style;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, error::Error, path::PathBuf};
+use std::{collections::HashMap, error::Error, fmt::Display, path::PathBuf};
 use yaml_rust2::{Yaml, YamlLoader};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -265,5 +266,27 @@ impl Env {
 
     pub fn get_agent<T: ToString>(&mut self, name: T) -> Option<&mut Agent> {
         self.agents.iter_mut().find(|a| a.name == name.to_string())
+    }
+}
+
+impl Display for Env {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", style("Referee").bold())?;
+        writeln!(f, "  protocol: {:?}", self.referee.protocol)?;
+        writeln!(f, "  executable: {:?}", self.referee.exe)?;
+        writeln!(f, "  min_agents: {}", self.referee.min_agents)?;
+        writeln!(f, "  max_agents: {}", self.referee.max_agents)?;
+        writeln!(f, "")?;
+
+        for agent in &self.agents {
+            writeln!(
+                f,
+                "{}({})",
+                style("Agent").bold(),
+                style(agent.name.clone()).yellow()
+            )?;
+            writeln!(f, "  executable: {:?}", agent.executable)?;
+        }
+        Ok(())
     }
 }
