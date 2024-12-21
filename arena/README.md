@@ -100,4 +100,3 @@ Note that by default, `--threads` has a value of `0`, which means it will use th
     - [ ] Open UI to view results (`arena view xyz.arenadb`)
     - or maybe have a more human readable format?
 - [ ] Add `--players` flag to control how many players should play in a match. `min_players <= players <= max_players`
-- [ ] Add a command to inspect the .env file
