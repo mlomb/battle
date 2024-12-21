@@ -30,6 +30,8 @@ pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
         .expect("a valid option")
     {
         Options::SingleMatch => {
+            todo!("Single match not implemented yet");
+
             cmd.push("tournament".to_owned());
 
             for agent in prompt_agents(&env) {
@@ -56,13 +58,11 @@ pub fn build_command_interactive(env_file: PathBuf, env: &Env) -> Vec<String> {
                 cmd.push("-a".to_owned());
                 cmd.push(agent);
             }
-
-            prompt_execution_mode(&mut cmd);
-
-            // TODO: esta mal porque hay que elegir el pool de agents y no así
         }
         Options::Optimize => todo!(),
     }
+
+    prompt_execution_mode(&mut cmd);
 
     // print final command
     println!("\n    {}\n", style("Command:").cyan().bold());
