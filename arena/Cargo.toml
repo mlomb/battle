@@ -23,6 +23,7 @@ console = "0.15.8"
 env_logger = "0.11.5"
 log = "0.4.22"
 num_cpus = "1.16.0"
+tabled = "0.17.0"
 
 [target.'cfg(unix)'.dependencies]
 pidfd = "0.2.4"
