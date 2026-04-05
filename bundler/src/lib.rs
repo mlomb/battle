@@ -24,7 +24,6 @@ use std::{
 pub struct BundlerArgs {
     /// Entry point file (main.cpp, Cargo.toml) or directory containing an entry file.
     /// If not provided, it will find an appropiate entry point in the current folder.
-    #[arg(long)]
     entry: Option<PathBuf>,
     // TODO: add flags: remove comments, etc
 }

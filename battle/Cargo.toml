@@ -1,0 +1,10 @@
+[package]
+name = "battle"
+description = "Battlestation CLI for bot contests"
+author = "mlomb"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.19", features = ["derive"] }
+bundler = { path = "../bundler" }
