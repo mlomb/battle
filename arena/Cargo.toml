@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-child_wait_timeout = "0.1.0"
+wait-timeout = "0.2"
 clap = { version = "4.5.19", features = ["derive"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = { version = "1.0.210", features = ["serde_derive"] }
@@ -24,6 +24,3 @@ env_logger = "0.11.5"
 log = "0.4.22"
 num_cpus = "1.16.0"
 tabled = "0.17.0"
-
-[target.'cfg(unix)'.dependencies]
-pidfd = "0.2.4"

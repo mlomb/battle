@@ -1,10 +1,10 @@
-use child_wait_timeout::ChildWT;
 use serde::{Deserialize, Serialize};
 use std::{
-    io::{BufRead, BufReader, ErrorKind, Read},
+    io::{BufRead, BufReader, Read},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
+use wait_timeout::ChildExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Status {
@@ -39,7 +39,19 @@ impl Execute for Command {
             .spawn()
             .expect("failed to execute process");
 
-        let status = child.wait_timeout(timeout);
+        let status = match child.wait_timeout(timeout) {
+            Ok(Some(exit_status)) => match exit_status.code() {
+                Some(code) => Status::Exited(code),
+                None => Status::Exited(-1),
+            },
+            Ok(None) => {
+                child.kill().ok();
+                child.wait().ok();
+                Status::Timeout
+            }
+            Err(io_err) => Status::IoError(io_err.to_string()),
+        };
+        
         let duration = start.elapsed();
 
         let stdout = read_pipe_lines(child.stdout);
@@ -54,15 +66,6 @@ impl Execute for Command {
             .filter(|l| !l.starts_with("WARNING:"))
             .collect::<Vec<&str>>()
             .join("\n");
-
-        let status = match status {
-            Ok(exit_status) => match exit_status.code() {
-                Some(code) => Status::Exited(code),
-                None => Status::Exited(-1),
-            },
-            Err(io_err) if io_err.kind() == ErrorKind::TimedOut => Status::Timeout,
-            Err(io_err) => Status::IoError(io_err.to_string()),
-        };
 
         ExecutionResult {
             status,
