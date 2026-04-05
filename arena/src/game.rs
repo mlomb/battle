@@ -81,7 +81,7 @@ pub fn run_game(env: Arc<Mutex<Env>>, setup: GameSetup) -> GameResult {
             .enumerate()
             .map(|(i, a)| GameAgentResult {
                 agent: a.clone(),
-                score: scores[i],
+                score: scores.get(i).copied().unwrap_or_default(),
             })
             .collect(),
         r: result,

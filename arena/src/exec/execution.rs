@@ -26,6 +26,8 @@ pub struct ExecutionResult {
 
 pub trait Execute {
     /// Executes the command and waits for it to finish or the timeout to expire.
+    ///
+    /// We do not return `Result` because we want to capture stdio in case of errors.
     fn execute(&mut self, timeout: Duration) -> ExecutionResult;
 }
 
@@ -33,11 +35,17 @@ impl Execute for Command {
     fn execute(&mut self, timeout: Duration) -> ExecutionResult {
         let start = Instant::now();
 
-        let mut child = self
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("failed to execute process");
+        let mut child = match self.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+            Ok(child) => child,
+            Err(io_err) => {
+                return ExecutionResult {
+                    status: Status::IoError(io_err.to_string()),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    duration: Duration::from_secs(0),
+                };
+            }
+        };
 
         let status = match child.wait_timeout(timeout) {
             Ok(Some(exit_status)) => match exit_status.code() {
@@ -60,7 +68,6 @@ impl Execute for Command {
         // Temporal fix!
         let stdout = stdout
             .split("\n")
-            .into_iter()
             .collect::<Vec<&str>>()
             .into_iter()
             .filter(|l| !l.starts_with("WARNING:"))
