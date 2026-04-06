@@ -8,3 +8,7 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.19", features = ["derive"] }
 bundler = { path = "../bundler" }
+console = { version = "0.16.3", default-features = false, features = ["ansi-parsing", "std"] }
+tempfile = "3.27.0"
+build-fs-tree = "0.8.1"
+serde = "1.0.228"
