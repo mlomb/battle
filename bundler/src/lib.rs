@@ -44,6 +44,7 @@ pub struct Bundle {
     pub params: HashMap<String, Parameter>,
 
     /// All relevant files used to create the bundle (and should be watched)
+    // TODO: change to just files, since not every file might be source code
     pub src_files: HashSet<PathBuf>,
 }
 

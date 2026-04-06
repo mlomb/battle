@@ -1,7 +1,31 @@
-use std::path::PathBuf;
+mod builder;
+
+use std::{collections::HashMap, path::PathBuf};
 
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
+use console::{Emoji, style};
+
+use crate::builder::BuildError;
+
+struct Target {
+    command: String,
+    assets: HashMap<String, Vec<u8>>,
+}
+
+struct Referee {
+    // protocol
+    exec: Target,
+    // min, max
+}
+
+static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍  ", "");
+static TRUCK: Emoji<'_, '_> = Emoji("🚚  ", "");
+static CLIP: Emoji<'_, '_> = Emoji("🔗  ", "");
+static PAPER: Emoji<'_, '_> = Emoji("📃  ", "");
+static SPARKLE: Emoji<'_, '_> = Emoji("✨ ", ":-)");
+static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
+static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
 
 #[derive(Subcommand, Debug)]
 enum Commands {
@@ -18,9 +42,9 @@ enum Commands {
 
     /// Build a project into a binary
     Build {
-        /// Entrypoint file (main.cpp, Cargo.toml) or directory containing an entry file.
-        #[arg(short, long)]
-        entrypoint: String,
+        #[clap(flatten)]
+        bundler_args: BundlerArgs,
+        // TODO: output binary
         // TODO: platform, architecture, etc
     },
 
@@ -99,7 +123,31 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        Commands::Build { entrypoint } => todo!(),
+        Commands::Build { bundler_args } => {
+            println!("{} {}Bundling project...", style("[1/2]").bold().dim(), BOX);
+
+            let bundle = bundle(&bundler_args).expect("correct bundle");
+
+            println!("  OK {} bytes", bundle.source.code.len());
+
+            println!(
+                "{} {}Building binary...",
+                style("[2/2]").bold().dim(),
+                BUILDING
+            );
+
+            match builder::build_cpp(&bundle.source.code, HashMap::new()) {
+                Ok(executable) => println!("  OK: {:?}", executable),
+                Err(BuildError::MissingCompiler(e)) => {
+                    eprintln!("Missing compiler: {}", e);
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
         Commands::Play { agent } => todo!(),
         Commands::MCP { protocol } => todo!(),
         Commands::Env => todo!(),
@@ -110,6 +158,4 @@ fn main() {
         } => todo!(),
         Commands::Worker { threads } => todo!(),
     }
-
-    println!("Hello, world!");
 }
