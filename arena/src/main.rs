@@ -13,9 +13,10 @@ pub mod worker_pool;
 use clap::{Parser, Subcommand};
 use console::style;
 use database::Database;
-use distributed_channel::{start_consumer_node, NodeSetup};
+use distributed_channel::{start_consumer_node, NodeSetup, TargetId};
 use env::{Env, EnvError};
 use game::{run_game, GameResult, GameSetup};
+use std::sync::{Arc, Mutex};
 use interactive::build_command_interactive;
 use log::{error, info, LevelFilter};
 use std::error::Error;
@@ -80,9 +81,31 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut setup = NodeSetup::default();
     setup.protocol = "/mlomb/bot-tools/arena/1".to_string();
 
+    // TODO: rework for the new target registration protocol
     if let Some(Commands::Worker { threads }) = args.command {
         info!("Starting worker node...");
-        start_consumer_node::<Env, GameSetup, GameResult>(setup, get_threads(threads), run_game);
+
+        let env_store: Arc<Mutex<Option<Env>>> = Default::default();
+
+        let store = env_store.clone();
+        let on_target = move |_id: TargetId, env: Env| -> Result<(), String> {
+            *store.lock().unwrap() = Some(env);
+            Ok(())
+        };
+
+        let store = env_store;
+        let on_work = move |game: GameSetup| -> GameResult {
+            let env = store.lock().unwrap().clone().expect("env target not set");
+            let env = Arc::new(Mutex::new(env));
+            run_game(env, game)
+        };
+
+        start_consumer_node::<Env, GameSetup, GameResult>(
+            setup,
+            get_threads(threads),
+            on_target,
+            on_work,
+        );
         return Ok(());
     }
 

@@ -1,7 +1,6 @@
 [package]
 name = "battle"
 description = "Battlestation CLI for bot contests"
-author = "mlomb"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,9 +10,17 @@ bundler = { path = "../bundler" }
 console = { version = "0.16.3", default-features = false, features = ["ansi-parsing", "std"] }
 tempfile = "3.27.0"
 build-fs-tree = "0.8.1"
-serde = "1.0.228"
-distributed-channel = { git = "https://github.com/mlomb/distributed-channel.git" }
+serde = { version = "1.0.228", features = ["serde_derive"] }
 num_cpus = "1.17.0"
 env_logger = "0.11.10"
 log = "0.4.29"
-crossbeam-channel = "0.5.15"
+tokio-tungstenite = "0.29.0"
+futures-util = { version = "0.3.32", features = ["sink"] }
+blake3 = "1.8.4"
+async-channel = "2.5.0"
+anyhow = "1.0.102"
+rand = "0.10.0"
+if-addrs = "0.15.0"
+swarm-discovery = "0.5.0"
+postcard = { version = "1.1.3", features = ["alloc"] }
+tokio = { version = "1.51.1", features = ["io-std", "io-util", "macros", "rt-multi-thread", "sync", "net", "signal"] }
