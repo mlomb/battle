@@ -16,7 +16,7 @@ cc = "1.1.37"
 tempfile = "3.14.0"
 current_platform = "0.2.0"
 bundler = { path = "../bundler" }
-distributed-channel = { git = "https://github.com/mlomb/distributed-channel.git" }
+distributed-channel = { path = "/Users/mlomb/distributed-channel" }
 inquire = "0.7.5"
 yaml-rust2 = "0.9.0"
 console = "0.15.8"

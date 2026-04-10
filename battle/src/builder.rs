@@ -12,19 +12,22 @@ pub enum ExecutableKind {
         /// The path to the executable file
         executable_path: PathBuf,
     },
+    Jar {
+        /// The path to the JAR file
+        jar_path: PathBuf,
+    },
     Python,
-    Jar,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Executable {
     /// The kind of executable
-    kind: ExecutableKind,
+    pub kind: ExecutableKind,
 
     /// The files required for the execution of the executable
     ///
     /// Usually, binaries or source code.
-    files: HashMap<PathBuf, Vec<u8>>,
+    pub files: HashMap<PathBuf, Vec<u8>>,
 }
 
 impl std::fmt::Debug for Executable {
@@ -83,7 +86,7 @@ pub fn build_cpp(
     let target = format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS);
 
     // NOTE: if target is not specified, some symbols will fail to resolve in Apple Silicon
-    let status = Command::new("zig")
+    let output = Command::new("zig")
         .args([
             "c++",
             "-O3",
@@ -96,17 +99,21 @@ pub fn build_cpp(
         ])
         .arg(&out_path)
         .arg(&src_path)
-        .status();
+        .output();
 
-    let status = status.map_err(|e| match e.kind() {
+    let output = output.map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => BuildError::MissingCompiler(
             "zig executable was not found, make sure it is in your PATH. Zig is used for C++ cross-compilation, please install it from https://ziglang.org/learn/getting-started/#managers".to_string(),
         ),
         _ => BuildError::IoError(format!("failed to invoke zig c++: {}", e)),
     })?;
 
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
+    if !output.status.success() {
+        return Err(BuildError::CompilerErrored {
+            exit_code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
     }
 
     files.insert(PathBuf::from("main"), std::fs::read(&out_path).unwrap());
@@ -192,6 +199,33 @@ rand = "0.8.5"
 regex = "1.8.4"
 time = "0.3.22"
 "#;
+
+impl std::fmt::Display for BuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BuildError::MissingCompiler(e) => write!(f, "Missing compiler: {}", e),
+            BuildError::CompilerErrored {
+                exit_code,
+                stdout,
+                stderr,
+            } => {
+                write!(f, "Compilation failed")?;
+                if let Some(code) = exit_code {
+                    write!(f, " (exit code {})", code)?;
+                }
+                if !stderr.is_empty() {
+                    write!(f, "\n{}", stderr)?;
+                }
+                if !stdout.is_empty() {
+                    write!(f, "\n{}", stdout)?;
+                }
+                Ok(())
+            }
+            BuildError::CommandError(e) => write!(f, "Command error: {}", e),
+            BuildError::IoError(e) => write!(f, "IO error: {}", e),
+        }
+    }
+}
 
 impl From<std::io::Error> for BuildError {
     fn from(e: std::io::Error) -> Self {

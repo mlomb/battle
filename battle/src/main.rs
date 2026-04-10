@@ -1,32 +1,20 @@
 mod builder;
+mod network;
+mod types;
 
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
-use distributed_channel::{NodeSetup, start_consumer_node};
-use log::{LevelFilter, error, info};
-use serde::{Deserialize, Serialize};
+use log::{LevelFilter, info};
+use network::{ProducerHandle, TargetId, WorkerNode};
 
-use crate::builder::BuildError;
+use crate::builder::{BuildError, Executable, ExecutableKind};
+use crate::types::{GameResult, GameSetup, Target};
 
-struct Target {
-    command: String,
-    assets: HashMap<String, Vec<u8>>,
-}
-
-struct Referee {
-    // protocol
-    exec: Target,
-    // min, max
-}
-
-static LOOKING_GLASS: Emoji<'_, '_> = Emoji("🔍  ", "");
-static TRUCK: Emoji<'_, '_> = Emoji("🚚  ", "");
-static CLIP: Emoji<'_, '_> = Emoji("🔗  ", "");
-static PAPER: Emoji<'_, '_> = Emoji("📃  ", "");
-static SPARKLE: Emoji<'_, '_> = Emoji("✨ ", ":-)");
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
 
@@ -92,29 +80,45 @@ struct Args {
     env: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct GameEnv {}
+fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildError> {
+    info!(
+        "{} {}Bundling project... {}",
+        style("[1/2]").bold().dim(),
+        BOX,
+        bundler_args.entry.clone().unwrap().to_string_lossy()
+    );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct GameSetup {
-    agent: String,
-}
+    let bundle = bundle(&bundler_args).expect("correct bundle");
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct GameResult {
-    result: Result<String, String>,
+    info!("  OK {} bytes", bundle.source.code.len());
+
+    info!(
+        "{} {}Building binary...",
+        style("[2/2]").bold().dim(),
+        BUILDING
+    );
+
+    match builder::build_cpp(&bundle.source.code, HashMap::new()) {
+        Ok(executable) => Ok(executable),
+        Err(BuildError::MissingCompiler(e)) => {
+            eprintln!("Missing compiler: {}", e);
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn main() {
     env_logger::Builder::new()
-        .filter_module("distributed_channel", LevelFilter::Trace)
         .filter_module("battle", LevelFilter::Trace)
         .init();
 
     let args = Args::parse();
 
-    let mut setup = NodeSetup::default();
-    setup.protocol = "/mlomb/bot-tools/battle/1".to_string();
+    let protocol = "/mlomb/bot-tools/battle/1";
 
     match args.command {
         Commands::Bundle {
@@ -134,33 +138,12 @@ fn main() {
             }
         },
         Commands::Build { bundler_args } => {
-            info!("{} {}Bundling project...", style("[1/2]").bold().dim(), BOX);
-
-            let bundle = bundle(&bundler_args).expect("correct bundle");
-
-            info!("  OK {} bytes", bundle.source.code.len());
-
-            info!(
-                "{} {}Building binary...",
-                style("[2/2]").bold().dim(),
-                BUILDING
-            );
-
-            match builder::build_cpp(&bundle.source.code, HashMap::new()) {
-                Ok(executable) => println!("  OK: {:?}", executable),
-                Err(BuildError::MissingCompiler(e)) => {
-                    eprintln!("Missing compiler: {}", e);
-                    std::process::exit(1);
-                }
-                Err(e) => {
-                    eprintln!("Error: {:?}", e);
-                    std::process::exit(1);
-                }
-            }
+            let exec = bundle_and_build(bundler_args).expect("correct bundle and build");
+            println!("  OK: {:?}", exec);
         }
         Commands::Worker {
             mut threads,
-            interface,
+            interface: _,
         } => {
             info!("Starting worker node...");
 
@@ -170,47 +153,69 @@ fn main() {
 
             info!("Using {}", style(format!("{} threads", threads)).cyan());
 
-            start_consumer_node::<GameEnv, GameSetup, GameResult>(
-                setup,
-                threads,
-                |env, game_setup| {
-                    info!("Game setup: {:?}", game_setup);
-                    GameResult {
-                        result: Ok(format!("game result for {}", game_setup.agent)),
-                    }
-                },
-            );
+            WorkerNode::new(protocol, threads).wait();
         }
         Commands::Play { agent } => {
             info!("Using a networked worker pool");
 
-            let (node, input_tx, output_rx) =
-                setup.into_producer::<GameEnv, GameSetup, GameResult>(GameEnv {});
+            let producer = ProducerHandle::<Target, GameSetup, GameResult>::new(protocol);
 
-            let mut i = 0;
+            // Register referee target
+            let referee_target = Target::Executable(Executable {
+                kind: ExecutableKind::Jar {
+                    jar_path: PathBuf::from("referee.jar"),
+                },
+                files: HashMap::from([(
+                    PathBuf::from("referee.jar"),
+                    include_bytes!("../../arena/referees/cg-spring-2024-olympics.jar").to_vec(),
+                )]),
+            });
+            let referee_id = producer.register_target(referee_target);
+            info!("Registered referee target {:016x}", referee_id);
 
+            // Register agent targets
+            let agent_ids: Vec<TargetId> = agent
+                .iter()
+                .map(|path| {
+                    let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(path)))
+                        .expect("correct bundle")
+                        .source
+                        .clone();
+                    let id = producer.register_target(Target::SourceCode(source));
+                    info!("Registered agent target {:016x} from {}", id, path);
+                    id
+                })
+                .collect();
+
+            let producer = Arc::new(producer);
+
+            // Watch for target build errors
+            let producer_err = producer.clone();
+            std::thread::spawn(move || {
+                while let Some((_id, error)) = producer_err.recv_error() {
+                    eprintln!("\n{} {}", style("Build error:").red().bold(), error);
+                    std::process::exit(1);
+                }
+            });
+
+            // Receive results in background
+            let producer_bg = producer.clone();
+            std::thread::spawn(move || {
+                while let Some(result) = producer_bg.recv_result() {
+                    info!("Result: {:?}", result);
+                }
+            });
+
+            // Send games
             loop {
                 let game_setup = GameSetup {
-                    agent: format!("pepe{}", i),
+                    referee_id,
+                    agent_ids: agent_ids.clone(),
+                    seed: 0, // TODO: generate random seeds
                 };
-                i += 1;
-
-                let result = crossbeam_channel::select! {
-                    recv(output_rx) -> res => res.ok(),
-                    send(input_tx, game_setup.clone()) -> _ => None,
-                };
-                match result {
-                    Some(result) => {
-                        info!("Result: {:?}", result);
-                    }
-                    None => {
-                        // sent!
-                    }
-                }
-
-                std::thread::sleep(Duration::from_millis(10));
+                producer.send_work(game_setup);
             }
         }
-        Commands::MCP { protocol } => todo!(),
+        Commands::MCP { protocol: _ } => todo!(),
     }
 }
