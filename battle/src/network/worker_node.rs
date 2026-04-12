@@ -8,21 +8,15 @@ use log::info;
 use tarpc::{server, server::Channel, tokio_serde::formats::Bincode};
 
 use crate::{
-    builder::build_cpp,
+    builder::{Executable, build_cpp},
+    game::{GameResult, GameSetup, run_game},
     network::WorkerService,
-    types::{GameResult, GameSetup, Target, TargetId},
+    referee::Referee,
+    types::{Target, TargetId},
 };
 
 pub struct WorkerNode {
-    targets: HashMap<TargetId, Target>,
-}
-
-impl WorkerNode {
-    pub fn new() -> Self {
-        Self {
-            targets: HashMap::new(),
-        }
-    }
+    targets: HashMap<TargetId, Executable>,
 }
 
 #[derive(Clone)]
@@ -31,7 +25,7 @@ pub struct WorkerServer {
 }
 
 impl WorkerService for WorkerServer {
-    async fn target_exists(self, context: ::tarpc::context::Context, target_id: TargetId) -> bool {
+    async fn target_exists(self, _ctx: ::tarpc::context::Context, target_id: TargetId) -> bool {
         let _guard = self.node.lock();
         let node = _guard.unwrap();
         node.targets.contains_key(&target_id)
@@ -39,18 +33,16 @@ impl WorkerService for WorkerServer {
 
     async fn register_target(
         self,
-        context: ::tarpc::context::Context,
+        _ctx: ::tarpc::context::Context,
         target: Target,
     ) -> Result<(), String> {
         let _guard = self.node.lock();
         let mut node = _guard.unwrap();
         let id = target.id();
         let executable = match target {
-            Target::SourceCode(source) => Target::Executable(
-                build_cpp(&source.code, HashMap::new())
-                    .map_err(|e| format!("failed to build target: {:?}", e))?,
-            ),
-            Target::Executable(executable) => Target::Executable(executable),
+            Target::SourceCode(source) => build_cpp(&source.code, HashMap::new())
+                .map_err(|e| format!("failed to build target: {:?}", e))?,
+            Target::Executable(executable) => executable,
         };
 
         node.targets.insert(id, executable);
@@ -59,16 +51,27 @@ impl WorkerService for WorkerServer {
 
     async fn run_game(
         self,
-        context: ::tarpc::context::Context,
+        _ctx: ::tarpc::context::Context,
         game: GameSetup<TargetId>,
     ) -> GameResult {
-        println!("run_game: {:?}", game);
-        GameResult {
-            result: Ok(format!(
-                "game referee={:016x} agents={:?} seed={}",
-                game.referee, game.agents, game.seed
-            )),
-        }
+        let _guard = self.node.lock();
+        let node = _guard.unwrap();
+        let game = GameSetup::<Executable> {
+            referee: Referee {
+                protocol: game.referee.protocol,
+                target: node.targets.get(&game.referee.target).unwrap().clone(),
+                min_agents: game.referee.min_agents,
+                max_agents: game.referee.max_agents,
+            },
+            agents: game
+                .agents
+                .iter()
+                .map(|id| node.targets.get(id).unwrap())
+                .map(|executable| executable.clone())
+                .collect(),
+            seed: game.seed,
+        };
+        return run_game(game);
     }
 }
 

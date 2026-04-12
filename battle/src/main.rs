@@ -1,5 +1,8 @@
 mod builder;
+mod exec;
+mod game;
 mod network;
+mod referee;
 mod types;
 
 use std::collections::HashMap;
@@ -7,14 +10,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::network::worker_node::run_worker_node;
+use crate::referee::Referee;
+use crate::types::Target;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
 use log::{LevelFilter, info};
 
 use crate::builder::{BuildError, Executable, ExecutableKind};
+use crate::game::GameSetup;
 use crate::network::producer_node::ProducerNode;
-use crate::types::{GameSetup, Target};
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
@@ -153,19 +158,8 @@ async fn main() {
 
             let mut producer = ProducerNode::new().await;
 
-            // Register referee target
-            let referee_target = Target::Executable(Executable {
-                kind: ExecutableKind::Jar {
-                    jar_path: PathBuf::from("referee.jar"),
-                },
-                files: HashMap::from([(
-                    PathBuf::from("referee.jar"),
-                    include_bytes!("../../arena/referees/cg-spring-2024-olympics.jar").to_vec(),
-                )]),
-            });
-
             let game_setup = GameSetup::<Arc<Target>> {
-                referee: Arc::new(referee_target),
+                referee: Referee::from_preset("cg-spring-2024-olympics").unwrap(),
                 agents: agent
                     .iter()
                     .map(|path| {
@@ -179,7 +173,8 @@ async fn main() {
                 seed: 0,
             };
 
-            producer.play_game(game_setup).await;
+            let res = producer.play_game(game_setup).await;
+            println!("Game result: {:?}", res);
         }
         Commands::MCP { protocol: _ } => todo!(),
     }

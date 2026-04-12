@@ -3,8 +3,10 @@ use std::{collections::HashSet, sync::Arc};
 use tarpc::{client, context::current, tokio_serde::formats::Bincode};
 
 use crate::{
+    game::{GameResult, GameSetup},
     network::WorkerServiceClient,
-    types::{GameResult, GameSetup, Target, TargetId},
+    referee::Referee,
+    types::{Target, TargetId},
 };
 
 /// Producer Node
@@ -82,14 +84,21 @@ impl ConsumerConnection {
     }
 
     async fn run_game(&mut self, game: GameSetup<Arc<Target>>) -> GameResult {
-        let referee = self.make_target_available(game.referee.clone()).await;
+        let referee = self
+            .make_target_available(game.referee.target.clone())
+            .await;
         let mut agents = Vec::with_capacity(game.agents.len());
         for agent in game.agents.iter() {
             agents.push(self.make_target_available(agent.clone()).await);
         }
 
         let net_setup = GameSetup::<TargetId> {
-            referee,
+            referee: Referee::<TargetId> {
+                protocol: game.referee.protocol,
+                target: referee,
+                min_agents: game.referee.min_agents,
+                max_agents: game.referee.max_agents,
+            },
             agents,
             seed: game.seed,
         };

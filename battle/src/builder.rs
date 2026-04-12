@@ -41,6 +41,22 @@ impl std::fmt::Debug for Executable {
     }
 }
 
+impl Executable {
+    pub fn command(&self) -> Command {
+        match &self.kind {
+            ExecutableKind::Binary { executable_path } => Command::new(executable_path),
+            ExecutableKind::Jar { jar_path } => {
+                let mut cmd = Command::new("java");
+                // This is due CodinGame engine accessing internal classes which is not supported in modern Java
+                cmd.args(["--add-opens", "java.base/java.lang=ALL-UNNAMED", "-jar"])
+                    .arg(jar_path);
+                cmd
+            }
+            _ => todo!(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum BuildError {
     /// Build system missing
