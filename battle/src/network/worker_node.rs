@@ -1,11 +1,9 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use futures_util::StreamExt;
 use log::info;
 use tarpc::{server, server::Channel, tokio_serde::formats::Bincode};
+use tokio::sync::Mutex;
 
 use crate::{
     builder::build_cpp,
@@ -17,12 +15,12 @@ use crate::{
 };
 
 pub struct WorkerNode {
-    targets: HashMap<TargetId, Executable>,
+    targets: HashMap<TargetId, Arc<Mutex<Executable>>>,
 }
 
 #[derive(Clone)]
 pub struct WorkerServer {
-    node: Arc<Mutex<WorkerNode>>,
+    node: Arc<std::sync::Mutex<WorkerNode>>,
 }
 
 impl WorkerService for WorkerServer {
@@ -37,8 +35,6 @@ impl WorkerService for WorkerServer {
         _ctx: ::tarpc::context::Context,
         target: Target,
     ) -> Result<(), String> {
-        let _guard = self.node.lock();
-        let mut node = _guard.unwrap();
         let id = target.id();
         let executable = match target {
             Target::SourceCode(source) => build_cpp(&source.code, HashMap::new())
@@ -46,7 +42,8 @@ impl WorkerService for WorkerServer {
             Target::Executable(executable) => executable,
         };
 
-        node.targets.insert(id, executable);
+        let mut node = self.node.lock().unwrap();
+        node.targets.insert(id, Arc::new(Mutex::new(executable)));
         Ok(())
     }
 
@@ -55,24 +52,32 @@ impl WorkerService for WorkerServer {
         _ctx: ::tarpc::context::Context,
         game: GameSetup<TargetId>,
     ) -> GameResult {
-        let _guard = self.node.lock();
-        let node = _guard.unwrap();
-        let game = GameSetup::<Executable> {
-            referee: Referee {
-                protocol: game.referee.protocol,
-                target: node.targets.get(&game.referee.target).unwrap().clone(),
-                min_agents: game.referee.min_agents,
-                max_agents: game.referee.max_agents,
-            },
-            agents: game
-                .agents
-                .iter()
-                .map(|id| node.targets.get(id).unwrap())
-                .map(|executable| executable.clone())
-                .collect(),
-            seed: game.seed,
+        let game = {
+            let node = self.node.lock().unwrap();
+            GameSetup::<Arc<Mutex<Executable>>> {
+                referee: Referee {
+                    protocol: game.referee.protocol,
+                    target: node.targets.get(&game.referee.target).unwrap().clone(),
+                    min_agents: game.referee.min_agents,
+                    max_agents: game.referee.max_agents,
+                },
+                agents: game
+                    .agents
+                    .iter()
+                    .map(|id| node.targets.get(id).unwrap().clone())
+                    .collect(),
+                seed: game.seed,
+            }
         };
-        return run_game(game);
+
+        match tokio::task::spawn_blocking(move || run_game(game)).await {
+            Ok(result) => result,
+            Err(e) => Err(format!("run_game task failed: {e}")),
+        }
+    }
+
+    async fn can_accept_game(self, context: ::tarpc::context::Context) -> bool {
+        todo!()
     }
 }
 
@@ -87,7 +92,7 @@ pub async fn run_worker_node() {
 
     info!("Worker listening on port {}", 8080);
 
-    let node = Arc::new(Mutex::new(WorkerNode {
+    let node = Arc::new(std::sync::Mutex::new(WorkerNode {
         targets: HashMap::new(),
     }));
 

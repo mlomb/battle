@@ -7,19 +7,21 @@ mod referee;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
+use crate::builder::BuildError;
+use crate::exec::executable::Executable;
 use crate::exec::target::Target;
+use crate::game::GameSetup;
+use crate::network::producer_node::ProducerNode;
 use crate::network::worker_node::run_worker_node;
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
+use futures_util::TryStreamExt;
+use futures_util::stream::FuturesUnordered;
 use log::{LevelFilter, info};
-
-use crate::builder::BuildError;
-use crate::exec::executable::Executable;
-use crate::game::GameSetup;
-use crate::network::producer_node::ProducerNode;
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
@@ -62,7 +64,11 @@ enum Commands {
         /// List of agents participating in the game
         #[arg(short, long)]
         agent: Vec<String>,
-        // TODO: seed, N
+
+        /// Number of games to play
+        #[arg(short, long, default_value = "1")]
+        n: usize,
+        // TODO: seed
     },
 
     /// Start an MCP server
@@ -157,10 +163,10 @@ async fn main() {
 
             info!("Exiting!");
         }
-        Commands::Play { referee, agent } => {
+        Commands::Play { referee, agent, n } => {
             info!("Using a networked worker pool");
 
-            let mut producer = ProducerNode::new().await;
+            let producer = Arc::new(ProducerNode::new().await);
 
             let game_setup = GameSetup::<Arc<Target>> {
                 referee: Referee::from_preset(referee).unwrap(),
@@ -176,20 +182,57 @@ async fn main() {
                     .collect(),
                 seed: 0,
             };
+            let games = vec![
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+                game_setup.clone(),
+            ];
 
-            let res = producer.play_game(game_setup).await;
-            match res {
-                Ok(data) => {
-                    let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
-                    println!(
-                        "{} {} {}",
-                        style(s(0)).cyan(),
-                        style(s(1)).magenta(),
-                        style(s(2)).yellow(),
-                    );
-                }
-                Err(e) => eprintln!("{}", style(e).red()),
+            let mut futs = FuturesUnordered::new();
+
+            for game in games {
+                let producer = Arc::clone(&producer);
+                futs.push(async move {
+                    // wait random time
+                    tokio::time::sleep(Duration::from_secs(rand::random_range(0..10))).await;
+                    producer.play_game(game).await
+                });
             }
+
+            loop {
+                tokio::select! {
+                    result = futs.try_next() => match result {
+                        Ok(None) => break, // done!
+                        Ok(Some(data)) => {
+                            let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
+                            println!(
+                                "{} {} {}",
+                                style(s(0)).cyan(),
+                                style(s(1)).magenta(),
+                                style(s(2)).yellow(),
+                            );
+                        }
+                        Err(e) => eprintln!("{}", style(e).red()),
+                    },
+                    _ = tokio::time::sleep(Duration::from_secs(3)) => {
+                        info!("Timeout, stopping...");
+                    }
+                    _ = tokio::signal::ctrl_c() => {
+                        info!("Received Ctrl+C, stopping...");
+                        break;
+                    }
+                }
+            }
+
+            info!("Exiting!");
         }
         Commands::MCP { protocol: _ } => todo!(),
     }
