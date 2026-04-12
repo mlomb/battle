@@ -1,12 +1,12 @@
 use std::{collections::HashSet, sync::Arc};
 
-use tarpc::{client, context::current, tokio_serde::formats::Bincode};
+use tarpc::{context::current, tokio_serde::formats::Bincode};
 
 use crate::{
+    exec::target::{Target, TargetId},
     game::{GameResult, GameSetup},
     network::WorkerServiceClient,
     referee::Referee,
-    types::{Target, TargetId},
 };
 
 /// Producer Node

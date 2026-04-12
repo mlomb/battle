@@ -8,11 +8,12 @@ use log::info;
 use tarpc::{server, server::Channel, tokio_serde::formats::Bincode};
 
 use crate::{
-    builder::{Executable, build_cpp},
+    builder::build_cpp,
+    exec::executable::Executable,
+    exec::target::{Target, TargetId},
     game::{GameResult, GameSetup, run_game},
     network::WorkerService,
     referee::Referee,
-    types::{Target, TargetId},
 };
 
 pub struct WorkerNode {

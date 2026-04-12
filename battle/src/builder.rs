@@ -1,61 +1,13 @@
-use build_fs_tree::FileSystemTree;
 use bundler::source::{Language, Source};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::{path::PathBuf, process::Command};
-use tempfile::tempdir;
+use std::{
+    fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, process::Command,
+};
+use tempfile::{TempDir, tempdir};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ExecutableKind {
-    /// A binary executable (.exe or ./main)
-    Binary {
-        /// The path to the executable file
-        executable_path: PathBuf,
-    },
-    Jar {
-        /// The path to the JAR file
-        jar_path: PathBuf,
-    },
-    Python,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Executable {
-    /// The kind of executable
-    pub kind: ExecutableKind,
-
-    /// The files required for the execution of the executable
-    ///
-    /// Usually, binaries or source code.
-    pub files: HashMap<PathBuf, Vec<u8>>,
-}
-
-impl std::fmt::Debug for Executable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut s = f.debug_struct("Executable");
-        s.field("kind", &self.kind);
-        let file_sizes: HashMap<&PathBuf, usize> =
-            self.files.iter().map(|(k, v)| (k, v.len())).collect();
-        s.field("files", &file_sizes);
-        s.finish()
-    }
-}
-
-impl Executable {
-    pub fn command(&self) -> Command {
-        match &self.kind {
-            ExecutableKind::Binary { executable_path } => Command::new(executable_path),
-            ExecutableKind::Jar { jar_path } => {
-                let mut cmd = Command::new("java");
-                // This is due CodinGame engine accessing internal classes which is not supported in modern Java
-                cmd.args(["--add-opens", "java.base/java.lang=ALL-UNNAMED", "-jar"])
-                    .arg(jar_path);
-                cmd
-            }
-            _ => todo!(),
-        }
-    }
-}
+use crate::exec::executable::Executable;
 
 #[derive(Debug)]
 pub enum BuildError {
@@ -111,6 +63,8 @@ pub fn build_cpp(
             "-target",
             &target,
             "-lc++",
+            // match GCC's default constexpr steps
+            "-fconstexpr-steps=33554432",
             "-o",
         ])
         .arg(&out_path)
@@ -132,14 +86,7 @@ pub fn build_cpp(
         });
     }
 
-    files.insert(PathBuf::from("main"), std::fs::read(&out_path).unwrap());
-
-    Ok(Executable {
-        kind: ExecutableKind::Binary {
-            executable_path: PathBuf::from("main"),
-        },
-        files,
-    })
+    Ok(Executable::from_binary(out_path)?)
 }
 
 fn build_rust(src: &String, assets: HashMap<String, Vec<u8>>) -> Result<(), BuildError> {

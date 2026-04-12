@@ -1,3 +1,4 @@
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{BufRead, BufReader, Read},
@@ -33,6 +34,8 @@ pub trait Execute {
 
 impl Execute for Command {
     fn execute(&mut self, timeout: Duration) -> ExecutionResult {
+        info!("Executing command: {:?}", self);
+
         let start = Instant::now();
 
         let mut child = match self.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
