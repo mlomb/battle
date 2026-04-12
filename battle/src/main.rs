@@ -6,14 +6,15 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::network::worker_node::run_worker_node;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
 use log::{LevelFilter, info};
-use network::{ProducerHandle, TargetId, WorkerNode};
 
 use crate::builder::{BuildError, Executable, ExecutableKind};
-use crate::types::{GameResult, GameSetup, Target};
+use crate::network::producer_node::ProducerNode;
+use crate::types::{GameSetup, Target};
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
@@ -39,18 +40,12 @@ enum Commands {
         // TODO: platform, architecture, etc
     },
 
-    /// Start a worker node to listen for games on the local P2P network
+    /// Start a worker node listening on localhost:54321
     Worker {
         /// Number of threads to allocate for the worker.
         /// If set to 0, the default will be the number of physical CPUs minus 2
         #[arg(long, default_value = "0")]
         threads: usize,
-
-        /// Interface to listen on
-        /// By default, it will target all interfaces
-        /// TODO: add support for this
-        #[arg(long, default_value = "0.0.0.0")]
-        interface: String,
     },
 
     /// Play a game between multiple bots
@@ -111,14 +106,13 @@ fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildError>
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::Builder::new()
         .filter_module("battle", LevelFilter::Trace)
         .init();
 
     let args = Args::parse();
-
-    let protocol = "/mlomb/bot-tools/battle/1";
 
     match args.command {
         Commands::Bundle {
@@ -141,10 +135,7 @@ fn main() {
             let exec = bundle_and_build(bundler_args).expect("correct bundle and build");
             println!("  OK: {:?}", exec);
         }
-        Commands::Worker {
-            mut threads,
-            interface: _,
-        } => {
+        Commands::Worker { mut threads } => {
             info!("Starting worker node...");
 
             if threads == 0 {
@@ -153,12 +144,14 @@ fn main() {
 
             info!("Using {}", style(format!("{} threads", threads)).cyan());
 
-            WorkerNode::new(protocol, threads).wait();
+            run_worker_node().await;
+
+            info!("Exiting!");
         }
         Commands::Play { agent } => {
             info!("Using a networked worker pool");
 
-            let producer = ProducerHandle::<Target, GameSetup, GameResult>::new(protocol);
+            let mut producer = ProducerNode::new().await;
 
             // Register referee target
             let referee_target = Target::Executable(Executable {
@@ -170,51 +163,23 @@ fn main() {
                     include_bytes!("../../arena/referees/cg-spring-2024-olympics.jar").to_vec(),
                 )]),
             });
-            let referee_id = producer.register_target(referee_target);
-            info!("Registered referee target {:016x}", referee_id);
 
-            // Register agent targets
-            let agent_ids: Vec<TargetId> = agent
-                .iter()
-                .map(|path| {
-                    let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(path)))
-                        .expect("correct bundle")
-                        .source
-                        .clone();
-                    let id = producer.register_target(Target::SourceCode(source));
-                    info!("Registered agent target {:016x} from {}", id, path);
-                    id
-                })
-                .collect();
+            let game_setup = GameSetup::<Arc<Target>> {
+                referee: Arc::new(referee_target),
+                agents: agent
+                    .iter()
+                    .map(|path| {
+                        let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(path)))
+                            .expect("correct bundle")
+                            .source
+                            .clone();
+                        Arc::new(Target::SourceCode(source))
+                    })
+                    .collect(),
+                seed: 0,
+            };
 
-            let producer = Arc::new(producer);
-
-            // Watch for target build errors
-            let producer_err = producer.clone();
-            std::thread::spawn(move || {
-                while let Some((_id, error)) = producer_err.recv_error() {
-                    eprintln!("\n{} {}", style("Build error:").red().bold(), error);
-                    std::process::exit(1);
-                }
-            });
-
-            // Receive results in background
-            let producer_bg = producer.clone();
-            std::thread::spawn(move || {
-                while let Some(result) = producer_bg.recv_result() {
-                    info!("Result: {:?}", result);
-                }
-            });
-
-            // Send games
-            loop {
-                let game_setup = GameSetup {
-                    referee_id,
-                    agent_ids: agent_ids.clone(),
-                    seed: 0, // TODO: generate random seeds
-                };
-                producer.send_work(game_setup);
-            }
+            producer.play_game(game_setup).await;
         }
         Commands::MCP { protocol: _ } => todo!(),
     }
