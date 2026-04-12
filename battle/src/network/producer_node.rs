@@ -1,6 +1,11 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use tarpc::{context::current, tokio_serde::formats::Bincode};
+use tokio::sync::Mutex;
 
 use crate::{
     exec::target::{Target, TargetId},
@@ -24,8 +29,8 @@ impl ProducerNode {
     }
 
     /// Decies to which client to send the game and waits for the result
-    pub async fn play_game(&mut self, game: GameSetup<Arc<Target>>) -> GameResult {
-        let client = self.clients.first_mut().expect("at least one client");
+    pub async fn play_game(&self, game: GameSetup<Arc<Target>>) -> GameResult {
+        let client = self.clients.first().expect("at least one client");
         client.run_game(game).await
     }
 }
@@ -34,7 +39,7 @@ struct ConsumerConnection {
     client: WorkerServiceClient,
 
     /// Targets that the client already has available
-    known_targets: HashSet<TargetId>,
+    known_targets: Mutex<HashSet<TargetId>>,
 }
 
 impl ConsumerConnection {
@@ -46,16 +51,18 @@ impl ConsumerConnection {
 
         Self {
             client,
-            known_targets: HashSet::new(),
+            known_targets: Mutex::new(HashSet::new()),
         }
     }
 
-    async fn make_target_available(&mut self, target: Arc<Target>) -> TargetId {
+    async fn make_target_available(&self, target: Arc<Target>) -> TargetId {
         let id = target.id();
 
-        // check local known
-        if self.known_targets.contains(&id) {
-            return id;
+        {
+            let known = self.known_targets.lock().await;
+            if known.contains(&id) {
+                return id;
+            }
         }
 
         // ask remotely if it's available
@@ -65,8 +72,7 @@ impl ConsumerConnection {
             .await
             .expect("RPC call")
         {
-            // no need to send again!
-            self.known_targets.insert(id);
+            self.known_targets.lock().await.insert(id);
             return id;
         }
 
@@ -78,12 +84,12 @@ impl ConsumerConnection {
             .expect("RPC call")
             .expect("register target");
 
-        self.known_targets.insert(id);
+        self.known_targets.lock().await.insert(id);
 
         id
     }
 
-    async fn run_game(&mut self, game: GameSetup<Arc<Target>>) -> GameResult {
+    async fn run_game(&self, game: GameSetup<Arc<Target>>) -> GameResult {
         let referee = self
             .make_target_available(game.referee.target.clone())
             .await;
@@ -103,8 +109,11 @@ impl ConsumerConnection {
             seed: game.seed,
         };
 
+        let mut ctx = current();
+        ctx.deadline = SystemTime::now() + Duration::from_secs(40);
+
         self.client
-            .run_game(current(), net_setup)
+            .run_game(ctx, net_setup)
             .await
             .expect("run game")
     }

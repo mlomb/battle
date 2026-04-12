@@ -1,6 +1,7 @@
 use std::{path::Path, process::Command, sync::Arc};
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 use crate::exec::{command::CommandExt, executable::Executable, target::Target};
 
@@ -70,9 +71,10 @@ impl Referee<Arc<Target>> {
     }
 }
 
-impl Referee<Executable> {
-    pub fn command(&mut self, agent_cmds: &Vec<Command>) -> Command {
-        let mut cmd = self.target.command();
+impl Referee<Arc<Mutex<Executable>>> {
+    pub fn command(&self, agent_cmds: &Vec<Command>) -> Command {
+        let mut exe = self.target.blocking_lock();
+        let mut cmd = exe.command();
 
         match self.protocol {
             Protocol::CodinGame => {
