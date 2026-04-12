@@ -1,11 +1,9 @@
 pub mod producer_node;
 pub mod worker_node;
 
-pub use crate::types::TargetId;
-
 use crate::{
+    exec::target::{Target, TargetId},
     game::{GameResult, GameSetup},
-    types::Target,
 };
 
 #[tarpc::service]

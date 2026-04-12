@@ -1,16 +1,8 @@
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::Arc,
-};
+use std::{path::Path, process::Command, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    builder::{Executable, ExecutableKind},
-    types::Target,
-};
+use crate::exec::{command::CommandExt, executable::Executable, target::Target};
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.
@@ -44,7 +36,7 @@ impl Referee<Arc<Target>> {
     /// For now, only CodinGame referees are supported.
     pub fn from_preset<T: ToString>(preset: T) -> Result<Self, String> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../arena/referees")
+            .join("referees")
             .join(format!("{}.jar", preset.to_string()));
 
         if !path.is_file() {
@@ -69,7 +61,9 @@ impl Referee<Arc<Target>> {
 
         Ok(Self {
             protocol: Protocol::CodinGame,
-            target: Arc::new(Target::from_jar(path.clone()).expect("read success")),
+            target: Arc::new(Target::Executable(
+                Executable::from_jar(path.clone()).expect("read success"),
+            )),
             min_agents,
             max_agents,
         })
@@ -84,7 +78,7 @@ impl Referee<Executable> {
             Protocol::CodinGame => {
                 for (i, agent) in agent_cmds.iter().enumerate() {
                     cmd.arg(format!("-p{}", i + 1));
-                    //cmd.arg(agent.command_line_string());
+                    cmd.arg(agent.command_line_string());
                 }
             }
         }

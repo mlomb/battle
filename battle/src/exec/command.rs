@@ -1,15 +1,4 @@
-use super::executable::ExecutableError;
 use std::process::Command;
-
-/// A trait to generate a command for an executable.
-pub trait ToCommand {
-    /// Returns a ready-to-use command. Prepares whatever is necessary: build source, copy files, etc.
-    ///
-    /// # Notes
-    ///   - The command must be valid while `self` is not dropped.
-    ///   - The execution of the command is expected to be idempotent (albeit randomness).
-    fn command(&mut self) -> Result<Command, ExecutableError>;
-}
 
 pub trait CommandExt {
     /// Converts the command into a standalone string that can be executed in a shell.

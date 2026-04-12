@@ -3,21 +3,21 @@ mod exec;
 mod game;
 mod network;
 mod referee;
-mod types;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::exec::target::Target;
 use crate::network::worker_node::run_worker_node;
 use crate::referee::Referee;
-use crate::types::Target;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
 use log::{LevelFilter, info};
 
-use crate::builder::{BuildError, Executable, ExecutableKind};
+use crate::builder::BuildError;
+use crate::exec::executable::Executable;
 use crate::game::GameSetup;
 use crate::network::producer_node::ProducerNode;
 
@@ -55,7 +55,11 @@ enum Commands {
 
     /// Play a game between multiple bots
     Play {
-        /// List of agents participating in the tournament
+        /// The referee of the game
+        #[arg(short, long)]
+        referee: String,
+
+        /// List of agents participating in the game
         #[arg(short, long)]
         agent: Vec<String>,
         // TODO: seed, N
@@ -153,13 +157,13 @@ async fn main() {
 
             info!("Exiting!");
         }
-        Commands::Play { agent } => {
+        Commands::Play { referee, agent } => {
             info!("Using a networked worker pool");
 
             let mut producer = ProducerNode::new().await;
 
             let game_setup = GameSetup::<Arc<Target>> {
-                referee: Referee::from_preset("cg-spring-2024-olympics").unwrap(),
+                referee: Referee::from_preset(referee).unwrap(),
                 agents: agent
                     .iter()
                     .map(|path| {
@@ -174,7 +178,18 @@ async fn main() {
             };
 
             let res = producer.play_game(game_setup).await;
-            println!("Game result: {:?}", res);
+            match res {
+                Ok(data) => {
+                    let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
+                    println!(
+                        "{} {} {}",
+                        style(s(0)).cyan(),
+                        style(s(1)).magenta(),
+                        style(s(2)).yellow(),
+                    );
+                }
+                Err(e) => eprintln!("{}", style(e).red()),
+            }
         }
         Commands::MCP { protocol: _ } => todo!(),
     }

@@ -1,6 +1,0 @@
-///
-/// There are 2 parallelization in fishtest SPSA:
-/// 1. a worker play G pairs of games with the same parameters values and the parameters update is the sum of the of the G updates (1 pair of games -> 1 update). This is has simply the effect to lower the noise for the update estimation, the updates are still serial
-/// 2. a worker get the parameters scalar values while other W-1 workers are playing games or with the same scalar values or with previous steps scalar values. At the start of the SPSA at example all the workers get the same parameters scalar values. This is a problem optimizing a deterministic function with the classic gradient descent (evaluating the same gradient `randint(1, W)` times and applying the same update `randint(1, W)` times). The parallel SPSA (with delayed and out of order updates) still works because:
-///   a. the function to be optimized is noisy and the updates are noisy
-///   b. with the same P parameters scalar values every worker get a different random [-1; +1] P-dimensional delta vector, so we have 2**(P-1) pairs of possible opposite parameters vectors used to play the G pairs of games. Some of those vectors pairs could be meaningless for the updated evaluation (orthogonal direction wrt the gradient direction), so having estimations with other directions is not harmful.
