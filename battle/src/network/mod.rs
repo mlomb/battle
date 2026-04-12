@@ -3,7 +3,10 @@ pub mod worker_node;
 
 pub use crate::types::TargetId;
 
-use crate::types::{GameResult, GameSetup, Target};
+use crate::{
+    game::{GameResult, GameSetup},
+    types::Target,
+};
 
 #[tarpc::service]
 pub trait WorkerService {

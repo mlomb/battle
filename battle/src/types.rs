@@ -1,7 +1,9 @@
+use std::{collections::HashMap, ffi::OsStr, path::PathBuf};
+
 use bundler::source::Source;
 use serde::{Deserialize, Serialize};
 
-use crate::builder::Executable;
+use crate::builder::{Executable, ExecutableKind};
 
 pub type TargetId = u64;
 
@@ -21,17 +23,16 @@ impl Target {
         let hash = blake3::hash(&bytes);
         u64::from_le_bytes(hash.as_bytes()[..8].try_into().unwrap())
     }
-}
 
-/// Lightweight game setup referencing pre-registered targets by content hash.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameSetup<T> {
-    pub referee: T,
-    pub agents: Vec<T>,
-    pub seed: u64,
-}
+    /// Creates a new executable that runs a JAR file ("java -jar main.jar")
+    pub fn from_jar(jar_path: PathBuf) -> Result<Self, std::io::Error> {
+        let name = PathBuf::from(jar_path.file_name().unwrap_or(OsStr::new("jarfile.jar")));
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameResult {
-    pub result: Result<String, String>,
+        Ok(Self::Executable(Executable {
+            kind: ExecutableKind::Jar {
+                jar_path: name.clone(),
+            },
+            files: HashMap::from([(name, std::fs::read(&jar_path)?)]),
+        }))
+    }
 }
