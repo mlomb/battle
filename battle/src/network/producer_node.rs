@@ -21,6 +21,7 @@ pub struct ProducerNode {
     clients: Vec<ConsumerConnection>,
 }
 
+// TODO: I think we can encapsulate this as a stream at some point
 impl ProducerNode {
     pub async fn new() -> Self {
         Self {
@@ -28,10 +29,19 @@ impl ProducerNode {
         }
     }
 
-    /// Decies to which client to send the game and waits for the result
-    pub async fn play_game(&self, game: GameSetup<Arc<Target>>) -> GameResult {
+    /// Checks worker capacity, then returns a future that performs the RPC game run.
+    /// [`None`] means the worker had no capacity (same as [`Err`] `"Busy"` at the call site).
+    pub async fn play_game(
+        &self,
+        game: GameSetup<Arc<Target>>,
+    ) -> Option<impl std::future::Future<Output = GameResult> + '_> {
         let client = self.clients.first().expect("at least one client");
-        client.run_game(game).await
+
+        if client.can_accept_game().await {
+            Some(async move { client.run_game(game).await })
+        } else {
+            None
+        }
     }
 }
 
@@ -89,6 +99,13 @@ impl ConsumerConnection {
         id
     }
 
+    async fn can_accept_game(&self) -> bool {
+        self.client
+            .can_accept_game(current())
+            .await
+            .expect("RPC call")
+    }
+
     async fn run_game(&self, game: GameSetup<Arc<Target>>) -> GameResult {
         let referee = self
             .make_target_available(game.referee.target.clone())
@@ -115,6 +132,6 @@ impl ConsumerConnection {
         self.client
             .run_game(ctx, net_setup)
             .await
-            .expect("run game")
+            .expect("RPC call")
     }
 }

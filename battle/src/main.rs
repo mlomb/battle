@@ -12,7 +12,7 @@ use std::time::Duration;
 use crate::builder::BuildError;
 use crate::exec::executable::Executable;
 use crate::exec::target::Target;
-use crate::game::GameSetup;
+use crate::game::{GameResultData, GameSetup};
 use crate::network::producer_node::ProducerNode;
 use crate::network::worker_node::run_worker_node;
 use crate::referee::Referee;
@@ -198,20 +198,13 @@ async fn main() {
 
             let mut futs = FuturesUnordered::new();
 
-            for game in games {
-                let producer = Arc::clone(&producer);
-                futs.push(async move {
-                    // wait random time
-                    tokio::time::sleep(Duration::from_secs(rand::random_range(0..10))).await;
-                    producer.play_game(game).await
-                });
-            }
-
             loop {
                 tokio::select! {
                     result = futs.try_next() => match result {
+                        // TODO: fix stuck because of this
                         Ok(None) => break, // done!
                         Ok(Some(data)) => {
+                            let data: GameResultData = data;
                             let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
                             println!(
                                 "{} {} {}",
@@ -222,7 +215,14 @@ async fn main() {
                         }
                         Err(e) => eprintln!("{}", style(e).red()),
                     },
-                    _ = tokio::time::sleep(Duration::from_secs(1)) => {} // reschedule
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                        match producer.play_game(game_setup.clone()).await {
+                            Some(fut) => futs.push(fut),
+                            None => {
+                                // could not be scheduled, try again later
+                            }
+                        }
+                    } // reschedule
                     _ = tokio::signal::ctrl_c() => {
                         info!("Received Ctrl+C, stopping...");
                         break;
