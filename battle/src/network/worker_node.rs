@@ -9,7 +9,7 @@ use std::{
 use futures_util::StreamExt;
 use log::{error, info};
 use tarpc::{server, server::Channel, tokio_serde::formats::Bincode};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 use crate::{
     builder::build_cpp,
@@ -30,6 +30,9 @@ pub struct WorkerNode {
 #[derive(Clone)]
 pub struct WorkerServer {
     node: Arc<std::sync::Mutex<WorkerNode>>,
+
+    /// Limits concurrent games; `try_acquire` in `run_game` returns busy when full.
+    game_slots: Arc<Semaphore>,
 }
 
 impl WorkerService for WorkerServer {
@@ -56,11 +59,20 @@ impl WorkerService for WorkerServer {
         Ok(())
     }
 
+    async fn can_accept_game(self, _ctx: ::tarpc::context::Context) -> bool {
+        self.game_slots.available_permits() > 0
+    }
+
     async fn run_game(
         self,
         _ctx: ::tarpc::context::Context,
         game: GameSetup<TargetId>,
     ) -> GameResult {
+        let _slot = match self.game_slots.try_acquire() {
+            Ok(p) => p,
+            Err(_) => return Err("Busy".to_string()),
+        };
+
         let game = {
             let node = self.node.lock().unwrap();
             GameSetup::<Arc<Mutex<Executable>>> {
@@ -107,10 +119,6 @@ impl WorkerService for WorkerServer {
         .await
         .expect("join ok")
     }
-
-    async fn can_accept_game(self, context: ::tarpc::context::Context) -> bool {
-        todo!()
-    }
 }
 
 pub async fn run_worker_node() {
@@ -127,13 +135,17 @@ pub async fn run_worker_node() {
     let node = Arc::new(std::sync::Mutex::new(WorkerNode {
         targets: HashMap::new(),
     }));
+    let game_slots = Arc::new(Semaphore::new(1));
 
     let serve = listener
         .filter_map(|r| std::future::ready(r.ok()))
         .map(server::BaseChannel::with_defaults)
         .map(|channel| {
             info!("Created connection");
-            let server = WorkerServer { node: node.clone() };
+            let server = WorkerServer {
+                node: node.clone(),
+                game_slots: game_slots.clone(),
+            };
             async move {
                 channel
                     .execute(server.serve())
