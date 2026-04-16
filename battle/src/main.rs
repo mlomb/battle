@@ -222,9 +222,7 @@ async fn main() {
                         }
                         Err(e) => eprintln!("{}", style(e).red()),
                     },
-                    _ = tokio::time::sleep(Duration::from_secs(3)) => {
-                        info!("Timeout, stopping...");
-                    }
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {} // reschedule
                     _ = tokio::signal::ctrl_c() => {
                         info!("Received Ctrl+C, stopping...");
                         break;

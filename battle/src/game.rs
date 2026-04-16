@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -31,14 +31,17 @@ pub struct GameAgentResult {
     // TODO: other data
 }
 
-pub fn run_game(setup: GameSetup<Arc<Mutex<Executable>>>) -> GameResult {
+pub fn run_game(
+    setup: GameSetup<Arc<Mutex<Executable>>>,
+    abort: Option<Arc<AtomicBool>>,
+) -> GameResult {
     let agent_cmds: Vec<std::process::Command> = setup
         .agents
         .iter()
         .map(|a| a.blocking_lock().command())
         .collect();
     let mut cmd = setup.referee.command(&agent_cmds);
-    let result = cmd.execute(std::time::Duration::from_secs(40));
+    let result = cmd.execute(std::time::Duration::from_secs(40), abort.as_deref());
     let scores = result
         .stdout
         .split_whitespace()

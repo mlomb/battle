@@ -1,14 +1,23 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use futures_util::StreamExt;
-use log::info;
+use log::{error, info};
 use tarpc::{server, server::Channel, tokio_serde::formats::Bincode};
 use tokio::sync::Mutex;
 
 use crate::{
     builder::build_cpp,
-    exec::executable::Executable,
-    exec::target::{Target, TargetId},
+    exec::{
+        executable::Executable,
+        execution::Status,
+        target::{Target, TargetId},
+    },
     game::{GameResult, GameSetup, run_game},
     network::WorkerService,
     referee::Referee,
@@ -70,10 +79,33 @@ impl WorkerService for WorkerServer {
             }
         };
 
-        match tokio::task::spawn_blocking(move || run_game(game)).await {
-            Ok(result) => result,
-            Err(e) => Err(format!("run_game task failed: {e}")),
-        }
+        let abort_flag = Arc::new(AtomicBool::new(false));
+
+        // If the client is disconnected, the WorkerServer will be dropped along with
+        // the flag_guard, which will set the flag to true, causing the game to be cancelled.
+        let _flag_guard = SignalOnDrop(abort_flag.clone());
+
+        tokio::task::spawn_blocking(move || {
+            let result = run_game(game, Some(abort_flag));
+
+            match &result {
+                Ok(result) => match &result.r.status {
+                    Status::Exited(code) => {
+                        info!("Game finished with code {code}")
+                    }
+                    Status::Timeout => error!("Game timed out"),
+                    Status::Cancelled => error!("Game cancelled"),
+                    Status::IoError(err) => {
+                        error!("Game I/O error: {err}")
+                    }
+                },
+                Err(err) => error!("{}", err),
+            }
+
+            result
+        })
+        .await
+        .expect("join ok")
     }
 
     async fn can_accept_game(self, context: ::tarpc::context::Context) -> bool {
@@ -121,5 +153,14 @@ pub async fn run_worker_node() {
         _ = tokio::signal::ctrl_c() => {
             info!("Received Ctrl+C, stopping...");
         }
+    }
+}
+
+/// When dropped, sets the flag to true.
+struct SignalOnDrop(Arc<AtomicBool>);
+
+impl Drop for SignalOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
     }
 }
