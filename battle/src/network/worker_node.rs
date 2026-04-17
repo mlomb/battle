@@ -6,6 +6,7 @@ use std::{
     },
 };
 
+use console::style;
 use futures_util::StreamExt;
 use log::{error, info};
 use tarpc::{server, server::Channel, tokio_serde::formats::Bincode};
@@ -121,21 +122,24 @@ impl WorkerService for WorkerServer {
     }
 }
 
-pub async fn run_worker_node() {
+pub async fn run_worker_node(threads: usize, port: Option<u16>) {
+    let port = port.unwrap_or(8080);
+
     let mut listener = tarpc::serde_transport::tcp::listen(
-        (std::net::Ipv4Addr::UNSPECIFIED, 8080),
+        (std::net::Ipv4Addr::UNSPECIFIED, port),
         Bincode::default,
     )
     .await
     .expect("listen");
     listener.config_mut().max_frame_length(usize::MAX);
 
-    info!("Worker listening on port {}", 8080);
+    info!("Worker listening on port {}", style(port).yellow());
+    info!("Using {}", style(format!("{} threads", threads)).cyan());
 
     let node = Arc::new(std::sync::Mutex::new(WorkerNode {
         targets: HashMap::new(),
     }));
-    let game_slots = Arc::new(Semaphore::new(20));
+    let game_slots = Arc::new(Semaphore::new(threads));
 
     let serve = listener
         .filter_map(|r| std::future::ready(r.ok()))

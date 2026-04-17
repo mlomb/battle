@@ -7,20 +7,18 @@ mod referee;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::builder::BuildError;
 use crate::exec::executable::Executable;
 use crate::exec::target::Target;
-use crate::game::{GameResultData, GameSetup};
-use crate::network::producer_node::ProducerNode;
+use crate::game::GameSetup;
+use crate::network::game_stream::GameStream;
 use crate::network::worker_node::run_worker_node;
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
-use futures_util::StreamExt;
-use futures_util::stream::FuturesUnordered;
+use futures_util::{StreamExt, stream};
 use log::{LevelFilter, info};
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
@@ -51,8 +49,14 @@ enum Commands {
     Worker {
         /// Number of threads to allocate for the worker.
         /// If set to 0, the default will be the number of physical CPUs minus 2
-        #[arg(long, default_value = "0")]
+        #[arg(short, long, default_value = "0")]
         threads: usize,
+
+        /// Port number to listen on.
+        ///
+        /// If not provided, a random port will be chosen (likely what you want for P2P)
+        #[arg(short, long)]
+        port: Option<u16>,
     },
 
     /// Play a game between multiple bots
@@ -150,23 +154,19 @@ async fn main() {
             let exec = bundle_and_build(bundler_args).expect("correct bundle and build");
             println!("  OK: {:?}", exec);
         }
-        Commands::Worker { mut threads } => {
+        Commands::Worker { mut threads, port } => {
             info!("Starting worker node...");
 
             if threads == 0 {
                 threads = (num_cpus::get_physical() - 2).max(1);
             }
 
-            info!("Using {}", style(format!("{} threads", threads)).cyan());
-
-            run_worker_node().await;
+            run_worker_node(threads, port).await;
 
             info!("Exiting!");
         }
         Commands::Play { referee, agent, n } => {
             info!("Using a networked worker pool");
-
-            let producer = Arc::new(ProducerNode::new().await);
 
             let game_setup = GameSetup::<Arc<Target>> {
                 referee: Referee::from_preset(referee).unwrap(),
@@ -183,13 +183,12 @@ async fn main() {
                 seed: 0,
             };
 
-            let mut futs = FuturesUnordered::new();
+            let mut game_stream = GameStream::new(stream::repeat(game_setup)).await;
 
             loop {
                 tokio::select! {
-                    item = futs.next(), if !futs.is_empty() => match item {
-                        Some((_, Ok(data))) => {
-                            let data: GameResultData = data;
+                    item = game_stream.next() => match item {
+                        Some((_, data)) => {
                             let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
                             println!(
                                 "{} {} {}",
@@ -198,14 +197,8 @@ async fn main() {
                                 style(s(2)).yellow(),
                             );
                         }
-                        Some((_, Err(e))) => eprintln!("{}", style(e).red()),
-                        None => {}
+                        None => break,
                     },
-                    _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                        if let Some(fut) = producer.play_game(game_setup.clone()).await {
-                            futs.push(fut);
-                        }
-                    }
                     _ = tokio::signal::ctrl_c() => {
                         info!("Received Ctrl+C, stopping...");
                         break;
