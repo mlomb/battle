@@ -1,4 +1,4 @@
-pub mod producer_node;
+pub mod game_stream;
 pub mod worker_node;
 
 use crate::{
