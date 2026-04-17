@@ -34,11 +34,14 @@ impl ProducerNode {
     pub async fn play_game(
         &self,
         game: GameSetup<Arc<Target>>,
-    ) -> Option<impl std::future::Future<Output = GameResult> + '_> {
+    ) -> Option<impl std::future::Future<Output = (GameSetup<Arc<Target>>, GameResult)> + '_> {
         let client = self.clients.first().expect("at least one client");
 
         if client.can_accept_game().await {
-            Some(async move { client.run_game(game).await })
+            Some(async move {
+                let res = client.run_game(&game).await;
+                (game, res)
+            })
         } else {
             None
         }
@@ -106,7 +109,7 @@ impl ConsumerConnection {
             .expect("RPC call")
     }
 
-    async fn run_game(&self, game: GameSetup<Arc<Target>>) -> GameResult {
+    async fn run_game(&self, game: &GameSetup<Arc<Target>>) -> GameResult {
         let referee = self
             .make_target_available(game.referee.target.clone())
             .await;
@@ -117,7 +120,7 @@ impl ConsumerConnection {
 
         let net_setup = GameSetup::<TargetId> {
             referee: Referee::<TargetId> {
-                protocol: game.referee.protocol,
+                protocol: game.referee.protocol.clone(),
                 target: referee,
                 min_agents: game.referee.min_agents,
                 max_agents: game.referee.max_agents,

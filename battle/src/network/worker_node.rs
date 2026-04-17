@@ -135,7 +135,7 @@ pub async fn run_worker_node() {
     let node = Arc::new(std::sync::Mutex::new(WorkerNode {
         targets: HashMap::new(),
     }));
-    let game_slots = Arc::new(Semaphore::new(1));
+    let game_slots = Arc::new(Semaphore::new(20));
 
     let serve = listener
         .filter_map(|r| std::future::ready(r.ok()))
