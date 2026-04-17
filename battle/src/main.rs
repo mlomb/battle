@@ -19,7 +19,7 @@ use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
-use futures_util::TryStreamExt;
+use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
 use log::{LevelFilter, info};
 
@@ -182,28 +182,13 @@ async fn main() {
                     .collect(),
                 seed: 0,
             };
-            let games = vec![
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-                game_setup.clone(),
-            ];
 
             let mut futs = FuturesUnordered::new();
 
             loop {
                 tokio::select! {
-                    result = futs.try_next() => match result {
-                        // TODO: fix stuck because of this
-                        Ok(None) => break, // done!
-                        Ok(Some(data)) => {
+                    item = futs.next(), if !futs.is_empty() => match item {
+                        Some((_, Ok(data))) => {
                             let data: GameResultData = data;
                             let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
                             println!(
@@ -213,16 +198,14 @@ async fn main() {
                                 style(s(2)).yellow(),
                             );
                         }
-                        Err(e) => eprintln!("{}", style(e).red()),
+                        Some((_, Err(e))) => eprintln!("{}", style(e).red()),
+                        None => {}
                     },
-                    _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                        match producer.play_game(game_setup.clone()).await {
-                            Some(fut) => futs.push(fut),
-                            None => {
-                                // could not be scheduled, try again later
-                            }
+                    _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                        if let Some(fut) = producer.play_game(game_setup.clone()).await {
+                            futs.push(fut);
                         }
-                    } // reschedule
+                    }
                     _ = tokio::signal::ctrl_c() => {
                         info!("Received Ctrl+C, stopping...");
                         break;
