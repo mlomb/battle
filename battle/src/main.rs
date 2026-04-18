@@ -75,6 +75,32 @@ enum Commands {
         // TODO: seed
     },
 
+    /// Compare two referees by running the same game on both.
+    ///
+    /// First, it will play a game with the reference referee, then it will fake both
+    /// agent's outputs and replicate the same
+    ///
+    /// Stops at the first mismatch in scores or process status, or after `--max-games` identical runs.
+    /// Useful when porting or optimizing a referee (e.g. Java to C++) while preserving outcomes.
+    RefereeDiff {
+        /// Reference referee (treated as ground truth)
+        #[arg(long)]
+        reference: String,
+
+        /// Candidate referee under test
+        #[arg(long)]
+        candidate: String,
+
+        /// Agents to use for the comparison. The agents must not be trivial bots to allow for meaningful comparisons.
+        /// A single non-trivial non-deterministic agent works wonders.
+        #[arg(short, long)]
+        agent: Vec<String>,
+
+        /// Number of games to compare (seed runs from `0` to `max_games - 1`)
+        #[arg(long, default_value = "10")]
+        max_games: usize,
+    },
+
     /// Start an MCP server
     MCP {
         /// The protocol to use
@@ -209,5 +235,11 @@ async fn main() {
             info!("Exiting!");
         }
         Commands::MCP { protocol: _ } => todo!(),
+        Commands::RefereeDiff {
+            reference,
+            candidate,
+            agent,
+            max_games,
+        } => todo!(),
     }
 }
