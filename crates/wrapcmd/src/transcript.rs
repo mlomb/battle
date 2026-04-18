@@ -46,7 +46,7 @@ impl fmt::Display for Event {
 }
 
 /// An ordered sequence of I/O events.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Transcript {
     pub events: Vec<Event>,
 }

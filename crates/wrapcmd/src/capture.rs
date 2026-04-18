@@ -131,11 +131,11 @@ pub fn run_capture(cmd: &[OsString]) -> (Transcript, ExitCode) {
         }
         let _ = child.kill();
         let _ = child.wait();
-        let transcript = Arc::try_unwrap(log).unwrap().into_inner().unwrap();
+        let transcript = log.lock().unwrap().clone();
         return (transcript, ExitCode::from(1));
     }
 
-    let transcript = Arc::try_unwrap(log).unwrap().into_inner().unwrap();
+    let transcript = log.lock().unwrap().clone();
     let code = match child.wait() {
         Ok(st) => ExitCode::from(st.code().unwrap_or(1) as u8),
         Err(e) => {

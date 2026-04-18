@@ -4,9 +4,9 @@ mod game;
 mod network;
 mod referee;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{collections::HashMap, process::ExitCode};
 
 use crate::builder::BuildError;
 use crate::exec::executable::Executable;
@@ -20,7 +20,7 @@ use clap::{Parser, Subcommand};
 use console::{Emoji, style};
 use futures_util::{StreamExt, stream};
 use log::{LevelFilter, info};
-use wrapcmd::WrapCmdCommand;
+use wrapcmd::{WrapCmdCommand, wrap_main};
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
@@ -76,12 +76,6 @@ enum Commands {
         // TODO: seed
     },
 
-    /// Wrap todo write
-    Wrap {
-        #[command(subcommand)]
-        command: WrapCmdCommand,
-    },
-
     /// Compare two referees by running the same game on both.
     ///
     /// First, it will play a game with the reference referee, then it will fake both
@@ -106,6 +100,12 @@ enum Commands {
         /// Number of games to compare (seed runs from `0` to `max_games - 1`)
         #[arg(long, default_value = "10")]
         max_games: usize,
+    },
+
+    /// Wraps an executable to record/replay stdin, stdout, and stderr.
+    Wrap {
+        #[command(subcommand)]
+        command: WrapCmdCommand,
     },
 
     /// Start an MCP server
@@ -159,7 +159,7 @@ fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildError>
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     env_logger::Builder::new()
         .filter_module("battle", LevelFilter::Trace)
         .init();
@@ -257,7 +257,9 @@ async fn main() {
             */
         }
         Commands::Wrap { command } => {
-            todo!()
+            return wrap_main(command);
         }
     }
+
+    ExitCode::SUCCESS
 }
