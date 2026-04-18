@@ -1,0 +1,14 @@
+[package]
+name = "wrapcmd"
+description = "Record and replay textual stdin/stdout/stderr transcripts"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+
+[dependencies]
+clap = { version = "4.5.19", features = ["derive"] }
+console = "0.16.3"
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
