@@ -20,6 +20,7 @@ use clap::{Parser, Subcommand};
 use console::{Emoji, style};
 use futures_util::{StreamExt, stream};
 use log::{LevelFilter, info};
+use wrapcmd::WrapCmdCommand;
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
@@ -73,6 +74,12 @@ enum Commands {
         #[arg(short, long, default_value = "1")]
         n: usize,
         // TODO: seed
+    },
+
+    /// Wrap todo write
+    Wrap {
+        #[command(subcommand)]
+        command: WrapCmdCommand,
     },
 
     /// Compare two referees by running the same game on both.
@@ -235,11 +242,22 @@ async fn main() {
             info!("Exiting!");
         }
         Commands::MCP { protocol: _ } => todo!(),
+
         Commands::RefereeDiff {
             reference,
             candidate,
             agent,
             max_games,
-        } => todo!(),
+        } => {
+            /*
+            if let Err(e) = crate::referee_diff::run(reference, candidate, agent, max_games).await {
+                eprintln!("RefereeDiff failed: {}", e);
+                std::process::exit(1);
+            }
+            */
+        }
+        Commands::Wrap { command } => {
+            todo!()
+        }
     }
 }
