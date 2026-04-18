@@ -40,7 +40,7 @@ pub fn run_game(
         .iter()
         .map(|a| a.blocking_lock().command())
         .collect();
-    let mut cmd = setup.referee.command(&agent_cmds);
+    let mut cmd = setup.referee.command(&agent_cmds, setup.seed);
     let result = cmd.execute(std::time::Duration::from_secs(40), abort.as_deref());
     let scores = result
         .stdout

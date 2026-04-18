@@ -72,7 +72,7 @@ impl Referee<Arc<Target>> {
 }
 
 impl Referee<Arc<Mutex<Executable>>> {
-    pub fn command(&self, agent_cmds: &Vec<Command>) -> Command {
+    pub fn command(&self, agent_cmds: &[Command], seed: u64) -> Command {
         let mut exe = self.target.blocking_lock();
         let mut cmd = exe.command();
 
@@ -82,6 +82,7 @@ impl Referee<Arc<Mutex<Executable>>> {
                     cmd.arg(format!("-p{}", i + 1));
                     cmd.arg(agent.command_line_string());
                 }
+                cmd.arg("-s").arg(seed.to_string());
             }
         }
 
