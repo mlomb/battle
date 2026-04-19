@@ -89,6 +89,7 @@ impl WorkerService for WorkerServer {
                     .map(|id| node.targets.get(id).unwrap().clone())
                     .collect(),
                 seed: game.seed,
+                capture_io: game.capture_io,
             }
         };
 

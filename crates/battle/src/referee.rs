@@ -37,7 +37,7 @@ impl Referee<Arc<Target>> {
     /// For now, only CodinGame referees are supported.
     pub fn from_preset<T: ToString>(preset: T) -> Result<Self, String> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("referees")
+            .join("../../referees")
             .join(format!("{}.jar", preset.to_string()));
 
         if !path.is_file() {

@@ -173,6 +173,7 @@ impl ConsumerConnection {
             },
             agents,
             seed: game.seed,
+            capture_io: game.capture_io,
         };
 
         let mut ctx = current();
