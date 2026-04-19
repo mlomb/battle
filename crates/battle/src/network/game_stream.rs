@@ -62,14 +62,15 @@ impl GameStream {
                             let game = if let Some(game) = retry_queue.pop_front() {
                                 game
                             } else {
-                                match rx_input.recv().await {
-                                    Some(game) => game,
-                                    None => break,
+                                match rx_input.try_recv() {
+                                    Ok(game) => game,
+                                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => continue,
+                                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
                                 }
                             };
                             let client = client.clone();
                             futs.push(async move {
-                                let res = client.run_game(&game).await;
+                                let res = client.run_game(&game.clone()).await;
                                 (game, res)
                             });
                         }
