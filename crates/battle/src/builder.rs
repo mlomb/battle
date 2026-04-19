@@ -43,7 +43,11 @@ pub fn build_cpp(
 ) -> Result<Executable, BuildError> {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     let src_path = dir.path().join("main.cpp");
-    let out_path = dir.path().join("main");
+    let out_path = if cfg!(windows) {
+        dir.path().join("main.exe")
+    } else {
+        dir.path().join("main")
+    };
 
     std::fs::write(&src_path, src).expect("failed to write source file");
 

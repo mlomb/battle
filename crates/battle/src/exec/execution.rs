@@ -2,7 +2,7 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{BufRead, BufReader, Read},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
@@ -56,19 +56,19 @@ impl Execute for Command {
             }
         };
 
+        tie_child_lifetime_to_ours(&child).expect("tie child should succeed");
+
         let deadline = Instant::now() + timeout;
         let status = loop {
             match child.try_wait() {
                 Ok(None) => {
                     if Instant::now() >= deadline {
-                        child.kill().ok();
-                        child.wait().ok();
+                        terminate_child_process_tree(&mut child);
                         break Status::Timeout;
                     }
 
                     if abort.is_some_and(|a| a.load(Ordering::Relaxed)) {
-                        child.kill().ok();
-                        child.wait().ok();
+                        terminate_child_process_tree(&mut child);
                         break Status::Cancelled;
                     }
 
@@ -113,4 +113,67 @@ fn read_pipe_lines<R: Read>(reader: Option<R>) -> String {
         .map(|l| l.unwrap_or("(error reading pipe)".to_string()))
         .collect::<Vec<String>>()
         .join("\n")
+}
+
+/// Terminates the child process tree.
+fn terminate_child_process_tree(child: &mut Child) {
+    // On Windows, `Child::kill()` only terminates the direct child. Match runners (e.g. Java
+    // referees) often spawn agent subprocesses; those survive `TerminateProcess` on the parent.
+    // `taskkill /T` tears down the whole tree.
+    #[cfg(windows)]
+    {
+        let pid = child.id();
+        let killed_tree = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !killed_tree {
+            let _ = child.kill();
+        }
+    }
+
+    // Elsewhere we keep the standard `kill` + `wait`.
+    #[cfg(not(windows))]
+    {
+        let _ = child.kill();
+    }
+
+    let _ = child.wait();
+}
+
+/// Ties the lifetime of the child process to the current process.
+pub fn tie_child_lifetime_to_ours(child: &Child) -> std::io::Result<()> {
+    // On Windows, a child process is not automatically killed when its parent dies.
+    // If our process is killed (e.g. the referee calls `TerminateProcess` on us at the
+    // end of a game), the wrapped child would otherwise stay alive and pile up.
+    //
+    // To prevent that, we put the child in a Job Object with `KILL_ON_JOB_CLOSE`.
+    // When our process exits for any reason, the OS closes all our handles, including
+    // the job's, which then terminates every process in it.
+    #[cfg(windows)]
+    {
+        use std::io::Error;
+        use std::os::windows::io::AsRawHandle;
+        use win32job::{ExtendedLimitInfo, Job};
+
+        let mut info = ExtendedLimitInfo::new();
+        info.limit_kill_on_job_close();
+
+        let job = Job::create_with_limit_info(&info).map_err(Error::other)?;
+        job.assign_process(child.as_raw_handle() as isize)
+            .map_err(Error::other)?;
+
+        // Intentionally leak the job handle: we want it to stay open for the life of
+        // this process so `KILL_ON_JOB_CLOSE` fires only when we actually die (including
+        // via `TerminateProcess`). `into_handle` hands us the raw handle and skips the
+        // `Drop` that would otherwise close it immediately and kill the child.
+        let _ = job.into_handle();
+    }
+
+    // On Unix, the child is in our process group by default and will typically
+    // receive `SIGHUP`/`SIGTERM` when we die; nothing extra to do here.
+    Ok(())
 }

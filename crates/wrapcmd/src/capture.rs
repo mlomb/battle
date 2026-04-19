@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
-use std::process::{ChildStdin, Command, ExitCode, Stdio};
+use std::process::{Child, ChildStdin, Command, ExitCode, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -14,8 +14,7 @@ fn write_event(file_log: &FileLog, event: &Event) -> io::Result<()> {
     let mut f = file_log.lock().expect("lock file log");
     writeln!(f, "{event}")?;
 
-    // It is important to flush every time, because we don't know if the parent process
-    // may kills us at any time.
+    // It is important to flush every time, because the parent process can kill us at any time.
     // For example, at the end of a game, the referee kills all agent processes.
     f.flush()
 }
@@ -94,6 +93,10 @@ pub fn run_capture(cmd: &[OsString], out_path: &Path) -> ExitCode {
         .spawn()
         .expect("spawn process");
 
+    // Make sure the child dies if we die
+    // The referee can kill us at any point, and we need to make sure to kill the child aswell
+    tie_child_lifetime_to_ours(&child).expect("tie child should succeed");
+
     let child_in = child.stdin.take().expect("stdin");
     let child_out = child.stdout.take().expect("stdout");
     let child_err = child.stderr.take().expect("stderr");
@@ -116,10 +119,10 @@ pub fn run_capture(cmd: &[OsString], out_path: &Path) -> ExitCode {
 
     let r_out = h_out
         .join()
-        .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "thread panic")));
+        .unwrap_or_else(|_| Err(io::Error::other("thread panic")));
     let r_err = h_err
         .join()
-        .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "thread panic")));
+        .unwrap_or_else(|_| Err(io::Error::other("thread panic")));
 
     if r_out.is_err() || r_err.is_err() {
         if let Err(e) = r_out {
@@ -140,4 +143,26 @@ pub fn run_capture(cmd: &[OsString], out_path: &Path) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+/// Ties the lifetime of the child process to the current process.
+///
+/// See the same function in `execution.rs` in the `battle` crate for more details.
+pub fn tie_child_lifetime_to_ours(child: &Child) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use win32job::{ExtendedLimitInfo, Job};
+
+        let mut info = ExtendedLimitInfo::new();
+        info.limit_kill_on_job_close();
+
+        let job = Job::create_with_limit_info(&info).map_err(io::Error::other)?;
+        job.assign_process(child.as_raw_handle() as isize)
+            .map_err(io::Error::other)?;
+
+        let _ = job.into_handle();
+    }
+
+    Ok(())
 }
