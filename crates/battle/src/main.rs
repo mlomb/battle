@@ -217,11 +217,19 @@ async fn main() -> ExitCode {
                 capture_io: false,
             };
 
-            let mut game_stream = GameStream::new(stream::repeat(game_setup)).await;
+            let mut game_stream = GameStream::new().await;
+            let mut game_count = 0;
 
             loop {
                 tokio::select! {
-                    item = game_stream.next() => match item {
+                    biased; // prioritize receive over send
+
+                    _ = tokio::signal::ctrl_c() => {
+                        info!("Received Ctrl+C, stopping...");
+                        break;
+                    }
+
+                    item = game_stream.rx.recv() => match item {
                         Some((_, data)) => {
                             let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
                             println!(
@@ -233,10 +241,10 @@ async fn main() -> ExitCode {
                         }
                         None => break,
                     },
-                    _ = tokio::signal::ctrl_c() => {
-                        info!("Received Ctrl+C, stopping...");
-                        break;
-                    }
+
+                    _ = game_stream.tx.send(game_setup.clone()), if game_count < n => {
+                        game_count += 1;
+                    },
                 }
             }
 
@@ -250,12 +258,10 @@ async fn main() -> ExitCode {
             agent,
             max_games,
         } => {
-            /*
-            if let Err(e) = crate::referee_diff::run(reference, candidate, agent, max_games).await {
-                eprintln!("RefereeDiff failed: {}", e);
-                std::process::exit(1);
-            }
-            */
+            let reference = Referee::from_preset(reference).unwrap();
+            let candidate = Referee::from_preset(candidate).unwrap();
+
+            info!("Exiting!");
         }
         Commands::Wrap { command } => {
             return wrap_main(command);

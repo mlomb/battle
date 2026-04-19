@@ -8,12 +8,13 @@ use wrapcmd::transcript::Transcript;
 use crate::exec::{
     executable::Executable,
     execution::{Execute, ExecutionResult},
+    target::Target,
 };
 use crate::referee::Referee;
 
 /// Lightweight game setup referencing pre-registered targets by content hash.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameSetup<T> {
+pub struct GameSetup<T = Arc<Target>> {
     pub referee: Referee<T>,
     pub agents: Vec<T>,
     pub seed: u64,

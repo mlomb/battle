@@ -1,14 +1,14 @@
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use std::{
     collections::{HashSet, VecDeque},
-    pin::Pin,
     sync::Arc,
-    task::{Context, Poll},
     time::{Duration, SystemTime},
 };
-
-use futures_util::{Stream, StreamExt, stream::FuturesUnordered};
 use tarpc::{context::current, tokio_serde::formats::Bincode};
-use tokio::sync::Mutex;
+use tokio::sync::{
+    Mutex,
+    mpsc::{Receiver, Sender, channel},
+};
 
 use crate::{
     exec::target::{Target, TargetId},
@@ -23,18 +23,22 @@ use crate::{
 /// `(GameSetup, GameResult)` pairs. Load-balances across available workers and
 /// respects their capacity.
 pub struct GameStream {
-    rx: tokio::sync::mpsc::Receiver<(GameSetup<Arc<Target>>, GameResultData)>,
+    /// Send game setups to be played
+    pub tx: Sender<GameSetup>,
+
+    /// Receives game results
+    pub rx: Receiver<(GameSetup, GameResultData)>,
 }
 
 impl GameStream {
-    pub async fn new(input: impl Stream<Item = GameSetup<Arc<Target>>> + Send + 'static) -> Self {
+    pub async fn new() -> Self {
         let client = Arc::new(ConsumerConnection::new("127.0.0.1:8080").await);
-        let (tx, rx) = tokio::sync::mpsc::channel::<(GameSetup<Arc<Target>>, GameResultData)>(32);
+        let (tx_result, rx_result) = channel::<(GameSetup, GameResultData)>(32);
+        let (tx_input, mut rx_input) = channel::<GameSetup>(1);
 
         tokio::spawn(async move {
             let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
-            let mut retry_queue: VecDeque<GameSetup<Arc<Target>>> = VecDeque::new();
-            tokio::pin!(input);
+            let mut retry_queue: VecDeque<GameSetup> = VecDeque::new();
 
             loop {
                 tokio::select! {
@@ -42,7 +46,7 @@ impl GameStream {
                         if let Some((game, result)) = item {
                             match result {
                                 Ok(data) => {
-                                    if tx.send((game, data)).await.is_err() {
+                                    if tx_result.send((game, data)).await.is_err() {
                                         break;
                                     }
                                 }
@@ -58,7 +62,7 @@ impl GameStream {
                             let game = if let Some(game) = retry_queue.pop_front() {
                                 game
                             } else {
-                                match input.next().await {
+                                match rx_input.recv().await {
                                     Some(game) => game,
                                     None => break,
                                 }
@@ -75,22 +79,17 @@ impl GameStream {
 
             while let Some((game, result)) = futs.next().await {
                 if let Ok(data) = result {
-                    let _ = tx.send((game, data)).await;
+                    let _ = tx_result.send((game, data)).await;
                 } else {
                     retry_queue.push_back(game);
                 }
             }
         });
 
-        Self { rx }
-    }
-}
-
-impl Stream for GameStream {
-    type Item = (GameSetup<Arc<Target>>, GameResultData);
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.rx.poll_recv(cx)
+        Self {
+            tx: tx_input,
+            rx: rx_result,
+        }
     }
 }
 
@@ -155,7 +154,7 @@ impl ConsumerConnection {
             .expect("RPC call")
     }
 
-    async fn run_game(&self, game: &GameSetup<Arc<Target>>) -> Result<GameResultData, String> {
+    async fn run_game(&self, game: &GameSetup) -> Result<GameResultData, String> {
         let referee = self
             .make_target_available(game.referee.target.clone())
             .await;
