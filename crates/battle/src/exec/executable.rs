@@ -1,9 +1,9 @@
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::{
-    fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, process::Command,
-};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+use std::{fs::OpenOptions, io::Write, path::PathBuf, process::Command};
 use tempfile::TempDir;
 use wrapcmd::transcript::Transcript;
 
@@ -133,10 +133,11 @@ impl Executable {
             // write files to disk
             for (name, content) in &self.files {
                 let path = tmp.path().join(name);
-                let mut file = OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .mode(0o755)
+                let mut opts = OpenOptions::new();
+                opts.create(true).write(true);
+                #[cfg(unix)]
+                opts.mode(0o755);
+                let mut file = opts
                     .open(&path)
                     .map_err(|_| String::from("failed to open file"))?;
 
