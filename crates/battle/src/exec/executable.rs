@@ -1,11 +1,11 @@
-use bundler::source::{Language, Source};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{
     fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, process::Command,
 };
-use tempfile::{TempDir, tempdir};
+use tempfile::TempDir;
+use wrapcmd::transcript::Transcript;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutableKind {
@@ -15,6 +15,8 @@ pub enum ExecutableKind {
     Jar,
     /// Python source code (.py)
     Python,
+    /// A wrapcmd transcript to replay via `<current_exe> wrap replay <file>`.
+    Replay,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -87,6 +89,18 @@ impl Executable {
         })
     }
 
+    /// Creates a new executable that replays a wrapcmd transcript via `<current_exe> wrap replay`.
+    pub fn from_transcript(transcript: &Transcript) -> Self {
+        let content = transcript.to_string().into_bytes();
+        let name = PathBuf::from("transcript.io");
+        Self {
+            kind: ExecutableKind::Replay,
+            entrypoint: name.clone(),
+            files: HashMap::from([(name, content)]),
+            tmp_workdir: None,
+        }
+    }
+
     /// Creates a new executable from a binary file (.exe or ./main)
     pub fn from_binary(binary_path: PathBuf) -> Result<Self, std::io::Error> {
         let name = PathBuf::from(
@@ -152,6 +166,13 @@ impl Executable {
                 // This is due CodinGame engine accessing internal classes which is not supported in modern Java
                 cmd.args(["--add-opens", "java.base/java.lang=ALL-UNNAMED", "-jar"])
                     .arg(entry);
+                cmd
+            }
+            ExecutableKind::Replay => {
+                let current_exe =
+                    std::env::current_exe().expect("failed to get current executable path");
+                let mut cmd = Command::new(current_exe);
+                cmd.args(["wrap", "replay"]).arg(entry);
                 cmd
             }
             _ => todo!(),

@@ -1,7 +1,9 @@
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Event {
     /// A line read from stdin.
     In(String),
@@ -46,7 +48,7 @@ impl fmt::Display for Event {
 }
 
 /// An ordered sequence of I/O events.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Transcript {
     pub events: Vec<Event>,
 }

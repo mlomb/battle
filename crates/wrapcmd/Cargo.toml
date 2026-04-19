@@ -8,6 +8,7 @@ resolver = "2"
 [dependencies]
 clap = { version = "4.5.19", features = ["derive"] }
 console = "0.16.3"
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 assert_cmd = "2"
