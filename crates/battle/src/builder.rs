@@ -1,11 +1,7 @@
 use bundler::source::{Language, Source};
-use log::info;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::{
-    fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, process::Command,
-};
-use tempfile::{TempDir, tempdir};
+use std::{path::PathBuf, process::Command};
+use tempfile::tempdir;
 
 use crate::exec::executable::Executable;
 
