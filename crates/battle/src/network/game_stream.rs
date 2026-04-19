@@ -135,10 +135,13 @@ impl ConsumerConnection {
             return id;
         }
 
+        let mut ctx = current();
+        ctx.deadline = SystemTime::now() + Duration::from_secs(40);
+
         // register target
         // can be expensive, since targets can be large
         self.client
-            .register_target(current(), target.as_ref().clone())
+            .register_target(ctx, target.as_ref().clone())
             .await
             .expect("RPC call")
             .expect("register target");
