@@ -201,7 +201,7 @@ async fn main() -> ExitCode {
         Commands::Play { referee, agent, n } => {
             info!("Using a networked worker pool");
 
-            let game_setup = GameSetup::<Arc<Target>> {
+            let game_setup = GameSetup {
                 referee: Referee::from_preset(referee).unwrap(),
                 agents: agent
                     .iter()
@@ -214,6 +214,7 @@ async fn main() -> ExitCode {
                     })
                     .collect(),
                 seed: 0,
+                capture_io: false,
             };
 
             let mut game_stream = GameStream::new(stream::repeat(game_setup)).await;

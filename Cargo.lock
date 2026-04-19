@@ -2597,6 +2597,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "console 0.16.3",
+ "serde",
  "tempfile",
 ]
 
