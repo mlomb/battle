@@ -40,14 +40,7 @@ pub enum WrapCmdCommand {
 
 pub fn wrap_main(command: WrapCmdCommand) -> ExitCode {
     match command {
-        WrapCmdCommand::Capture { out, cmd } => {
-            let (transcript, code) = capture::run_capture(&cmd);
-            if let Err(e) = transcript.save(&out) {
-                eprintln!("wrapcmd capture: save {}: {e}", out.display());
-                return ExitCode::FAILURE;
-            }
-            code
-        }
+        WrapCmdCommand::Capture { out, cmd } => capture::run_capture(&cmd, &out),
         WrapCmdCommand::Replay { transcript: path } => {
             let text = std::fs::read_to_string(&path).expect("read transcript");
             let transcript: Transcript = text.parse().expect("parse transcript");

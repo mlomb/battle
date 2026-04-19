@@ -1,25 +1,27 @@
 use std::ffi::OsString;
-use std::io::{self, BufRead, BufReader, Write};
-use std::process::{Command, ExitCode, Stdio};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::path::Path;
+use std::process::{ChildStdin, Command, ExitCode, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::transcript::{Event, Transcript};
+use crate::transcript::Event;
 
-type Log = Arc<Mutex<Transcript>>;
+type FileLog = Arc<Mutex<BufWriter<File>>>;
 
-fn record(log: &Log, event: Event, passthrough: &mut impl Write) -> io::Result<()> {
-    let content = event.content().to_owned();
-    log.lock()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-        .events
-        .push(event);
-    writeln!(passthrough, "{content}")?;
-    passthrough.flush()
+fn write_event(file_log: &FileLog, event: &Event) -> io::Result<()> {
+    let mut f = file_log.lock().expect("lock file log");
+    writeln!(f, "{event}")?;
+
+    // It is important to flush every time, because we don't know if the parent process
+    // may kills us at any time.
+    // For example, at the end of a game, the referee kills all agent processes.
+    f.flush()
 }
 
-fn forward<R: io::Read, W: io::Write>(
-    log: Log,
+fn forward_out<R: io::Read, W: io::Write>(
+    file_log: FileLog,
     to_event: fn(String) -> Event,
     reader: R,
     mut writer: W,
@@ -28,19 +30,28 @@ fn forward<R: io::Read, W: io::Write>(
     let mut line = String::new();
     loop {
         line.clear();
+
         match r.read_line(&mut line) {
             Ok(0) => break,
             Ok(_) => {
                 let content = line.trim_end_matches(['\n', '\r']).to_owned();
-                record(&log, to_event(content), &mut writer)?;
+                let event = to_event(content);
+
+                // write to disk
+                write_event(&file_log, &event)?;
+
+                // passthrough to the parent process
+                writeln!(writer, "{}", event.content())?;
+                writer.flush()?;
             }
             Err(e) => return Err(e),
         }
     }
+
     Ok(())
 }
 
-fn forward_stdin(log: Log, mut child_in: std::process::ChildStdin) -> io::Result<()> {
+fn forward_stdin(file_log: FileLog, mut child_in: ChildStdin) -> io::Result<()> {
     let stdin = io::stdin();
     let mut r = stdin.lock();
     let mut line = String::new();
@@ -53,10 +64,8 @@ fn forward_stdin(log: Log, mut child_in: std::process::ChildStdin) -> io::Result
                     .trim_end_matches('\n')
                     .trim_end_matches('\r')
                     .to_owned();
-                log.lock()
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-                    .events
-                    .push(Event::In(content));
+                let event = Event::In(content);
+                write_event(&file_log, &event)?;
                 child_in.write_all(line.as_bytes())?;
                 child_in.flush()?;
             }
@@ -66,53 +75,43 @@ fn forward_stdin(log: Log, mut child_in: std::process::ChildStdin) -> io::Result
     Ok(())
 }
 
-pub fn run_capture(cmd: &[OsString]) -> (Transcript, ExitCode) {
+pub fn run_capture(cmd: &[OsString], out_path: &Path) -> ExitCode {
     let cmd = if cmd.first().is_some_and(|a| a == "--") {
         &cmd[1..]
     } else {
         cmd
     };
-    if cmd.is_empty() {
-        eprintln!(
-            "wrapcmd capture: missing command (use: wrapcmd capture <out> -- <cmd> [args...])"
-        );
-        return (Transcript::default(), ExitCode::from(1));
-    }
+    assert!(!cmd.is_empty(), "missing command");
 
-    let log: Log = Arc::new(Mutex::new(Transcript::default()));
+    let file = File::create(out_path).expect("create transcript file");
+    let file_log: FileLog = Arc::new(Mutex::new(BufWriter::new(file)));
 
-    let mut child = match Command::new(&cmd[0])
+    let mut child = Command::new(&cmd[0])
         .args(&cmd[1..])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("wrapcmd capture: spawn: {e}");
-            return (Transcript::default(), ExitCode::from(1));
-        }
-    };
+        .expect("spawn process");
 
     let child_in = child.stdin.take().expect("stdin");
     let child_out = child.stdout.take().expect("stdout");
     let child_err = child.stderr.take().expect("stderr");
 
     // Stdin thread is not joined: it may block waiting for TTY EOF after the child exits.
-    let log_in = Arc::clone(&log);
-    let _stdin = thread::spawn(move || forward_stdin(log_in, child_in));
+    let file_log_in = Arc::clone(&file_log);
+    let _stdin = thread::spawn(move || forward_stdin(file_log_in, child_in));
 
-    let log_out = Arc::clone(&log);
+    let file_log_out = Arc::clone(&file_log);
     let h_out = thread::spawn(move || {
         let stdout = io::stdout();
-        forward(log_out, Event::Out, child_out, stdout.lock())
+        forward_out(file_log_out, Event::Out, child_out, stdout.lock())
     });
 
-    let log_err = Arc::clone(&log);
+    let file_log_err = Arc::clone(&file_log);
     let h_err = thread::spawn(move || {
         let stderr = io::stderr();
-        forward(log_err, Event::Err, child_err, stderr.lock())
+        forward_out(file_log_err, Event::Err, child_err, stderr.lock())
     });
 
     let r_out = h_out
@@ -131,18 +130,14 @@ pub fn run_capture(cmd: &[OsString]) -> (Transcript, ExitCode) {
         }
         let _ = child.kill();
         let _ = child.wait();
-        let transcript = log.lock().unwrap().clone();
-        return (transcript, ExitCode::from(1));
+        return ExitCode::from(1);
     }
 
-    let transcript = log.lock().unwrap().clone();
-    let code = match child.wait() {
+    match child.wait() {
         Ok(st) => ExitCode::from(st.code().unwrap_or(1) as u8),
         Err(e) => {
             eprintln!("wrapcmd capture: wait: {e}");
             ExitCode::from(1)
         }
-    };
-
-    (transcript, code)
+    }
 }
