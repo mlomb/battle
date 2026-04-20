@@ -13,7 +13,7 @@ use tokio::sync::{
 use crate::{
     exec::target::{Target, TargetId},
     game::{GameResultData, GameSetup},
-    network::WorkerServiceClient,
+    network::{WorkerServiceClient, start_discovery},
     referee::Referee,
 };
 
@@ -32,13 +32,17 @@ pub struct GameStream {
 
 impl GameStream {
     pub async fn new() -> Self {
-        let client = Arc::new(ConsumerConnection::new("127.0.0.1:8080").await);
         let (tx_result, rx_result) = channel::<(GameSetup, GameResultData)>(32);
         let (tx_input, mut rx_input) = channel::<GameSetup>(1);
 
         tokio::spawn(async move {
+            let handle = tokio::runtime::Handle::current();
+            let (mut disc_rx, _disc_guard) = start_discovery(None, &handle);
+
             let mut futs: FuturesUnordered<_> = FuturesUnordered::new();
             let mut retry_queue: VecDeque<GameSetup> = VecDeque::new();
+            let mut workers: Vec<Arc<ConsumerConnection>> = Vec::new();
+            let (worker_tx, mut worker_rx) = channel::<Arc<ConsumerConnection>>(16);
 
             loop {
                 tokio::select! {
@@ -57,23 +61,55 @@ impl GameStream {
                             }
                         }
                     },
-                    _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                        if client.can_accept_game().await {
-                            let game = if let Some(game) = retry_queue.pop_front() {
-                                game
-                            } else {
-                                match rx_input.try_recv() {
-                                    Ok(game) => game,
-                                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => continue,
-                                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+                    _rx = disc_rx.recv() => match _rx {
+                        Some(addr) => {
+                            let tx = worker_tx.clone();
+                            tokio::spawn(async move {
+                                match ConsumerConnection::new(&addr.to_string()).await {
+                                    Ok(conn) => {
+                                        log::info!("Connected to worker at {}", addr);
+                                        let _ = tx.send(Arc::new(conn)).await;
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Failed to connect to worker at {}: {}", addr, e);
+                                    }
                                 }
-                            };
-                            let client = client.clone();
-                            futs.push(async move {
-                                let res = client.run_game(&game.clone()).await;
-                                (game, res)
                             });
                         }
+                        None => break,
+                    },
+                    conn = worker_rx.recv() => {
+                        if let Some(conn) = conn {
+                            workers.push(conn);
+                            log::info!("Worker added to pool, total: {}", workers.len());
+                        }
+                    },
+                    _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                        let available = {
+                            let mut found = None;
+                            for worker in &workers {
+                                if worker.can_accept_game().await {
+                                    found = Some(worker.clone());
+                                    break;
+                                }
+                            }
+                            found
+                        };
+                        let Some(worker) = available else { continue };
+
+                        let game = if let Some(game) = retry_queue.pop_front() {
+                            game
+                        } else {
+                            match rx_input.try_recv() {
+                                Ok(game) => game,
+                                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => continue,
+                                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+                            }
+                        };
+                        futs.push(async move {
+                            let res = worker.run_game(&game.clone()).await;
+                            (game, res)
+                        });
                     }
                 }
             }
@@ -102,16 +138,16 @@ struct ConsumerConnection {
 }
 
 impl ConsumerConnection {
-    async fn new(address: &str) -> Self {
+    async fn new(address: &str) -> anyhow::Result<Self> {
         let mut connect = tarpc::serde_transport::tcp::connect(address, Bincode::default);
         connect.config_mut().max_frame_length(usize::MAX);
-        let transport = connect.await.expect("connect");
+        let transport = connect.await?;
         let client = WorkerServiceClient::new(tarpc::client::Config::default(), transport).spawn();
 
-        Self {
+        Ok(Self {
             client,
             known_targets: Mutex::new(HashSet::new()),
-        }
+        })
     }
 
     async fn make_target_available(&self, target: Arc<Target>) -> TargetId {
