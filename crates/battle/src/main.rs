@@ -359,6 +359,7 @@ async fn main() -> ExitCode {
                                     && reference_result.agents.iter().zip(candidate_result.agents.iter())
                                         .all(|(r, c)| r.score == c.score);
 
+// TODO: improve
                                 if scores_match {
                                     println!("{}", style("MATCH").green().bold());
                                 } else {

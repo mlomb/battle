@@ -20,7 +20,7 @@ use crate::{
         target::{Target, TargetId},
     },
     game::{GameResult, GameSetup, run_game},
-    network::{WorkerService, start_discovery},
+    network::WorkerService,
     referee::Referee,
 };
 
@@ -136,9 +136,6 @@ pub async fn run_worker_node(threads: usize, port: Option<u16>) {
 
     info!("Worker listening on port {}", style(port).yellow());
     info!("Using {}", style(format!("{} threads", threads)).cyan());
-
-    let handle = tokio::runtime::Handle::current();
-    let (_rx, _guard) = start_discovery(Some(port), &handle);
 
     let node = Arc::new(std::sync::Mutex::new(WorkerNode {
         targets: HashMap::new(),
