@@ -15,7 +15,7 @@ use crate::builder::BuildError;
 use crate::exec::executable::Executable;
 use crate::exec::target::Target;
 use crate::game::{GameResultData, GameSetup};
-use crate::network::game_stream::GameStream;
+use crate::network::game_stream::{GameStream, NetworkArgs};
 use crate::network::worker_node::run_worker_node;
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
@@ -47,18 +47,16 @@ enum Commands {
         // TODO: platform, architecture, etc
     },
 
-    /// Start a worker node listening on localhost:54321
+    /// Start a worker node
     Worker {
         /// Number of threads to allocate for the worker.
         /// If set to 0, the default will be the number of physical CPUs minus 2
-        #[arg(short, long, default_value = "0")]
+        #[arg(short, long, default_value_t = 0)]
         threads: usize,
 
-        /// Port number to listen on.
-        ///
-        /// If not provided, a random port will be chosen (likely what you want for P2P)
-        #[arg(short, long)]
-        port: Option<u16>,
+        /// Port number to listen on
+        #[arg(short, long, default_value_t = network::DEFAULT_WORKER_PORT)]
+        port: u16,
     },
 
     /// Play a game between multiple bots
@@ -72,8 +70,11 @@ enum Commands {
         agent: Vec<String>,
 
         /// Number of games to play
-        #[arg(short, long, default_value = "1")]
+        #[arg(short, long, default_value_t = 1)]
         n: usize,
+
+        #[clap(flatten)]
+        network_args: NetworkArgs,
         // TODO: seed
     },
 
@@ -99,8 +100,11 @@ enum Commands {
         agent: Vec<String>,
 
         /// Number of games to compare (seed runs from `0` to `max_games - 1`)
-        #[arg(long, default_value = "10")]
+        #[arg(long, default_value_t = 10)]
         max_games: usize,
+
+        #[clap(flatten)]
+        network_args: NetworkArgs,
     },
 
     /// Wraps an executable to record/replay stdin, stdout, and stderr.
@@ -199,7 +203,12 @@ async fn main() -> ExitCode {
 
             info!("Exiting!");
         }
-        Commands::Play { referee, agent, n } => {
+        Commands::Play {
+            referee,
+            agent,
+            n,
+            network_args,
+        } => {
             info!("Using a networked worker pool");
 
             let game_setup = GameSetup {
@@ -218,7 +227,7 @@ async fn main() -> ExitCode {
                 capture_io: false,
             };
 
-            let mut game_stream = GameStream::new().await;
+            let mut game_stream = GameStream::new(network_args).await;
             let mut results_received = 0;
             let mut in_flight = 0;
 
@@ -266,11 +275,12 @@ async fn main() -> ExitCode {
             candidate,
             agent,
             max_games,
+            network_args,
         } => {
             let reference = Referee::from_preset(reference).unwrap();
             let candidate = Referee::from_preset(candidate).unwrap();
 
-            let mut game_stream = GameStream::new().await;
+            let mut game_stream = GameStream::new(network_args).await;
 
             let real_agents: Vec<Arc<Target>> = agent
                 .iter()
@@ -308,80 +318,80 @@ async fn main() -> ExitCode {
 
             loop {
                 tokio::select! {
-                    // prioritize receive over send, then
-                    // prioritize sending candidate games over reference games to bail fast
-                    biased;
+                                    // prioritize receive over send, then
+                                    // prioritize sending candidate games over reference games to bail fast
+                                    biased;
 
-                    _ = tokio::signal::ctrl_c() => {
-                        info!("Received Ctrl+C, stopping...");
-                        break;
-                    }
+                                    _ = tokio::signal::ctrl_c() => {
+                                        info!("Received Ctrl+C, stopping...");
+                                        break;
+                                    }
 
-                    item = game_stream.rx.recv() => match item {
-                        Some((setup, result)) => {
-                            let is_reference = Arc::ptr_eq(&setup.referee.target, &reference.target);
+                                    item = game_stream.rx.recv() => match item {
+                                        Some((setup, result)) => {
+                                            let is_reference = Arc::ptr_eq(&setup.referee.target, &reference.target);
 
-                            let s = |i: usize| result.agents.get(i).map(|a| a.score).unwrap_or(0);
-                            println!(
-                                "[{}] {} -> {} {} {}",
-                                style(if is_reference { "ref" } else { "cand" }).bold().dim(),
-                                style(format!("Seed {}", setup.seed)).white().dim(),
-                                style(s(0)).cyan(),
-                                style(s(1)).magenta(),
-                                style(s(2)).yellow(),
-                            );
+                                            let s = |i: usize| result.agents.get(i).map(|a| a.score).unwrap_or(0);
+                                            println!(
+                                                "[{}] {} -> {} {} {}",
+                                                style(if is_reference { "ref" } else { "cand" }).bold().dim(),
+                                                style(format!("Seed {}", setup.seed)).white().dim(),
+                                                style(s(0)).cyan(),
+                                                style(s(1)).magenta(),
+                                                style(s(2)).yellow(),
+                                            );
 
-                            if is_reference {
-                                // generate a new game, based on the transcript of the agents
-                                let new_game = GameSetup {
-                                    referee: candidate.clone(), // candidate instead of reference
-                                    agents: result
-                                        .agents
-                                        .iter()
-                                        .map(|a| {
-                                            Arc::new(Target::Executable(Executable::from_transcript(
-                                                a.transcript.as_ref().unwrap_or(&Default::default()),
-                                            )))
-                                        })
-                                        .collect(),
-                                    seed: setup.seed, // same seed
-                                    capture_io: true,
-                                };
+                                            if is_reference {
+                                                // generate a new game, based on the transcript of the agents
+                                                let new_game = GameSetup {
+                                                    referee: candidate.clone(), // candidate instead of reference
+                                                    agents: result
+                                                        .agents
+                                                        .iter()
+                                                        .map(|a| {
+                                                            Arc::new(Target::Executable(Executable::from_transcript(
+                                                                a.transcript.as_ref().unwrap_or(&Default::default()),
+                                                            )))
+                                                        })
+                                                        .collect(),
+                                                    seed: setup.seed, // same seed
+                                                    capture_io: true,
+                                                };
 
-                                reference_results.insert(setup.seed, result);
-                                pending_cand.push_back(new_game);
-                            } else {
-                                // compare the candidate game with the reference game
-                                let reference_result = reference_results.remove(&setup.seed).expect("ref must precede candidate");
-                                let candidate_result = result;
+                                                reference_results.insert(setup.seed, result);
+                                                pending_cand.push_back(new_game);
+                                            } else {
+                                                // compare the candidate game with the reference game
+                                                let reference_result = reference_results.remove(&setup.seed).expect("ref must precede candidate");
+                                                let candidate_result = result;
 
-                                let scores_match = reference_result.agents.len() == candidate_result.agents.len()
-                                    && reference_result.agents.iter().zip(candidate_result.agents.iter())
-                                        .all(|(r, c)| r.score == c.score);
+                                                let scores_match = reference_result.agents.len() == candidate_result.agents.len()
+                                                    && reference_result.agents.iter().zip(candidate_result.agents.iter())
+                                                        .all(|(r, c)| r.score == c.score);
 
-// TODO: improve
-                                if scores_match {
-                                    println!("{}", style("MATCH").green().bold());
-                                } else {
-                                    println!("{}", style("MISMATCH").red().bold());
-                                    break;
+                // TODO: improve
+                                                if scores_match {
+                                                    println!("{}", style("MATCH").green().bold());
+                                                } else {
+                                                    println!("{}", style("MISMATCH").red().bold());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        None => break,
+                                    },
+
+                                    _ = game_stream.tx.send(pending_cand.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_cand.is_empty() => {
+                                        pending_cand.pop_front().unwrap();
+                                    },
+
+                                    _ = game_stream.tx.send(pending_ref.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_ref.is_empty() && pending_cand.is_empty() => {
+                                        pending_ref.pop_front().unwrap();
+                                    },
+
+                                    _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                                    },
                                 }
-                            }
-                        }
-                        None => break,
-                    },
-
-                    _ = game_stream.tx.send(pending_cand.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_cand.is_empty() => {
-                        pending_cand.pop_front().unwrap();
-                    },
-
-                    _ = game_stream.tx.send(pending_ref.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_ref.is_empty() && pending_cand.is_empty() => {
-                        pending_ref.pop_front().unwrap();
-                    },
-
-                    _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                    },
-                }
             }
 
             info!("Exiting!");
