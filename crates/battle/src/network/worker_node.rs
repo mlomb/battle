@@ -123,9 +123,7 @@ impl WorkerService for WorkerServer {
     }
 }
 
-pub async fn run_worker_node(threads: usize, port: Option<u16>) {
-    let port = port.unwrap_or(8080);
-
+pub async fn run_worker_node(threads: usize, port: u16) {
     let mut listener = tarpc::serde_transport::tcp::listen(
         (std::net::Ipv4Addr::UNSPECIFIED, port),
         Bincode::default,

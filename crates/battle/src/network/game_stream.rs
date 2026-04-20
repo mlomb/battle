@@ -1,6 +1,8 @@
+use clap::Parser;
 use futures_util::{StreamExt, stream::FuturesUnordered};
 use std::{
     collections::{HashSet, VecDeque},
+    net::{IpAddr, SocketAddr},
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -13,9 +15,32 @@ use tokio::sync::{
 use crate::{
     exec::target::{Target, TargetId},
     game::{GameResultData, GameSetup},
-    network::WorkerServiceClient,
+    network::{DEFAULT_WORKER_PORT, WorkerServiceClient},
     referee::Referee,
 };
+
+fn parse_worker_address(s: &str) -> Result<SocketAddr, String> {
+    // TODO: add domain resolution here?
+
+    // 127.0.0.1:54321
+    if let Ok(addr) = s.parse::<SocketAddr>() {
+        return Ok(addr);
+    }
+
+    // 127.0.0.1
+    if let Ok(ip) = s.parse::<IpAddr>() {
+        return Ok(SocketAddr::new(ip, DEFAULT_WORKER_PORT));
+    }
+
+    Err(format!("invalid worker address: {s}"))
+}
+
+#[derive(Debug, Parser)]
+pub struct NetworkArgs {
+    /// Worker node addresses to connect to
+    #[arg(short, long = "worker", env = "BATTLE_WORKERS", value_delimiter = ',', value_parser = parse_worker_address)]
+    workers: Vec<SocketAddr>,
+}
 
 /// Dispatches game setups to worker nodes and streams back results.
 ///
@@ -31,7 +56,11 @@ pub struct GameStream {
 }
 
 impl GameStream {
-    pub async fn new() -> Self {
+    pub async fn new(network_args: NetworkArgs) -> Self {
+        for worker in network_args.workers {
+            println!("Connecting to worker at {}", worker);
+        }
+
         let client = Arc::new(ConsumerConnection::new("127.0.0.1:8080").await);
         let (tx_result, rx_result) = channel::<(GameSetup, GameResultData)>(32);
         let (tx_input, mut rx_input) = channel::<GameSetup>(1);

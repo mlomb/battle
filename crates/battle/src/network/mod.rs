@@ -6,6 +6,9 @@ use crate::{
     game::{GameResult, GameSetup},
 };
 
+/// Default port for worker nodes to listen on
+pub const DEFAULT_WORKER_PORT: u16 = 13670;
+
 #[tarpc::service]
 pub trait WorkerService {
     async fn target_exists(target_id: TargetId) -> bool;
