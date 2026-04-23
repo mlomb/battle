@@ -1,14 +1,18 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
 use console::style;
 use futures_util::StreamExt;
 use log::{error, info};
+use message_io::{
+    network::{Endpoint, NetEvent, Transport},
+    node::{self, NodeHandler, NodeListener},
+};
 use tarpc::{server, server::Channel, tokio_serde::formats::Bincode};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -20,7 +24,7 @@ use crate::{
         target::{Target, TargetId},
     },
     game::{GameResult, GameSetup, run_game},
-    network::WorkerService,
+    network::{FromClient, FromWorker, WorkerService},
     referee::Referee,
 };
 
@@ -168,6 +172,70 @@ pub async fn run_worker_node(threads: usize, port: u16) {
         _ = tokio::signal::ctrl_c() => {
             info!("Received Ctrl+C, stopping...");
         }
+    }
+}
+
+pub struct WorkerNode2 {
+    handler: NodeHandler<()>,
+    listener: Option<NodeListener<()>>,
+
+    connected_clients: HashSet<Endpoint>,
+}
+
+impl WorkerNode2 {
+    pub fn new(threads: usize, port: u16) -> Self {
+        let (handler, listener) = node::split::<()>();
+
+        handler
+            .network()
+            .listen(Transport::FramedTcp, ("0.0.0.0", port))
+            .expect("to listen");
+
+        info!("Worker listening on port {}", style(port).yellow());
+        info!("Using {}", style(format!("{} threads", threads)).cyan());
+
+        Self {
+            handler,
+            listener: Some(listener),
+            connected_clients: HashSet::new(),
+        }
+    }
+
+    pub fn update_stats(&self) {
+        let msg = FromWorker::Stats {
+            clients: self.connected_clients.len() as u32,
+            running: 0,
+            capacity: 0,
+        };
+
+        for client in self.connected_clients.iter() {
+            self.handler
+                .network()
+                .send(*client, &postcard::to_allocvec(&msg).expect("serialize"));
+        }
+    }
+
+    pub fn run(mut self) {
+        let listener = self.listener.take().unwrap();
+        listener.for_each(move |event| match event.network() {
+            NetEvent::Connected(_, _) => (),
+            NetEvent::Accepted(endpoint, _) => {
+                info!("Client ({}) connected", endpoint.addr());
+                self.connected_clients.insert(endpoint);
+                self.update_stats();
+            }
+            NetEvent::Disconnected(endpoint) => {
+                info!("Client ({}) disconnected", endpoint.addr());
+                self.connected_clients.remove(&endpoint);
+                self.update_stats();
+            }
+            NetEvent::Message(endpoint, input_data) => {
+                info!("Message from {}", endpoint.addr());
+
+                let message: FromClient = postcard::from_bytes(&input_data).expect("deserialize");
+                println!("message: {:?}", message);
+            }
+        });
     }
 }
 
