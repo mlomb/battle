@@ -15,8 +15,8 @@ use crate::builder::BuildError;
 use crate::exec::executable::Executable;
 use crate::exec::target::Target;
 use crate::game::{GameResultData, GameSetup};
-use crate::network::game_stream::{GameStream, NetworkArgs};
-use crate::network::worker_node::run_worker_node;
+use crate::network::game_stream::{GameStream, GameStream2, NetworkArgs};
+use crate::network::worker_node::{WorkerNode2, run_worker_node};
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
@@ -199,7 +199,7 @@ async fn main() -> ExitCode {
                 threads = (num_cpus::get_physical() - 2).max(1);
             }
 
-            run_worker_node(threads, port).await;
+            WorkerNode2::new(threads, port).run();
 
             info!("Exiting!");
         }
@@ -210,6 +210,25 @@ async fn main() -> ExitCode {
             network_args,
         } => {
             info!("Using a networked worker pool");
+
+            let mut game_stream2 = GameStream2::new(NetworkArgs {
+                workers: network_args.workers.clone(),
+            });
+
+            for i in 0.. {
+                game_stream2
+                    .tx
+                    .send(GameSetup {
+                        referee: Referee::from_preset(referee.clone()).unwrap(),
+                        agents: vec![],
+                        seed: 0,
+                        capture_io: false,
+                    })
+                    .await
+                    .unwrap();
+            }
+
+            return ExitCode::SUCCESS;
 
             let game_setup = GameSetup {
                 referee: Referee::from_preset(referee).unwrap(),

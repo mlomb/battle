@@ -1,6 +1,8 @@
 pub mod game_stream;
 pub mod worker_node;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     exec::target::{Target, TargetId},
     game::{GameResult, GameSetup},
@@ -15,4 +17,23 @@ pub trait WorkerService {
     async fn register_target(target: Target) -> Result<(), String>;
     async fn can_accept_game() -> bool;
     async fn run_game(game: GameSetup<TargetId>) -> GameResult;
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum FromWorker {
+    Stats {
+        /// Number of connected clients, potentially sending work
+        clients: u32,
+
+        /// Number of running games
+        running: u32,
+
+        /// Maximum number of games that can be run concurrently in this worker
+        capacity: u32,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum FromClient {
+    Ping(u32),
 }

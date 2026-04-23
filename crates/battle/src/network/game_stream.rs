@@ -1,5 +1,10 @@
 use clap::Parser;
 use futures_util::{StreamExt, stream::FuturesUnordered};
+use log::info;
+use message_io::{
+    network::{NetEvent, Transport},
+    node::{self, NodeEvent, NodeHandler},
+};
 use std::{
     collections::{HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
@@ -15,7 +20,7 @@ use tokio::sync::{
 use crate::{
     exec::target::{Target, TargetId},
     game::{GameResultData, GameSetup},
-    network::{DEFAULT_WORKER_PORT, WorkerServiceClient},
+    network::{DEFAULT_WORKER_PORT, FromClient, FromWorker, WorkerServiceClient},
     referee::Referee,
 };
 
@@ -39,7 +44,7 @@ fn parse_worker_address(s: &str) -> Result<SocketAddr, String> {
 pub struct NetworkArgs {
     /// Worker node addresses to connect to
     #[arg(short, long = "worker", env = "BATTLE_WORKERS", value_delimiter = ',', value_parser = parse_worker_address)]
-    workers: Vec<SocketAddr>,
+    pub(crate) workers: Vec<SocketAddr>,
 }
 
 /// Dispatches game setups to worker nodes and streams back results.
@@ -215,5 +220,141 @@ impl ConsumerConnection {
             .run_game(ctx, net_setup)
             .await
             .expect("RPC call")
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Signal {
+    /// Attempt (or re-attempt) a connection to the given address.
+    Reconnect(SocketAddr),
+
+    /// Attempt to send a game to an available worker
+    SendGame,
+}
+
+const RECONNECT_DELAY: Duration = Duration::from_secs(2);
+
+pub struct GameStream2 {
+    /// Send game setups to be played
+    pub tx: Sender<GameSetup>,
+
+    /// Receives game results
+    pub rx: Receiver<(GameSetup, GameResultData)>,
+}
+
+impl GameStream2 {
+    pub fn new(mut network_args: NetworkArgs) -> Self {
+        let (tx_result, rx_result) = channel::<(GameSetup, GameResultData)>(32);
+        let (tx_input, mut rx_input) = channel::<GameSetup>(1);
+
+        network_args.workers.push(
+            format!("127.0.0.1:{}", DEFAULT_WORKER_PORT)
+                .parse::<SocketAddr>()
+                .unwrap(),
+        );
+
+        let (handler, listener) = node::split::<Signal>();
+
+        for worker in network_args.workers {
+            handler.signals().send(Signal::Reconnect(worker));
+        }
+        handler.signals().send(Signal::SendGame);
+
+        info!("Initialized workers");
+
+        let mut workers_available = HashSet::new();
+
+        tokio::spawn(async move {
+            listener.for_each(move |event| match event {
+                NodeEvent::Network(net_event) => match net_event {
+                    // `connect()` is non-blocking: this fires once the connection
+                    // attempt resolves. `established == false` means it failed.
+                    NetEvent::Connected(endpoint, established) => {
+                        let addr = endpoint.addr();
+                        if established {
+                            info!("Connected to worker ({})", addr);
+                            workers_available.insert(endpoint);
+                        } else {
+                            log::debug!(
+                                "Failed to connect to worker ({}), retrying in {:?}",
+                                addr,
+                                RECONNECT_DELAY
+                            );
+                            handler
+                                .signals()
+                                .send_with_timer(Signal::Reconnect(addr), RECONNECT_DELAY);
+                        }
+                    }
+                    NetEvent::Accepted(endpoint, _listener_id) => {
+                        info!("Client ({}) accepted", endpoint.addr());
+                    }
+                    NetEvent::Message(endpoint, input_data) => {
+                        info!(
+                            "Message from {}, length: {}",
+                            endpoint.addr(),
+                            input_data.len()
+                        );
+                        let message: FromWorker =
+                            postcard::from_bytes(&input_data).expect("deserialize");
+
+                        println!("message: {:?}", message);
+                    }
+                    NetEvent::Disconnected(endpoint) => {
+                        let addr = endpoint.addr();
+                        log::warn!(
+                            "Worker ({}) disconnected, reconnecting in {:?}",
+                            addr,
+                            RECONNECT_DELAY
+                        );
+                        workers_available.remove(&endpoint);
+                        handler
+                            .signals()
+                            .send_with_timer(Signal::Reconnect(addr), RECONNECT_DELAY);
+                    }
+                },
+                NodeEvent::Signal(Signal::Reconnect(addr)) => {
+                    match handler.network().connect(Transport::FramedTcp, addr) {
+                        Ok(_) => info!("Attempting connection to ({})", addr),
+                        Err(e) => {
+                            log::debug!(
+                                "connect() to {} errored: {}, retrying in {:?}",
+                                addr,
+                                e,
+                                RECONNECT_DELAY
+                            );
+                            handler
+                                .signals()
+                                .send_with_timer(Signal::Reconnect(addr), RECONNECT_DELAY);
+                        }
+                    }
+                }
+                NodeEvent::Signal(Signal::SendGame) => {
+                    // try to receive a game
+                    if let Ok(game) = rx_input.try_recv() {
+                        println!("Sending game to worker: {:?}", game);
+
+                        // send the game anyway
+                        // the worker must request the target (and do it only once in case of parallel games)
+
+                        if let Some(worker) = workers_available.iter().next() {
+                            handler.network().send(
+                                *worker,
+                                &postcard::to_allocvec(&FromClient::Ping(123)).expect("serialize"),
+                            );
+                        }
+                    }
+
+                    // try to reschedule a game
+                    handler
+                        .signals()
+                        .send_with_timer(Signal::SendGame, Duration::from_secs(1));
+                }
+            });
+        });
+
+        Self {
+            tx: tx_input,
+            rx: rx_result,
+        }
     }
 }
