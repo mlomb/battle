@@ -20,20 +20,25 @@ pub trait WorkerService {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct WorkerStats {
+    /// Number of connected clients, potentially sending work
+    clients: u32,
+
+    /// Number of running games
+    running: u32,
+
+    /// Maximum number of games that can be run concurrently in this worker
+    capacity: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub enum FromWorker {
-    Stats {
-        /// Number of connected clients, potentially sending work
-        clients: u32,
-
-        /// Number of running games
-        running: u32,
-
-        /// Maximum number of games that can be run concurrently in this worker
-        capacity: u32,
-    },
+    Stats(WorkerStats),
+    RequestTarget(TargetId),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FromClient {
-    Ping(u32),
+    RunGame(GameSetup<TargetId>),
+    SendTarget(TargetId, Target),
 }

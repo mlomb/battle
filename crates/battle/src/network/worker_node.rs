@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -24,7 +24,7 @@ use crate::{
         target::{Target, TargetId},
     },
     game::{GameResult, GameSetup, run_game},
-    network::{FromClient, FromWorker, WorkerService},
+    network::{FromClient, FromWorker, WorkerService, WorkerStats},
     referee::Referee,
 };
 
@@ -175,11 +175,26 @@ pub async fn run_worker_node(threads: usize, port: u16) {
     }
 }
 
+struct WaitingGame {
+    /// The client that sent this game
+    endpoint: Endpoint,
+    game: GameSetup<TargetId>,
+    /// Targets still missing before this game can run
+    needed: HashSet<TargetId>,
+}
+
 pub struct WorkerNode2 {
     handler: NodeHandler<()>,
     listener: Option<NodeListener<()>>,
 
     connected_clients: HashSet<Endpoint>,
+
+    /// Compiled executables ready to be used in games
+    targets: HashMap<TargetId, Executable>,
+    /// Targets we have sent `RequestTarget` for, mapped to the endpoint we asked
+    inflight_requests: HashMap<TargetId, Endpoint>,
+    /// Games waiting for one or more targets to become available
+    waiting_games: Vec<WaitingGame>,
 }
 
 impl WorkerNode2 {
@@ -198,20 +213,47 @@ impl WorkerNode2 {
             handler,
             listener: Some(listener),
             connected_clients: HashSet::new(),
+
+            targets: HashMap::new(),
+            inflight_requests: HashMap::new(),
+            waiting_games: Vec::new(),
         }
     }
 
     pub fn update_stats(&self) {
-        let msg = FromWorker::Stats {
+        let msg = FromWorker::Stats(WorkerStats {
             clients: self.connected_clients.len() as u32,
             running: 0,
-            capacity: 0,
-        };
+            capacity: 4,
+        });
 
         for client in self.connected_clients.iter() {
             self.handler
                 .network()
                 .send(*client, &postcard::to_allocvec(&msg).expect("serialize"));
+        }
+    }
+
+    pub fn start_game(&self, game: GameSetup<TargetId>) {
+        let game = game.to_executable(&self.targets);
+
+        let abort_flag = Arc::new(AtomicBool::new(false));
+        let _flag_guard = SignalOnDrop(abort_flag.clone());
+
+        let result = run_game(game, Some(abort_flag));
+
+        match &result {
+            Ok(result) => match &result.r.status {
+                Status::Exited(code) => {
+                    info!("Game finished with code {code}")
+                }
+                Status::Timeout => error!("Game timed out"),
+                Status::Cancelled => error!("Game cancelled"),
+                Status::IoError(err) => {
+                    error!("Game I/O error: {err}")
+                }
+            },
+            Err(err) => error!("{}", err),
         }
     }
 
@@ -227,6 +269,34 @@ impl WorkerNode2 {
             NetEvent::Disconnected(endpoint) => {
                 info!("Client ({}) disconnected", endpoint.addr());
                 self.connected_clients.remove(&endpoint);
+
+                // Collect targets whose inflight request was directed at this endpoint.
+                let dead_targets: HashSet<TargetId> = self
+                    .inflight_requests
+                    .iter()
+                    .filter(|(_, ep)| **ep == endpoint)
+                    .map(|(id, _)| *id)
+                    .collect();
+
+                for id in &dead_targets {
+                    self.inflight_requests.remove(id);
+                }
+
+                // Abort games from this endpoint and any game waiting on a now-dead target.
+                self.waiting_games.retain(|w| {
+                    let from_disconnected = w.endpoint == endpoint;
+                    let needs_dead_target = w.needed.iter().any(|id| dead_targets.contains(id));
+                    if from_disconnected || needs_dead_target {
+                        info!(
+                            "Aborting waiting game (seed={}) due to client disconnect",
+                            w.game.seed
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                });
+
                 self.update_stats();
             }
             NetEvent::Message(endpoint, input_data) => {
@@ -234,6 +304,68 @@ impl WorkerNode2 {
 
                 let message: FromClient = postcard::from_bytes(&input_data).expect("deserialize");
                 println!("message: {:?}", message);
+
+                match message {
+                    FromClient::RunGame(game) => {
+                        let needed: HashSet<TargetId> = game
+                            .all_targets()
+                            .into_iter()
+                            .filter(|id| !self.targets.contains_key(id))
+                            .collect();
+
+                        if needed.is_empty() {
+                            // TODO: run game
+                            info!("Game (seed={}) ready to run immediately", game.seed);
+                        } else {
+                            for &id in &needed {
+                                if !self.inflight_requests.contains_key(&id) {
+                                    self.handler.network().send(
+                                        endpoint,
+                                        &postcard::to_allocvec(&FromWorker::RequestTarget(id)).expect("serialize"),
+                                    );
+                                    self.inflight_requests.insert(id, endpoint);
+                                }
+                            }
+                            self.waiting_games.push(WaitingGame {
+                                endpoint,
+                                game,
+                                needed,
+                            });
+                        }
+                    }
+                    FromClient::SendTarget(target_id, target) => {
+                        let executable = match target {
+                            Target::SourceCode(source) => {
+                                match build_cpp(&source.code, HashMap::new()) {
+                                    Ok(exe) => exe,
+                                    Err(e) => {
+                                        error!("Failed to build target {target_id}: {e:?}");
+                                        return;
+                                    }
+                                }
+                            }
+                            Target::Executable(executable) => executable,
+                        };
+
+                        self.targets.insert(target_id, executable);
+                        self.inflight_requests.remove(&target_id);
+
+                        // Unblock any waiting games that now have all their targets.
+                        self.waiting_games.retain_mut(|w| {
+                            w.needed.remove(&target_id);
+                            if w.needed.is_empty() {
+                                // TODO: run game
+                                info!(
+                                    "Game (seed={}) ready to run after receiving target {target_id}",
+                                    w.game.seed
+                                );
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                }
             }
         });
     }
