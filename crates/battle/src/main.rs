@@ -13,8 +13,8 @@ use std::{collections::HashMap, process::ExitCode};
 
 use crate::builder::BuildError;
 use crate::exec::executable::Executable;
-use crate::exec::target::Target;
-use crate::game::{GameResultData, GameSetup};
+use crate::exec::target::{Target, TargetKind};
+use crate::game::{GameResultData, GameSetup, new_game_id};
 use crate::network::game_stream::{GameStream2, NetworkArgs};
 use crate::network::worker_node::WorkerNode2;
 use crate::referee::Referee;
@@ -216,6 +216,7 @@ async fn main() -> ExitCode {
             });
 
             let game_setup = GameSetup {
+                id: new_game_id(),
                 referee: Referee::from_preset(referee).unwrap(),
                 agents: agent
                     .iter()
@@ -224,15 +225,17 @@ async fn main() -> ExitCode {
                             .expect("correct bundle")
                             .source
                             .clone();
-                        Arc::new(Target::SourceCode(source))
+                        Arc::new(Target::new(TargetKind::SourceCode(source)))
                     })
                     .collect(),
                 seed: 0,
                 capture_io: false,
             };
 
-            for i in 0.. {
-                game_stream2.tx.send(game_setup.clone()).await.unwrap();
+            for _ in 0..32 {
+                let mut g = game_setup.clone();
+                g.id = new_game_id();
+                game_stream2.tx.send(g).await.unwrap();
             }
 
             /*
@@ -302,12 +305,13 @@ async fn main() -> ExitCode {
                         .expect("correct bundle")
                         .source
                         .clone();
-                    Arc::new(Target::SourceCode(source))
+                    Arc::new(Target::new(TargetKind::SourceCode(source)))
                 })
                 .collect();
 
             let mut pending_ref: VecDeque<_> = (0..max_games as u64)
                 .map(|index| GameSetup {
+                    id: new_game_id(),
                     referee: reference.clone(),
                     agents: real_agents.clone(),
                     seed: 1 + index,
@@ -317,6 +321,7 @@ async fn main() -> ExitCode {
                 .collect();
 
             let dummy_setup = GameSetup {
+                id: new_game_id(),
                 referee: reference.clone(),
                 agents: vec![],
                 seed: 0,
@@ -357,14 +362,15 @@ async fn main() -> ExitCode {
                                             if is_reference {
                                                 // generate a new game, based on the transcript of the agents
                                                 let new_game = GameSetup {
+                                                    id: new_game_id(),
                                                     referee: candidate.clone(), // candidate instead of reference
                                                     agents: result
                                                         .agents
                                                         .iter()
                                                         .map(|a| {
-                                                            Arc::new(Target::Executable(Executable::from_transcript(
+                                                            Arc::new(Target::new(TargetKind::Executable(Executable::from_transcript(
                                                                 a.transcript.as_ref().unwrap_or(&Default::default()),
-                                                            )))
+                                                            ))))
                                                         })
                                                         .collect(),
                                                     seed: setup.seed, // same seed

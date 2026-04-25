@@ -3,7 +3,7 @@ use std::{path::Path, process::Command, sync::Arc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::exec::{command::CommandExt, executable::Executable, target::Target};
+use crate::exec::{command::CommandExt, executable::Executable, target::{Target, TargetKind}};
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.
@@ -62,9 +62,9 @@ impl Referee<Arc<Target>> {
 
         Ok(Self {
             protocol: Protocol::CodinGame,
-            target: Arc::new(Target::Executable(
+            target: Arc::new(Target::new(TargetKind::Executable(
                 Executable::from_jar(path.clone()).expect("read success"),
-            )),
+            ))),
             min_agents,
             max_agents,
         })
