@@ -58,6 +58,16 @@ pub struct GameStream2 {
 
     /// Receives game results
     pub rx: Receiver<(GameSetup, GameResultData)>,
+
+    /// Share of the node's `NodeHandler` so on drop we call `NodeHandler::stop()` and
+    /// the background `for_each` loop exits (see `message_io` node docs).
+    node: NodeHandler<Signal>,
+}
+
+impl Drop for GameStream2 {
+    fn drop(&mut self) {
+        self.node.stop();
+    }
 }
 
 struct GameStreamNode {
@@ -256,6 +266,7 @@ impl GameStream2 {
         );
 
         let (handler, listener) = node::split::<Signal>();
+        let node_shutdown = handler.clone();
 
         for worker in network_args.workers {
             handler.signals().send(Signal::Reconnect(worker));
@@ -283,6 +294,7 @@ impl GameStream2 {
         Self {
             tx: tx_input,
             rx: rx_result,
+            node: node_shutdown,
         }
     }
 }
