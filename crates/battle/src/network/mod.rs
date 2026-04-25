@@ -1,15 +1,22 @@
 pub mod game_stream;
 pub mod worker_node;
 
+use message_io::network::Transport;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     exec::target::{Target, TargetId},
-    game::{GameId, GameResult, GameSetup},
+    game::{GameResult, GameSetup},
 };
+
+/// Transport to use for message-io
+pub const MESSAGE_IO_TRANSPORT: Transport = Transport::FramedTcp;
 
 /// Default port for worker nodes to listen on
 pub const DEFAULT_WORKER_PORT: u16 = 13670;
+
+/// Unique identifier for a game
+pub type GameId = u64;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkerStats {
@@ -30,12 +37,14 @@ pub struct WorkerStats {
 pub enum FromWorker {
     Stats(WorkerStats),
     RequestTarget(TargetId),
-    GameAck,
-    GameResult(GameId, GameResult),
+    GameResult { id: GameId, result: GameResult },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FromClient {
-    RunGame(GameSetup<TargetId>),
+    RunGame {
+        id: GameId,
+        game: GameSetup<TargetId>,
+    },
     SendTarget(TargetId, Target),
 }

@@ -15,18 +15,9 @@ use crate::exec::{
 };
 use crate::referee::Referee;
 
-pub type GameId = u64;
-
-/// Random [GameId] for a new run (call when constructing a [`GameSetup`]).
-pub fn new_game_id() -> GameId {
-    rand::random()
-}
-
 /// Lightweight game setup referencing pre-registered targets by content hash.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameSetup<T = Arc<Target>> {
-    /// Correlates a run across the network; set with [`new_game_id`] at construction.
-    pub id: GameId,
     pub referee: Referee<T>,
     pub agents: Vec<T>,
     pub seed: u64,
@@ -98,6 +89,12 @@ pub fn run_game(
         .filter_map(Result::ok)
         .collect::<Vec<i32>>();
 
+    // random number between 0 and 1000
+    let random_number = rand::random::<u64>() % 1000;
+    if random_number < 50 {
+        return Err(format!("Random number is less than 50"));
+    }
+
     Ok(GameResultData {
         agents: setup
             .agents
@@ -133,7 +130,6 @@ impl<T: Clone> GameSetup<T> {
 impl GameSetup<Arc<Target>> {
     pub fn to_target_id(&self) -> GameSetup<TargetId> {
         GameSetup::<TargetId> {
-            id: self.id,
             referee: Referee::<TargetId> {
                 protocol: self.referee.protocol.clone(),
                 target: self.referee.target.id,
@@ -153,7 +149,6 @@ impl GameSetup<TargetId> {
         targets: &HashMap<TargetId, Arc<Mutex<Executable>>>,
     ) -> GameSetup<Arc<Mutex<Executable>>> {
         GameSetup::<Arc<Mutex<Executable>>> {
-            id: self.id,
             referee: Referee::<Arc<Mutex<Executable>>> {
                 protocol: self.referee.protocol.clone(),
                 target: targets

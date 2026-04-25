@@ -8,14 +8,17 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    time::{Duration, Instant},
+    thread,
+    time::Duration,
 };
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::{
     exec::target::{Target, TargetId},
-    game::{GameId, GameResultData, GameSetup},
-    network::{DEFAULT_WORKER_PORT, FromClient, FromWorker, WorkerStats},
+    game::{GameResultData, GameSetup},
+    network::{
+        DEFAULT_WORKER_PORT, FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats,
+    },
 };
 
 fn parse_worker_address(s: &str) -> Result<SocketAddr, String> {
@@ -52,7 +55,7 @@ enum Signal {
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
 
-pub struct GameStream2 {
+pub struct GameStream {
     /// Send game setups to be played
     pub tx: Sender<GameSetup>,
 
@@ -64,7 +67,7 @@ pub struct GameStream2 {
     node: NodeHandler<Signal>,
 }
 
-impl Drop for GameStream2 {
+impl Drop for GameStream {
     fn drop(&mut self) {
         self.node.stop();
     }
@@ -96,29 +99,30 @@ impl GameStreamNode {
                 .entry(target.id)
                 .or_insert_with(|| target.clone());
         }
+        let game_id = rand::random();
 
         if let Some(&worker) = self.workers_available.iter().next().filter(|&worker| {
-            let pending = self.pending_games.get(worker).map(|m| m.len()).unwrap_or(0);
+            let pending = self.pending_games.get(worker).map(|m| m.len()).unwrap_or(0) as usize;
 
             self.workers_stats
                 .get(worker)
                 .is_some_and(|stats| pending < stats.capacity)
         }) {
-            println!("Sending game id={} to worker: {game:?}", game.id);
+            println!("Sending game id={} to worker: {game:?}", game_id);
 
-            let start_time = Instant::now();
             self.handler.network().send(
                 worker,
-                &postcard::to_allocvec(&FromClient::RunGame(game.to_target_id()))
-                    .expect("serialize"),
+                &postcard::to_allocvec(&FromClient::RunGame {
+                    id: game_id,
+                    game: game.to_target_id(),
+                })
+                .expect("serialize"),
             );
-            let end_time = Instant::now();
-            println!("Time taken to send game: {:?}", end_time - start_time);
 
             self.pending_games
                 .entry(worker)
                 .or_default()
-                .insert(game.id, game);
+                .insert(game_id, game);
             return Ok(());
         }
         Err(game)
@@ -144,8 +148,6 @@ impl GameStreamNode {
         listener.for_each(move |event| match event {
             NodeEvent::Network(net_event) => {
                 match net_event {
-                    // `connect()` is non-blocking: this fires once the connection
-                    // attempt resolves. `established == false` means it failed.
                     NetEvent::Connected(endpoint, established) => {
                         let addr = endpoint.addr();
                         if established {
@@ -163,20 +165,26 @@ impl GameStreamNode {
                         }
                     }
                     NetEvent::Accepted(endpoint, _listener_id) => {
-                        info!("Client ({}) accepted", endpoint.addr());
+                        info!("Client ({}) accepted", endpoint);
+                    }
+                    NetEvent::Disconnected(endpoint) => {
+                        let addr = endpoint.addr();
+                        log::warn!(
+                            "Worker ({}) disconnected, reconnecting in {:?}",
+                            addr,
+                            RECONNECT_DELAY
+                        );
+                        self.workers_available.remove(&endpoint);
+                        self.handler
+                            .signals()
+                            .send_with_timer(Signal::Reconnect(addr), RECONNECT_DELAY);
                     }
                     NetEvent::Message(endpoint, input_data) => {
-                        info!(
-                            "Message from {}, length: {}",
-                            endpoint.addr(),
-                            input_data.len()
-                        );
                         let message: FromWorker =
                             postcard::from_bytes(&input_data).expect("deserialize");
 
                         match message {
                             FromWorker::Stats(stats) => {
-                                println!("Stats: {:?}", stats);
                                 self.workers_stats.insert(endpoint, stats);
                             }
                             FromWorker::RequestTarget(target_id) => {
@@ -193,8 +201,10 @@ impl GameStreamNode {
                                     panic!("Misbehaving worker, aborting");
                                 }
                             }
-                            FromWorker::GameAck => {}
-                            FromWorker::GameResult(game_id, result) => {
+                            FromWorker::GameResult {
+                                id: game_id,
+                                result,
+                            } => {
                                 if let Some(game) = self.pending_games.get_mut(&endpoint).and_then(
                                     |m: &mut HashMap<GameId, GameSetup>| m.remove(&game_id),
                                 ) {
@@ -213,22 +223,10 @@ impl GameStreamNode {
                             }
                         }
                     }
-                    NetEvent::Disconnected(endpoint) => {
-                        let addr = endpoint.addr();
-                        log::warn!(
-                            "Worker ({}) disconnected, reconnecting in {:?}",
-                            addr,
-                            RECONNECT_DELAY
-                        );
-                        self.workers_available.remove(&endpoint);
-                        self.handler
-                            .signals()
-                            .send_with_timer(Signal::Reconnect(addr), RECONNECT_DELAY);
-                    }
                 }
             }
             NodeEvent::Signal(Signal::Reconnect(addr)) => {
-                match self.handler.network().connect(Transport::Ws, addr) {
+                match self.handler.network().connect(MESSAGE_IO_TRANSPORT, addr) {
                     Ok(_) => info!("Attempting connection to ({})", addr),
                     Err(e) => {
                         log::debug!(
@@ -254,7 +252,7 @@ impl GameStreamNode {
     }
 }
 
-impl GameStream2 {
+impl GameStream {
     pub fn new(mut network_args: NetworkArgs) -> Self {
         let (tx_result, rx_result) = channel::<(GameSetup, GameResultData)>(32);
         let (tx_input, rx_input) = channel::<GameSetup>(1);
@@ -287,9 +285,7 @@ impl GameStream2 {
             known_targets: HashMap::new(),
         };
 
-        tokio::spawn(async move {
-            node.run();
-        });
+        thread::spawn(move || node.run());
 
         Self {
             tx: tx_input,
