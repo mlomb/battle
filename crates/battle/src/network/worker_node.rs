@@ -19,7 +19,10 @@ use crate::{
         target::{TargetId, TargetKind},
     },
     game::{GameResult, GameSetup, run_game},
-    network::{FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats},
+    network::{
+        FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats, net_deserialize,
+        net_serialize,
+    },
 };
 
 #[derive(Debug)]
@@ -89,7 +92,7 @@ impl WorkerNode {
             running_ids: self.running_games.iter().copied().collect(),
             capacity: self.capacity,
         };
-        let data = postcard::to_allocvec(&FromWorker::Stats(stats)).expect("serialize");
+        let data = net_serialize(FromWorker::Stats(stats));
 
         for client in self.connected_clients.iter() {
             self.handler.network().send(*client, &data);
@@ -170,8 +173,7 @@ impl WorkerNode {
                     self.send_stats_update();
                 }
                 NetEvent::Message(endpoint, input_data) => {
-                    let message: FromClient =
-                        postcard::from_bytes(&input_data).expect("deserialize");
+                    let message: FromClient = net_deserialize(&input_data);
                     println!("message: {:?}", message);
 
                     match message {
@@ -189,8 +191,7 @@ impl WorkerNode {
                                     if !self.inflight_requests.contains_key(&id) {
                                         self.handler.network().send(
                                             endpoint,
-                                            &postcard::to_allocvec(&FromWorker::RequestTarget(id))
-                                                .expect("serialize"),
+                                            &net_serialize(FromWorker::RequestTarget(id)),
                                         );
                                         self.inflight_requests.insert(id, endpoint);
                                     }
@@ -254,11 +255,10 @@ impl WorkerNode {
                 // it is still connected.
                 self.handler.network().send(
                     endpoint,
-                    &postcard::to_allocvec(&FromWorker::GameResult {
+                    &net_serialize(FromWorker::GameResult {
                         id: game_id,
                         result,
-                    })
-                    .expect("serialize"),
+                    }),
                 );
 
                 self.running_games.remove(&game_id);
