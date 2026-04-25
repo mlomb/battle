@@ -6,7 +6,7 @@ use message_io::{
     node::{self, NodeEvent, NodeHandler},
 };
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
     sync::Arc,
     time::{Duration, SystemTime},
@@ -263,6 +263,11 @@ impl GameStream2 {
         info!("Initialized workers");
 
         let mut workers_available = HashSet::new();
+        let mut pending_game_acks = HashSet::new();
+        let mut workers_stats = HashMap::new();
+        // All targets seen so far; used to respond to RequestTarget from workers.
+        // TODO: remove them from list when game is finished (and or add cache)
+        let mut known_targets: HashMap<TargetId, Arc<Target>> = HashMap::new();
 
         tokio::spawn(async move {
             listener.for_each(move |event| match event {
@@ -298,6 +303,27 @@ impl GameStream2 {
                             postcard::from_bytes(&input_data).expect("deserialize");
 
                         println!("message: {:?}", message);
+
+                        match message {
+                            FromWorker::Stats(stats) => {
+                                println!("Stats: {:?}", stats);
+                                workers_stats.insert(endpoint, stats);
+                            }
+                            FromWorker::RequestTarget(target_id) => {
+                                println!("Requesting target: {:?}", target_id);
+                                if let Some(target) = known_targets.get(&target_id) {
+                                    let msg =
+                                        FromClient::SendTarget(target_id, target.as_ref().clone());
+                                    handler.network().send(
+                                        endpoint,
+                                        &postcard::to_allocvec(&msg).expect("serialize"),
+                                    );
+                                } else {
+                                    log::error!("Worker requested unknown target {:?}", target_id);
+                                    panic!("Misbehaving worker, aborting");
+                                }
+                            }
+                        }
                     }
                     NetEvent::Disconnected(endpoint) => {
                         let addr = endpoint.addr();
@@ -331,15 +357,30 @@ impl GameStream2 {
                 NodeEvent::Signal(Signal::SendGame) => {
                     // try to receive a game
                     if let Ok(game) = rx_input.try_recv() {
-                        println!("Sending game to worker: {:?}", game);
+                        // Register all targets from this game so we can respond to RequestTarget.
+                        for target in game.all_targets() {
+                            known_targets
+                                .entry(target.id())
+                                .or_insert_with(|| target.clone());
+                        }
 
-                        // send the game anyway
-                        // the worker must request the target (and do it only once in case of parallel games)
+                        if let Some(&worker) = workers_available
+                            .iter()
+                            .next()
+                            .filter(|&worker| !pending_game_acks.contains(worker))
+                            .filter(|&worker| {
+                                workers_stats
+                                    .get(worker)
+                                    .is_some_and(|stats| stats.running < stats.capacity)
+                            })
+                        {
+                            println!("Sending game to worker: {:?}", game);
 
-                        if let Some(worker) = workers_available.iter().next() {
+                            pending_game_acks.insert(worker);
                             handler.network().send(
-                                *worker,
-                                &postcard::to_allocvec(&FromClient::Ping(123)).expect("serialize"),
+                                worker,
+                                &postcard::to_allocvec(&FromClient::RunGame(game.to_target_id()))
+                                    .expect("serialize"),
                             );
                         }
                     }

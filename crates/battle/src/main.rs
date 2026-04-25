@@ -215,21 +215,6 @@ async fn main() -> ExitCode {
                 workers: network_args.workers.clone(),
             });
 
-            for i in 0.. {
-                game_stream2
-                    .tx
-                    .send(GameSetup {
-                        referee: Referee::from_preset(referee.clone()).unwrap(),
-                        agents: vec![],
-                        seed: 0,
-                        capture_io: false,
-                    })
-                    .await
-                    .unwrap();
-            }
-
-            return ExitCode::SUCCESS;
-
             let game_setup = GameSetup {
                 referee: Referee::from_preset(referee).unwrap(),
                 agents: agent
@@ -245,6 +230,12 @@ async fn main() -> ExitCode {
                 seed: 0,
                 capture_io: false,
             };
+
+            for i in 0.. {
+                game_stream2.tx.send(game_setup.clone()).await.unwrap();
+            }
+
+            return ExitCode::SUCCESS;
 
             let mut game_stream = GameStream::new(network_args).await;
             let mut results_received = 0;

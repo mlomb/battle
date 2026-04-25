@@ -1,4 +1,7 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::{
+    collections::HashMap,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
@@ -8,7 +11,7 @@ use wrapcmd::transcript::Transcript;
 use crate::exec::{
     executable::Executable,
     execution::{Execute, ExecutionResult},
-    target::Target,
+    target::{Target, TargetId},
 };
 use crate::referee::Referee;
 
@@ -106,4 +109,56 @@ pub fn run_game(
             .collect(),
         r: result,
     })
+}
+
+impl<T: Clone> GameSetup<T> {
+    pub fn all_targets(&self) -> Vec<T> {
+        self.agents
+            .iter()
+            .chain(std::iter::once(&self.referee.target))
+            .cloned()
+            .collect()
+    }
+}
+
+impl GameSetup<Arc<Target>> {
+    pub fn to_target_id(&self) -> GameSetup<TargetId> {
+        GameSetup::<TargetId> {
+            referee: Referee::<TargetId> {
+                protocol: self.referee.protocol.clone(),
+                target: self.referee.target.id(),
+                min_agents: self.referee.min_agents,
+                max_agents: self.referee.max_agents,
+            },
+            agents: self.agents.iter().map(|a| a.id()).collect(),
+            seed: self.seed,
+            capture_io: self.capture_io,
+        }
+    }
+}
+
+impl GameSetup<TargetId> {
+    pub fn to_executable(
+        &self,
+        targets: &HashMap<TargetId, Arc<Mutex<Executable>>>,
+    ) -> GameSetup<Arc<Mutex<Executable>>> {
+        GameSetup::<Arc<Mutex<Executable>>> {
+            referee: Referee::<Arc<Mutex<Executable>>> {
+                protocol: self.referee.protocol.clone(),
+                target: targets
+                    .get(&self.referee.target)
+                    .expect("missing target")
+                    .clone(),
+                min_agents: self.referee.min_agents,
+                max_agents: self.referee.max_agents,
+            },
+            agents: self
+                .agents
+                .iter()
+                .map(|a| targets.get(a).expect("missing target").clone())
+                .collect(),
+            seed: self.seed,
+            capture_io: self.capture_io,
+        }
+    }
 }
