@@ -86,9 +86,9 @@ impl WorkerNode2 {
 
     pub fn update_stats(&self) {
         let msg = FromWorker::Stats(WorkerStats {
-            clients: self.connected_clients.len() as u32,
-            running: self.running_count as u32,
-            capacity: self.threads as u32,
+            clients: self.connected_clients.len(),
+            running: self.running_count,
+            capacity: self.threads,
         });
 
         for client in self.connected_clients.iter() {
@@ -99,14 +99,20 @@ impl WorkerNode2 {
     }
 
     pub fn start_game(&mut self, endpoint: Endpoint, game: GameSetup<TargetId>) {
+        self.running_count += 1;
+        self.update_stats();
+
+        // send game ack
+        self.handler.network().send(
+            endpoint,
+            &postcard::to_allocvec(&FromWorker::GameAck).expect("serialize"),
+        );
+
         let abort_flag = self
             .abort_flags
             .entry(endpoint)
             .or_insert_with(|| Arc::new(AtomicBool::new(false)))
             .clone();
-
-        self.running_count += 1;
-        self.update_stats();
 
         let game = game.to_executable(&self.targets);
         let handler = self.handler.clone();
@@ -238,7 +244,7 @@ impl WorkerNode2 {
                     }
                 }
             },
-            NodeEvent::Signal(WorkerSignal::GameFinished(_endpoint, result)) => {
+            NodeEvent::Signal(WorkerSignal::GameFinished(endpoint, result)) => {
                 match &result {
                     Ok(data) => match &data.r.status {
                         Status::Exited(code) => info!("Game finished with code {code}"),
@@ -249,18 +255,16 @@ impl WorkerNode2 {
                     Err(err) => error!("Game error: {err}"),
                 }
 
+                // Send result back to the client that requested this game, if
+                // it is still connected.
+                self.handler.network().send(
+                    endpoint,
+                    &postcard::to_allocvec(&FromWorker::GameResult(result)).expect("serialize"),
+                );
+
                 self.running_count -= 1;
                 self.update_stats();
             }
         });
-    }
-}
-
-/// When dropped, sets the flag to true.
-struct SignalOnDrop(Arc<AtomicBool>);
-
-impl Drop for SignalOnDrop {
-    fn drop(&mut self) {
-        self.0.store(true, Ordering::Relaxed);
     }
 }

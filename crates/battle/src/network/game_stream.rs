@@ -81,7 +81,8 @@ impl GameStream2 {
         info!("Initialized workers");
 
         let mut workers_available = HashSet::new();
-        let mut pending_game_acks = HashSet::new();
+        let mut pending_game_acks = HashMap::new();
+        let mut pending_games = HashMap::new();
         let mut workers_stats = HashMap::new();
         // All targets seen so far; used to respond to RequestTarget from workers.
         // TODO: remove them from list when game is finished (and or add cache)
@@ -141,6 +142,27 @@ impl GameStream2 {
                                     panic!("Misbehaving worker, aborting");
                                 }
                             }
+                            FromWorker::GameAck => {
+                                pending_game_acks.remove(&endpoint);
+                            }
+                            FromWorker::GameResult(result) => {
+                                if let Some(game) = pending_games
+                                    .get_mut(&endpoint)
+                                    .and_then(|games: &mut Vec<GameSetup>| games.pop())
+                                {
+                                    match result {
+                                        Ok(data) => {
+                                            let _ = tx_result.send((game, data));
+                                        }
+                                        Err(err) => {
+                                            log::error!("Game failed: {err}");
+                                        }
+                                    }
+                                } else {
+                                    log::error!("Worker sent result for unknown game");
+                                    panic!("Misbehaving worker, aborting");
+                                }
+                            }
                         }
                     }
                     NetEvent::Disconnected(endpoint) => {
@@ -185,7 +207,7 @@ impl GameStream2 {
                         if let Some(&worker) = workers_available
                             .iter()
                             .next()
-                            .filter(|&worker| !pending_game_acks.contains(worker))
+                            .filter(|&worker| !pending_game_acks.contains_key(worker))
                             .filter(|&worker| {
                                 workers_stats
                                     .get(worker)
@@ -194,19 +216,22 @@ impl GameStream2 {
                         {
                             println!("Sending game to worker: {:?}", game);
 
-                            pending_game_acks.insert(worker);
                             handler.network().send(
                                 worker,
                                 &postcard::to_allocvec(&FromClient::RunGame(game.to_target_id()))
                                     .expect("serialize"),
                             );
+
+                            pending_game_acks.insert(worker, true);
+                            // insert to vec
+                            pending_games.entry(worker).or_default().push(game);
                         }
                     }
 
                     // try to reschedule a game
                     handler
                         .signals()
-                        .send_with_timer(Signal::SendGame, Duration::from_secs(1));
+                        .send_with_timer(Signal::SendGame, Duration::from_millis(10));
                 }
             });
         });
