@@ -15,8 +15,8 @@ use crate::builder::BuildError;
 use crate::exec::executable::Executable;
 use crate::exec::target::Target;
 use crate::game::{GameResultData, GameSetup};
-use crate::network::game_stream::{GameStream, GameStream2, NetworkArgs};
-use crate::network::worker_node::{WorkerNode2, run_worker_node};
+use crate::network::game_stream::{GameStream2, NetworkArgs};
+use crate::network::worker_node::WorkerNode2;
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
@@ -235,6 +235,7 @@ async fn main() -> ExitCode {
                 game_stream2.tx.send(game_setup.clone()).await.unwrap();
             }
 
+            /*
             return ExitCode::SUCCESS;
 
             let mut game_stream = GameStream::new(network_args).await;
@@ -275,6 +276,7 @@ async fn main() -> ExitCode {
                     },
                 }
             }
+            */
 
             info!("Exiting!");
         }
@@ -290,6 +292,7 @@ async fn main() -> ExitCode {
             let reference = Referee::from_preset(reference).unwrap();
             let candidate = Referee::from_preset(candidate).unwrap();
 
+            /*
             let mut game_stream = GameStream::new(network_args).await;
 
             let real_agents: Vec<Arc<Target>> = agent
@@ -403,6 +406,7 @@ async fn main() -> ExitCode {
                                     },
                                 }
             }
+            */
 
             info!("Exiting!");
         }

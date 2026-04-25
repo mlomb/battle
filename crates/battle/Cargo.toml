@@ -15,7 +15,6 @@ serde = { version = "1.0.228", features = ["serde_derive"] }
 num_cpus = "1.17.0"
 env_logger = "0.11.10"
 log = "0.4.29"
-tarpc = { version = "0.34", features = ["full", "serde-transport-bincode"] }
 futures-util = "0.3.32"
 blake3 = "1.8.4"
 async-channel = "2.5.0"

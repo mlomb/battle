@@ -5,19 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     exec::target::{Target, TargetId},
-    game::{GameResult, GameSetup},
+    game::GameSetup,
 };
 
 /// Default port for worker nodes to listen on
 pub const DEFAULT_WORKER_PORT: u16 = 13670;
-
-#[tarpc::service]
-pub trait WorkerService {
-    async fn target_exists(target_id: TargetId) -> bool;
-    async fn register_target(target: Target) -> Result<(), String>;
-    async fn can_accept_game() -> bool;
-    async fn run_game(game: GameSetup<TargetId>) -> GameResult;
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkerStats {
