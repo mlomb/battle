@@ -14,7 +14,7 @@ use crate::builder::BuildError;
 use crate::exec::executable::Executable;
 use crate::exec::target::{Target, TargetKind};
 use crate::game::{GameResultData, GameSetup};
-use crate::network::game_stream::{GameStream, NetworkArgs};
+use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
@@ -229,7 +229,7 @@ async fn main() -> ExitCode {
                 capture_io: false,
             };
 
-            let mut game_stream = GameStream::new(network_args);
+            let mut game_channel = GameChannel::new(network_args);
             let mut results_received = 0;
             let mut in_flight = 0;
 
@@ -242,7 +242,7 @@ async fn main() -> ExitCode {
                         break;
                     }
 
-                    item = game_stream.rx.recv() => match item {
+                    item = game_channel.rx.recv() => match item {
                         Some((_, data)) => {
                             results_received += 1;
                             in_flight -= 1;
@@ -262,7 +262,7 @@ async fn main() -> ExitCode {
                         None => break,
                     },
 
-                    _ = game_stream.tx.send(game_setup.clone()), if in_flight + results_received < n => {
+                    _ = game_channel.tx.send(game_setup.clone()), if in_flight + results_received < n => {
                         in_flight += 1;
                     },
                 }
@@ -281,7 +281,7 @@ async fn main() -> ExitCode {
             let reference = Referee::from_preset(reference).unwrap();
             let candidate = Referee::from_preset(candidate).unwrap();
 
-            let mut game_stream = GameStream::new(network_args);
+            let mut game_channel = GameChannel::new(network_args);
 
             let real_agents: Vec<Arc<Target>> = agent
                 .iter()
@@ -329,7 +329,7 @@ async fn main() -> ExitCode {
                         break;
                     }
 
-                    item = game_stream.rx.recv() => match item {
+                    item = game_channel.rx.recv() => match item {
                         Some((setup, result)) => {
                             let is_reference = Arc::ptr_eq(&setup.referee.target, &reference.target);
 
@@ -383,11 +383,11 @@ async fn main() -> ExitCode {
                         None => break,
                     },
 
-                    _ = game_stream.tx.send(pending_cand.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_cand.is_empty() => {
+                    _ = game_channel.tx.send(pending_cand.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_cand.is_empty() => {
                         pending_cand.pop_front().unwrap();
                     },
 
-                    _ = game_stream.tx.send(pending_ref.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_ref.is_empty() && pending_cand.is_empty() => {
+                    _ = game_channel.tx.send(pending_ref.front().cloned().unwrap_or(dummy_setup.clone())), if !pending_ref.is_empty() && pending_cand.is_empty() => {
                         pending_ref.pop_front().unwrap();
                     },
 
