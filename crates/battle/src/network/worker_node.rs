@@ -1,7 +1,6 @@
-use console::style;
 use log::{error, info};
 use message_io::{
-    network::{Endpoint, NetEvent, Transport},
+    network::{Endpoint, NetEvent},
     node::{self, NodeEvent, NodeHandler, NodeListener},
 };
 use std::{
@@ -19,8 +18,8 @@ use crate::{
         execution::Status,
         target::{TargetId, TargetKind},
     },
-    game::{GameId, GameResult, GameSetup, run_game},
-    network::{FromClient, FromWorker, WorkerStats},
+    game::{GameResult, GameSetup, run_game},
+    network::{FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats},
 };
 
 #[derive(Debug)]
@@ -31,17 +30,18 @@ enum WorkerSignal {
 struct WaitingGame {
     /// The client that sent this game
     endpoint: Endpoint,
+    id: GameId,
     game: GameSetup<TargetId>,
     /// Targets still missing before this game can run
     needed: HashSet<TargetId>,
 }
 
-pub struct WorkerNode2 {
+pub struct WorkerNode {
     handler: NodeHandler<WorkerSignal>,
     listener: Option<NodeListener<WorkerSignal>>,
 
-    /// Worker thread capacity, reported in stats
-    threads: usize,
+    /// Number of games that can be run concurrently
+    capacity: usize,
 
     connected_clients: HashSet<Endpoint>,
 
@@ -59,22 +59,19 @@ pub struct WorkerNode2 {
     running_games: HashSet<GameId>,
 }
 
-impl WorkerNode2 {
-    pub fn new(threads: usize, port: u16) -> Self {
+impl WorkerNode {
+    pub fn new(capacity: usize, port: u16) -> Self {
         let (handler, listener) = node::split::<WorkerSignal>();
 
         handler
             .network()
-            .listen(Transport::Ws, ("0.0.0.0", port))
+            .listen(MESSAGE_IO_TRANSPORT, ("0.0.0.0", port))
             .expect("to listen");
-
-        info!("Worker listening on port {}", style(port).yellow());
-        info!("Using {}", style(format!("{} threads", threads)).cyan());
 
         Self {
             handler,
             listener: Some(listener),
-            threads,
+            capacity,
             connected_clients: HashSet::new(),
             targets: HashMap::new(),
             inflight_requests: HashMap::new(),
@@ -84,30 +81,28 @@ impl WorkerNode2 {
         }
     }
 
-    pub fn update_stats(&self) {
-        let running_ids: Vec<GameId> = self.running_games.iter().copied().collect();
-        let msg = FromWorker::Stats(WorkerStats {
+    /// Send the updated stats to all connected clients.
+    pub fn send_stats_update(&self) {
+        let stats = WorkerStats {
             clients: self.connected_clients.len(),
-            running: running_ids.len(),
-            running_ids,
-            capacity: self.threads,
-        });
+            running: self.running_games.len(),
+            running_ids: self.running_games.iter().copied().collect(),
+            capacity: self.capacity,
+        };
+        let data = postcard::to_allocvec(&FromWorker::Stats(stats)).expect("serialize");
 
         for client in self.connected_clients.iter() {
-            self.handler
-                .network()
-                .send(*client, &postcard::to_allocvec(&msg).expect("serialize"));
+            self.handler.network().send(*client, &data);
         }
     }
 
-    pub fn start_game(&mut self, endpoint: Endpoint, game: GameSetup<TargetId>) {
-        let game_id = game.id;
+    pub fn start_game(&mut self, endpoint: Endpoint, game_id: GameId, game: GameSetup<TargetId>) {
         let game = game.to_executable(&self.targets);
         if !self.running_games.insert(game_id) {
             error!("Duplicate game_id {game_id}, ignoring");
             return;
         }
-        self.update_stats();
+        self.send_stats_update();
 
         let abort_flag = self
             .abort_flags
@@ -134,7 +129,7 @@ impl WorkerNode2 {
                 NetEvent::Accepted(endpoint, _) => {
                     info!("Client ({}) connected", endpoint.addr());
                     self.connected_clients.insert(endpoint);
-                    self.update_stats();
+                    self.send_stats_update();
                 }
                 NetEvent::Disconnected(endpoint) => {
                     info!("Client ({}) disconnected", endpoint.addr());
@@ -172,17 +167,15 @@ impl WorkerNode2 {
                         flag.store(true, Ordering::Relaxed);
                     }
 
-                    self.update_stats();
+                    self.send_stats_update();
                 }
                 NetEvent::Message(endpoint, input_data) => {
-                    info!("Message from {}", endpoint.addr());
-
                     let message: FromClient =
                         postcard::from_bytes(&input_data).expect("deserialize");
                     println!("message: {:?}", message);
 
                     match message {
-                        FromClient::RunGame(game) => {
+                        FromClient::RunGame { id, game } => {
                             let needed: HashSet<TargetId> = game
                                 .all_targets()
                                 .into_iter()
@@ -190,7 +183,7 @@ impl WorkerNode2 {
                                 .collect();
 
                             if needed.is_empty() {
-                                self.start_game(endpoint, game);
+                                self.start_game(endpoint, id, game);
                             } else {
                                 for &id in &needed {
                                     if !self.inflight_requests.contains_key(&id) {
@@ -204,6 +197,7 @@ impl WorkerNode2 {
                                 }
                                 self.waiting_games.push(WaitingGame {
                                     endpoint,
+                                    id,
                                     game,
                                     needed,
                                 });
@@ -232,14 +226,14 @@ impl WorkerNode2 {
                             self.waiting_games.retain_mut(|w| {
                                 w.needed.remove(&target_id);
                                 if w.needed.is_empty() {
-                                    ready.push((w.endpoint, w.game.clone()));
+                                    ready.push((w.endpoint, w.id, w.game.clone()));
                                     false
                                 } else {
                                     true
                                 }
                             });
-                            for (ep, game) in ready {
-                                self.start_game(ep, game);
+                            for (ep, id, game) in ready {
+                                self.start_game(ep, id, game);
                             }
                         }
                     }
@@ -260,13 +254,15 @@ impl WorkerNode2 {
                 // it is still connected.
                 self.handler.network().send(
                     endpoint,
-                    &postcard::to_allocvec(&FromWorker::GameResult(game_id, result)).expect("serialize"),
+                    &postcard::to_allocvec(&FromWorker::GameResult {
+                        id: game_id,
+                        result,
+                    })
+                    .expect("serialize"),
                 );
 
                 self.running_games.remove(&game_id);
-                self.update_stats();
-
-                info!("Count of running games: {}", self.running_games.len());
+                self.send_stats_update();
             }
         });
     }

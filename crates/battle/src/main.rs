@@ -8,15 +8,14 @@ use log::{LevelFilter, info};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{collections::HashMap, process::ExitCode};
 
 use crate::builder::BuildError;
 use crate::exec::executable::Executable;
 use crate::exec::target::{Target, TargetKind};
-use crate::game::{GameResultData, GameSetup, new_game_id};
-use crate::network::game_stream::{GameStream2, NetworkArgs};
-use crate::network::worker_node::WorkerNode2;
+use crate::game::{GameResultData, GameSetup};
+use crate::network::game_stream::{GameStream, NetworkArgs};
+use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
 use clap::{Parser, Subcommand};
@@ -199,7 +198,10 @@ async fn main() -> ExitCode {
                 threads = (num_cpus::get_physical() - 2).max(1);
             }
 
-            WorkerNode2::new(threads, port).run();
+            info!("Worker listening on port {}", style(port).yellow());
+            info!("Using {}", style(format!("{} threads", threads)).cyan());
+
+            WorkerNode::new(threads, port).run();
 
             info!("Exiting!");
         }
@@ -212,7 +214,6 @@ async fn main() -> ExitCode {
             info!("Using a networked worker pool");
 
             let game_setup = GameSetup {
-                id: new_game_id(),
                 referee: Referee::from_preset(referee).unwrap(),
                 agents: agent
                     .iter()
@@ -228,7 +229,7 @@ async fn main() -> ExitCode {
                 capture_io: false,
             };
 
-            let mut game_stream = GameStream2::new(network_args);
+            let mut game_stream = GameStream::new(network_args);
             let mut results_received = 0;
             let mut in_flight = 0;
 
@@ -280,7 +281,7 @@ async fn main() -> ExitCode {
             let reference = Referee::from_preset(reference).unwrap();
             let candidate = Referee::from_preset(candidate).unwrap();
 
-            let mut game_stream = GameStream2::new(network_args);
+            let mut game_stream = GameStream::new(network_args);
 
             let real_agents: Vec<Arc<Target>> = agent
                 .iter()
@@ -295,7 +296,6 @@ async fn main() -> ExitCode {
 
             let mut pending_ref: VecDeque<_> = (0..max_games as u64)
                 .map(|index| GameSetup {
-                    id: new_game_id(),
                     referee: reference.clone(),
                     agents: real_agents.clone(),
                     seed: 1 + index,
@@ -305,7 +305,6 @@ async fn main() -> ExitCode {
                 .collect();
 
             let dummy_setup = GameSetup {
-                id: new_game_id(),
                 referee: reference.clone(),
                 agents: vec![],
                 seed: 0,
@@ -347,7 +346,6 @@ async fn main() -> ExitCode {
                             if is_reference {
                                 // generate a new game, based on the transcript of the agents
                                 let new_game = GameSetup {
-                                    id: new_game_id(),
                                     referee: candidate.clone(), // candidate instead of reference
                                     agents: result
                                         .agents
