@@ -17,15 +17,15 @@ use crate::{
     exec::{
         executable::Executable,
         execution::Status,
-        target::{Target, TargetId},
+        target::{TargetId, TargetKind},
     },
-    game::{GameResult, GameSetup, run_game},
+    game::{GameId, GameResult, GameSetup, run_game},
     network::{FromClient, FromWorker, WorkerStats},
 };
 
 #[derive(Debug)]
 enum WorkerSignal {
-    GameFinished(Endpoint, GameResult),
+    GameFinished(Endpoint, GameId, GameResult),
 }
 
 struct WaitingGame {
@@ -55,8 +55,8 @@ pub struct WorkerNode2 {
     /// One shared abort flag per connected client; set to true on disconnect to
     /// cancel all running games from that client.
     abort_flags: HashMap<Endpoint, Arc<AtomicBool>>,
-    /// Total number of games currently running across all threads
-    running_count: usize,
+    /// IDs of games currently running a thread (see `threads` for capacity).
+    running_games: HashSet<GameId>,
 }
 
 impl WorkerNode2 {
@@ -65,7 +65,7 @@ impl WorkerNode2 {
 
         handler
             .network()
-            .listen(Transport::FramedTcp, ("0.0.0.0", port))
+            .listen(Transport::Ws, ("0.0.0.0", port))
             .expect("to listen");
 
         info!("Worker listening on port {}", style(port).yellow());
@@ -80,14 +80,16 @@ impl WorkerNode2 {
             inflight_requests: HashMap::new(),
             waiting_games: Vec::new(),
             abort_flags: HashMap::new(),
-            running_count: 0,
+            running_games: HashSet::new(),
         }
     }
 
     pub fn update_stats(&self) {
+        let running_ids: Vec<GameId> = self.running_games.iter().copied().collect();
         let msg = FromWorker::Stats(WorkerStats {
             clients: self.connected_clients.len(),
-            running: self.running_count,
+            running: running_ids.len(),
+            running_ids,
             capacity: self.threads,
         });
 
@@ -99,14 +101,13 @@ impl WorkerNode2 {
     }
 
     pub fn start_game(&mut self, endpoint: Endpoint, game: GameSetup<TargetId>) {
-        self.running_count += 1;
+        let game_id = game.id;
+        let game = game.to_executable(&self.targets);
+        if !self.running_games.insert(game_id) {
+            error!("Duplicate game_id {game_id}, ignoring");
+            return;
+        }
         self.update_stats();
-
-        // send game ack
-        self.handler.network().send(
-            endpoint,
-            &postcard::to_allocvec(&FromWorker::GameAck).expect("serialize"),
-        );
 
         let abort_flag = self
             .abort_flags
@@ -114,14 +115,14 @@ impl WorkerNode2 {
             .or_insert_with(|| Arc::new(AtomicBool::new(false)))
             .clone();
 
-        let game = game.to_executable(&self.targets);
         let handler = self.handler.clone();
 
         std::thread::spawn(move || {
             let result = run_game(game, Some(abort_flag));
+
             handler
                 .signals()
-                .send(WorkerSignal::GameFinished(endpoint, result));
+                .send(WorkerSignal::GameFinished(endpoint, game_id, result));
         });
     }
 
@@ -209,8 +210,8 @@ impl WorkerNode2 {
                             }
                         }
                         FromClient::SendTarget(target_id, target) => {
-                            let executable = match target {
-                                Target::SourceCode(source) => {
+                            let executable = match target.kind {
+                                TargetKind::SourceCode(source) => {
                                     match build_cpp(&source.code, HashMap::new()) {
                                         Ok(exe) => exe,
                                         Err(e) => {
@@ -219,7 +220,7 @@ impl WorkerNode2 {
                                         }
                                     }
                                 }
-                                Target::Executable(executable) => executable,
+                                TargetKind::Executable(executable) => executable,
                             };
 
                             self.targets
@@ -244,7 +245,7 @@ impl WorkerNode2 {
                     }
                 }
             },
-            NodeEvent::Signal(WorkerSignal::GameFinished(endpoint, result)) => {
+            NodeEvent::Signal(WorkerSignal::GameFinished(endpoint, game_id, result)) => {
                 match &result {
                     Ok(data) => match &data.r.status {
                         Status::Exited(code) => info!("Game finished with code {code}"),
@@ -259,11 +260,13 @@ impl WorkerNode2 {
                 // it is still connected.
                 self.handler.network().send(
                     endpoint,
-                    &postcard::to_allocvec(&FromWorker::GameResult(result)).expect("serialize"),
+                    &postcard::to_allocvec(&FromWorker::GameResult(game_id, result)).expect("serialize"),
                 );
 
-                self.running_count -= 1;
+                self.running_games.remove(&game_id);
                 self.update_stats();
+
+                info!("Count of running games: {}", self.running_games.len());
             }
         });
     }
