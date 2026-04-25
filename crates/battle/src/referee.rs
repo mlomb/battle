@@ -3,7 +3,11 @@ use std::{path::Path, process::Command, sync::Arc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::exec::{command::CommandExt, executable::Executable, target::{Target, TargetKind}};
+use crate::exec::{
+    command::CommandExt,
+    executable::Executable,
+    target::{Target, TargetKind},
+};
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.
@@ -50,10 +54,10 @@ impl Referee<Arc<Target>> {
             "cg-spring-2024-olympics" => (3, 3),
             _ => {
                 log::warn!(
-                    "Referee file available '{}', but min/max agents is unknown. Assuming min=max=2.",
+                    "Referee file available '{}', but min/max agents is unknown. Assuming min=2 max=4.",
                     preset.to_string()
                 );
-                (2, 2)
+                (2, 4)
             }
         };
 
