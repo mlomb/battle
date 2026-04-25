@@ -18,7 +18,7 @@ use crate::{
     game::{GameResultData, GameSetup},
     network::{
         DEFAULT_WORKER_PORT, FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats,
-        net_serialize,
+        net_deserialize, net_serialize,
     },
 };
 
@@ -165,8 +165,7 @@ impl ClientNode {
                         .send_with_timer(ClientSignal::Reconnect(endpoint.addr()), RECONNECT_DELAY);
                 }
                 NetEvent::Message(endpoint, input_data) => {
-                    let message: FromWorker =
-                        postcard::from_bytes(&input_data).expect("deserialize");
+                    let message: FromWorker = net_deserialize(&input_data);
 
                     match message {
                         FromWorker::Stats(stats) => {
