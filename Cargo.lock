@@ -210,12 +210,14 @@ dependencies = [
 name = "bundler"
 version = "0.1.0"
 dependencies = [
+ "build-fs-tree",
  "cargo_metadata",
  "clap",
  "proc-macro2",
  "quote",
  "serde",
  "syn 2.0.117",
+ "tempfile",
  "toolchain_find",
 ]
 
