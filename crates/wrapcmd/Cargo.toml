@@ -1,6 +1,5 @@
 [package]
 name = "wrapcmd"
-description = "Wraps an executable to record/playback all I/O streams"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
