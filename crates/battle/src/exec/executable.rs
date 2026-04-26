@@ -15,8 +15,8 @@ pub enum ExecutableKind {
     Jar,
     /// Python source code (.py)
     Python,
-    /// A wrapcmd transcript to replay via `<current_exe> wrap replay <file>`.
-    Replay,
+    /// A wrapcmd transcript to play back via `<current_exe> wrap playback <file>`.
+    Playback,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -89,12 +89,12 @@ impl Executable {
         })
     }
 
-    /// Creates a new executable that replays a wrapcmd transcript via `<current_exe> wrap replay`.
+    /// Creates a new executable that plays back a wrapcmd transcript via `<current_exe> wrap playback`.
     pub fn from_transcript(transcript: &Transcript) -> Self {
         let content = transcript.to_string().into_bytes();
         let name = PathBuf::from("transcript.io");
         Self {
-            kind: ExecutableKind::Replay,
+            kind: ExecutableKind::Playback,
             entrypoint: name.clone(),
             files: HashMap::from([(name, content)]),
             tmp_workdir: None,
@@ -169,11 +169,11 @@ impl Executable {
                     .arg(entry);
                 cmd
             }
-            ExecutableKind::Replay => {
+            ExecutableKind::Playback => {
                 let current_exe =
                     std::env::current_exe().expect("failed to get current executable path");
                 let mut cmd = Command::new(current_exe);
-                cmd.args(["wrap", "replay"]).arg(entry);
+                cmd.args(["wrap", "playback"]).arg(entry);
                 cmd
             }
             _ => todo!(),

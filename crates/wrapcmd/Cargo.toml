@@ -1,6 +1,6 @@
 [package]
 name = "wrapcmd"
-description = "Record and replay textual stdin/stdout/stderr transcripts"
+description = "Record and play back textual stdin/stdout/stderr transcripts"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
