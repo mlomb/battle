@@ -32,7 +32,6 @@ impl Bundler for CppBundler {
                 code: format!("{}\n{}", PRAGMAS, source),
                 language: Language::Cpp,
             },
-            params: Default::default(),
             src_files: expander.files_included,
         })
     }

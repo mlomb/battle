@@ -1,4 +1,4 @@
-use bundler::source::{Language, Source};
+use bundler::{Language, Source};
 use std::collections::HashMap;
 use std::{path::PathBuf, process::Command};
 use tempfile::tempdir;
