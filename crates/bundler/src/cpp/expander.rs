@@ -58,7 +58,7 @@ impl CppExpander {
         }
 
         // if line is a #pragma once, remove it
-        if line.trim() == "#pragma once" {
+        if line.trim().starts_with("#pragma once") {
             return Ok(None);
         }
 
@@ -105,7 +105,6 @@ impl CppExpander {
 mod tests {
     use super::CppExpander;
     use build_fs_tree::{dir, file, Build, FileSystemTree, MergeableFileSystemTree};
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn prepare_fixture(tree: FileSystemTree<&str, &str>) -> TempDir {
@@ -119,11 +118,15 @@ mod tests {
     #[test]
     fn expands_includes_and_handles_dedup() {
         let tmp = prepare_fixture(dir! {
-            "point.h" => file!("#pragma once\n\nstruct Point { int x; int y; };\n")
+            "point.h" => file!("#pragma once // comment\n\nstruct Point { int x; int y; };\n")
             "main.cpp" => file!(concat!(
+                "#include <iostream>\n",
                 "#include \"./point.h\"\n",
+                "#include <vector>\n",
                 "#include \"point.h\"\n",
+                "#include <map>\n",
                 "#include \"./point.h\"\n",
+                "#include <string>\n",
                 "int main() { return 0; }\n",
             ))
         });
@@ -133,6 +136,12 @@ mod tests {
             .expand_source(&tmp.path().join("main.cpp"))
             .expect("expand main.cpp")
             .expect("expected source content");
+
+        // make sure all std includes are present
+        assert_eq!(out.matches("<iostream>").count(), 1);
+        assert_eq!(out.matches("<vector>").count(), 1);
+        assert_eq!(out.matches("<map>").count(), 1);
+        assert_eq!(out.matches("<string>").count(), 1);
 
         assert_eq!(
             out.matches("struct Point").count(),
@@ -185,8 +194,7 @@ mod tests {
 
         assert!(
             result.is_err(),
-            "expected an error when including a missing header, got: {:?}",
-            result.map(|opt| opt.unwrap_or_default())
+            "expected an error when including a missing header",
         );
     }
 
@@ -209,5 +217,31 @@ mod tests {
             .expect("expected source content");
 
         assert_eq!(out.matches("struct Point").count(), 1);
+    }
+
+    #[test]
+    fn prevent_infinite_include_loop() {
+        let tmp = prepare_fixture(dir! {
+            "main.cpp" => file!(concat!(
+                "#include \"b.h\"\n",
+                "int main() { return 0; }\n",
+            )),
+            // a.h -> b.h -> c.h -> a.h
+            "a.h" => file!("#pragma once\n#include \"b.h\"\n// A\n"),
+            "b.h" => file!("#pragma once\n#include \"c.h\"\n// B\n"),
+            "c.h" => file!("#pragma once\n#include \"a.h\"\n// C\n"),
+        });
+
+        let mut expander = CppExpander::new();
+        let out = expander
+            .expand_source(&tmp.path().join("main.cpp"))
+            .expect("expand main.cpp")
+            .expect("expected source content");
+
+        // expects correct source
+        assert!(out.contains("int main() { return 0; }"));
+        assert!(out.contains("// A"));
+        assert!(out.contains("// B"));
+        assert!(out.contains("// C"));
     }
 }
