@@ -1,9 +1,8 @@
 mod format;
 mod visitors;
 
-use crate::bundler::Bundler;
+use crate::bundler::{Bundle, Bundler};
 use crate::source::{Language, Source};
-use crate::Bundle;
 use cargo_metadata::MetadataCommand;
 use format::{format_code, FmtError};
 use quote::quote;
