@@ -17,8 +17,8 @@ use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
-use bundler::{BundlerArgs, bundle};
-use cgsync::cgsync;
+use bundler::{BundlerArgs, BundlerCli, bundler::bundle, bundler_main};
+use cgsync::{CGSyncCli, cgsync_main};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
 use wrapcmd::{WrapCmdCommand, wrap_main};
@@ -28,15 +28,9 @@ static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Converts a C++/Rust project directory into a single source file
     Bundle {
         #[clap(flatten)]
-        bundler_args: BundlerArgs,
-
-        /// Output target file.
-        /// If not provided, the output will be printed to stdout.
-        #[arg(long)]
-        output: Option<String>,
+        args: BundlerCli,
     },
 
     /// Build a project into a binary
@@ -47,12 +41,10 @@ enum Commands {
         // TODO: platform, architecture, etc
     },
 
-    /// Sync code between your local Rust/C++ project and CodinGame in the browser.
-    /// It watches for file changes and sends the code to the CG Local extension via a WebSocket.
     #[command(alias = "cgsync")]
     CGSync {
         #[clap(flatten)]
-        bundler_args: BundlerArgs,
+        args: CGSyncCli,
     },
 
     /// Start a worker node
@@ -176,29 +168,15 @@ async fn main() -> ExitCode {
     let args = Args::parse();
 
     match args.command {
-        Commands::Bundle {
-            bundler_args,
-            output,
-        } => match bundle(&bundler_args) {
-            Ok(bundle) => {
-                if let Some(output) = output {
-                    std::fs::write(output, bundle.source.code).expect("a writeable output file");
-                } else {
-                    // raw stdout
-                    println!("{}", bundle.source.code);
-                }
-            }
-            Err(err) => {
-                eprintln!("Error: {}", err);
-                std::process::exit(1);
-            }
-        },
+        Commands::Bundle { args } => {
+            bundler_main(args);
+        }
         Commands::Build { bundler_args } => {
             let exec = bundle_and_build(bundler_args).expect("correct bundle and build");
             println!("  OK: {:?}", exec);
         }
-        Commands::CGSync { bundler_args } => {
-            cgsync(bundler_args).await;
+        Commands::CGSync { args } => {
+            cgsync_main(args).await;
         }
         Commands::Worker { mut threads, port } => {
             info!("Starting worker node...");

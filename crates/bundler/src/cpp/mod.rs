@@ -1,9 +1,8 @@
 mod expander;
 
 use crate::{
-    bundler::Bundler,
+    bundler::{Bundle, Bundler},
     source::{Language, Source},
-    Bundle,
 };
 use expander::CppExpander;
 use std::{error::Error, path::Path};
