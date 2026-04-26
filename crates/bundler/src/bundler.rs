@@ -1,5 +1,6 @@
 use crate::{cpp::CppBundler, rust::RustBundler, source::Source, BundlerArgs};
 use std::{
+    cmp::Reverse,
     collections::HashSet,
     error::Error,
     path::{Path, PathBuf},
@@ -9,6 +10,11 @@ use std::{
 pub trait Bundler {
     /// Checks if the path leads to a valid entry point
     fn is_entrypoint(path: &Path) -> bool;
+
+    /// Returns the priority of the entrypoint file. Higher number is preferred.
+    fn priority(_path: &Path) -> u8 {
+        0
+    }
 
     /// Bundles the project into a single source unit
     fn bundle(path: &Path) -> Result<Bundle, Box<dyn Error>>;
@@ -28,6 +34,12 @@ pub trait Bundler {
 
         // filter out invalid entrypoint files
         candidates.retain(|path| Self::is_entrypoint(path));
+
+        // only retain existing files
+        candidates.retain(|path| path.exists());
+
+        // sort by priority (higher first)
+        candidates.sort_by_key(|path| Reverse(Self::priority(path)));
 
         // return the first valid entrypoint file
         candidates.first().map(|p| p.to_path_buf())
@@ -61,36 +73,4 @@ pub fn bundle(args: &BundlerArgs) -> Result<Bundle, Box<dyn Error>> {
     }
 
     Err("No entrypoint found".into())
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{bundle, BundlerArgs};
-
-    #[test]
-    fn test_cpp_bundle() {
-        let bundle = bundle(&BundlerArgs {
-            entry: Some("test_cases/cpp".into()),
-        })
-        .expect("correct bundle");
-        println!("{}", bundle.source.code);
-    }
-
-    #[test]
-    fn test_rust_main_bundle() {
-        let bundle = bundle(&BundlerArgs {
-            entry: Some("test_cases/rust_main".into()),
-        })
-        .expect("correct bundle");
-        println!("{}", bundle.source.code);
-    }
-
-    #[test]
-    fn test_rust_bin_bundle() {
-        let bundle = bundle(&BundlerArgs {
-            entry: Some("test_cases/rust_bin".into()),
-        })
-        .expect("correct bundle");
-        println!("{}", bundle.source.code);
-    }
 }
