@@ -6,7 +6,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
 use tokio::sync::Mutex;
-use wrapcmd::transcript::Transcript;
+use wrapcmd::Transcript;
 
 use crate::exec::{
     executable::Executable,

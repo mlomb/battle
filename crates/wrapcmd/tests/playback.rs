@@ -1,11 +1,9 @@
-//! Integration tests for `wrapcmd playback`.
-
 use std::io::Write;
 use std::process::{Command, Stdio};
 
 use assert_cmd::prelude::*;
 use tempfile::tempdir;
-use wrapcmd::transcript::{Event, Transcript};
+use wrapcmd::{Event, Transcript};
 
 fn save_transcript(events: Vec<Event>) -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempdir().expect("tempdir");
@@ -25,7 +23,12 @@ fn run_replay(path: &std::path::Path, stdin: &[u8]) -> std::process::Output {
         .spawn()
         .expect("spawn");
 
-    child.stdin.as_mut().unwrap().write_all(stdin).expect("stdin write");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(stdin)
+        .expect("stdin write");
     drop(child.stdin.take());
     child.wait_with_output().expect("wait_with_output")
 }
@@ -51,10 +54,7 @@ fn replay_matching_stdin() {
 /// Wrong stdin on first In event → non-zero exit with mismatch message.
 #[test]
 fn replay_stdin_mismatch() {
-    let (_dir, path) = save_transcript(vec![
-        Event::In("hello".into()),
-        Event::Out("world".into()),
-    ]);
+    let (_dir, path) = save_transcript(vec![Event::In("hello".into()), Event::Out("world".into())]);
 
     let output = run_replay(&path, b"wrong\n");
 

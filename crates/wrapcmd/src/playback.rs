@@ -4,7 +4,7 @@ use std::{
     process::ExitCode,
 };
 
-pub fn run_replay(transcript: &Transcript) -> ExitCode {
+pub fn run_playback(transcript: &Transcript) -> ExitCode {
     let mut stdin = std::io::stdin().lock();
     let mut stdout = std::io::stdout().lock();
     let mut stderr = std::io::stderr().lock();

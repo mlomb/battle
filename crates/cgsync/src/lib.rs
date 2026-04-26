@@ -8,7 +8,8 @@ use tokio::sync::watch;
 use project_watcher::run_project_watcher;
 use ws_server::start_ws_server;
 
-/// Sync code between your local Rust/C++ project and CodinGame IDE in the browser.
+/// Sync code between your local Rust/C++ project and CodinGame IDE.
+///
 /// It watches for file changes and sends the code to the CG Local extension via a WebSocket.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

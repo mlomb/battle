@@ -17,11 +17,11 @@ use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
-use bundler::{BundlerArgs, BundlerCli, bundler::bundle, bundler_main};
+use bundler::{BundlerArgs, BundlerCli, bundle, bundler_main};
 use cgsync::{CGSyncCli, cgsync_main};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
-use wrapcmd::{WrapCmdCommand, wrap_main};
+use wrapcmd::{WrapCmdCli, wrapcmd_main};
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
@@ -107,10 +107,9 @@ enum Commands {
         network_args: NetworkArgs,
     },
 
-    /// Wraps an executable to record/playback stdin, stdout, and stderr.
     Wrap {
-        #[command(subcommand)]
-        command: WrapCmdCommand,
+        #[clap(flatten)]
+        args: WrapCmdCli,
     },
 
     /// Start an MCP server
@@ -386,8 +385,8 @@ async fn main() -> ExitCode {
             info!("Exiting!");
         }
 
-        Commands::Wrap { command } => {
-            return wrap_main(command);
+        Commands::Wrap { args } => {
+            return wrapcmd_main(args);
         }
 
         Commands::MCP { protocol: _ } => todo!(),

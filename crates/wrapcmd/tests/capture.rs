@@ -1,12 +1,10 @@
-//! Integration tests for `wrapcmd capture`.
-
 use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
 use assert_cmd::prelude::*;
 use tempfile::tempdir;
-use wrapcmd::transcript::{Event, Transcript};
+use wrapcmd::{Event, Transcript};
 
 #[test]
 fn capture_stdin_stdout_stderr() {

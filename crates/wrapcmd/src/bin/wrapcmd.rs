@@ -1,10 +1,9 @@
 use clap::Parser;
 use std::process::ExitCode;
 
-use wrapcmd::{wrap_main, WrapCmdArgs};
+use wrapcmd::{wrapcmd_main, WrapCmdCli};
 
 fn main() -> ExitCode {
-    let cli = WrapCmdArgs::parse();
-
-    wrap_main(cli.command)
+    let cli = WrapCmdCli::parse();
+    wrapcmd_main(cli)
 }
