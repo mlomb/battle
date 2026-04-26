@@ -125,10 +125,6 @@ enum Commands {
 struct Args {
     #[command(subcommand)]
     command: Commands,
-
-    /// The environment file to use
-    #[arg(short, long, default_value = "env.yaml")]
-    env: PathBuf,
 }
 
 fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildError> {
