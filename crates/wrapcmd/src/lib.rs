@@ -1,20 +1,21 @@
 use clap::{Parser, Subcommand};
 use std::{path::PathBuf, process::ExitCode};
 
-use crate::transcript::Transcript;
+mod capture;
+mod playback;
+mod transcript;
 
-pub mod capture;
-pub mod playback;
-pub mod transcript;
+pub use transcript::{Event, Transcript};
 
+/// Wraps an executable to record/playback all I/O streams
 #[derive(Parser, Debug)]
-pub struct WrapCmdArgs {
+pub struct WrapCmdCli {
     #[command(subcommand)]
-    pub command: WrapCmdCommand,
+    command: WrapCmdCommand,
 }
 
 #[derive(Subcommand, Debug, Clone)]
-pub enum WrapCmdCommand {
+enum WrapCmdCommand {
     /// Proxies and captures stdin/stdout/stderr of a command to a transcript file.
     ///
     /// From the invoker's perspective, the behaviour of the command is the same as if it was run directly.
@@ -28,7 +29,7 @@ pub enum WrapCmdCommand {
         cmd: Vec<std::ffi::OsString>,
     },
 
-    /// Reads a transcript and plays it back.
+    /// Reads a transcript file and plays it back.
     ///
     /// It will consume stdin, checking that stdin matches the transcript.
     /// At the same time, it will write to stdout and stderr in the same order.
@@ -38,13 +39,13 @@ pub enum WrapCmdCommand {
     },
 }
 
-pub fn wrap_main(command: WrapCmdCommand) -> ExitCode {
-    match command {
+pub fn wrapcmd_main(cli: WrapCmdCli) -> ExitCode {
+    match cli.command {
         WrapCmdCommand::Capture { out, cmd } => capture::run_capture(&cmd, &out),
         WrapCmdCommand::Playback { transcript: path } => {
             let text = std::fs::read_to_string(&path).expect("read transcript");
             let transcript: Transcript = text.parse().expect("parse transcript");
-            playback::run_replay(&transcript)
+            playback::run_playback(&transcript)
         }
     }
 }

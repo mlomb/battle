@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::os::unix::fs::OpenOptionsExt;
 use std::{fs::OpenOptions, io::Write, path::PathBuf, process::Command};
 use tempfile::TempDir;
-use wrapcmd::transcript::Transcript;
+use wrapcmd::Transcript;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutableKind {
