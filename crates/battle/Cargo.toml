@@ -1,8 +1,12 @@
 [package]
 name = "battle"
-description = "Battlestation CLI for bot contests"
 version = "0.1.0"
 edition = "2024"
+description = "Tools for building competitive bots"
+license = "MIT"
+repository = "https://github.com/mlomb/battle"
+categories = ["command-line-utilities","development-tools"]
+keywords = ["bots","codingame"]
 
 [dependencies]
 clap = { version = "4.5.19", features = ["derive", "env"] }
