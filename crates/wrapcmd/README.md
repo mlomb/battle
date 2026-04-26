@@ -5,7 +5,7 @@ Wraps a child process so you can **record** everything that goes in and out on s
 This is used to implement agent I/O capturing and referee diffing in `battle`.
 
 > [!WARNING]
-> Only works when the I/O is UTF-8 only.
+> Only works when the I/O is UTF-8
 
 ## Usage
 
