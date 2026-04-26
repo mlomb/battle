@@ -16,7 +16,7 @@ cargo install --path crates/battle
 
 To update, pull the latest changes and run the commands again.
 
-## Usage
+## Usage / Cheatsheet
 
 <table>
   <tr>
@@ -42,6 +42,16 @@ A tool to bundle C++ and Rust projects into a single source unit for submission.
     <td><code>battle build</code></br></br>A tool to bundle and build your bot and check compilation issues.</td>
     <td><code>battle build</code></td>
     <td>Same as <code>bundle</code>, it will try to find an entrypoint automaticaly.</td>
+  </tr>
+  <tr>
+    <td rowspan="2"><code>battle cgsync</code></br></br>
+Watches your project, bundles on every change, and pushes the result to the CodinGame browser IDE through the <a href="https://github.com/jmerle/cg-local-ext">CG Local extension</a>. See <a href="crates/cgsync">cgsync</a>.</td>
+    <td><code>battle cgsync</code></td>
+    <td>Auto-detects the project in the current folder. Click the browser extension to attach after starting.</td>
+  </tr>
+  <tr>
+    <td><code>battle cgsync src/main.cpp</code></td>
+    <td>Specify the entrypoint manually (file or folder).</td>
   </tr>
   <tr>
     <td rowspan="2"><code>battle worker</code></br></br>
