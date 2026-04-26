@@ -20,9 +20,26 @@ To update, pull the latest changes and run the commands again.
 
 | Command | Example | Note |
 | - | - | - |
-| asd | asd | asd |
+| `battle bundle` | asd | asd |
 | asd | asd | asd |
 
+<table>
+  <tr>
+    <th>Command</th>
+    <th>Example</th>
+    <th>Note</th>
+  </tr>
+  <tr>
+    <td>`battle bundle`</td>
+    <td>Cell 2</td>
+    <td>Cell 2</td>
+  </tr>
+  <tr>
+    <td>Cell 1</td>
+    <td>Cell 2</td>
+    <td>Cell 2</td>
+  </tr>
+</table>
 
 
 # Example workflow
