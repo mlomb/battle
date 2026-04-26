@@ -25,7 +25,7 @@ To update, pull the latest changes and run the commands again.
     <th>Note</th>
   </tr>
   <tr>
-    <td rowspan="3"><code>battle bundle</code></br>
+    <td rowspan="3"><code>battle bundle</code></br></br>
 A tool to bundle C++ and Rust projects into a single source unit for submission.</td>
     <td><code>battle bundle</code></td>
     <td>It will look for a C++ or Rust project (see <a href="crates/bundler/README.md#what-is-a-project">What is a project?</a>) and print a single file to stdout.</td>
@@ -39,7 +39,7 @@ A tool to bundle C++ and Rust projects into a single source unit for submission.
     <td>Output to a file instead of stdout.</td>
   </tr>
   <tr>
-    <td><code>battle build</code></br>A tool to bundle and build your bot and check compilation issues.</td>
+    <td><code>battle build</code></br></br>A tool to bundle and build your bot and check compilation issues.</td>
     <td><code>battle build</code></td>
     <td>Same as <code>bundle</code>, it will try to find an entrypoint automaticaly.</td>
   </tr>
