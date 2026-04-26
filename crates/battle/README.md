@@ -1,8 +1,8 @@
-# arena
+# battle
 
-The arena crate allows automated testing of bots.
+Main CLI
 
-[GIF terminal]
+TODO: update this doc, it is outdated
 
 ### Features
 
