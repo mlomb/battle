@@ -22,50 +22,13 @@ The arena crate allows automated testing of bots.
 
 Check out the [TODO list](#todo) for upcoming features.
 
+Note that by default, `--threads` has a value of `0`, which means it will use the number of **physical cores** in the machine **minus two**.
+
 ## Usage
-
-Create an [environment file](ENV.md) (`env.yaml`) in your project folder. Then run `arena` to be guided through the process of creating a tournament or jump to the [tournament section](#tournament).
-
-If you want to distribute the computation, look at the [execution mode](#execution-mode-local-vs-p2p) section.
-
-## Tournament
-
-> [!NOTE]
-> I recommend you to set up your env file and let the `arena` command guide you instead of constructing the command yourself. It will check for problems in your env file too.
-
-The base command for running tournaments is `arena tournament`.
-
-You **must** specify the following options:
-
-- `--format`: The format of the tournament.
-    - `round-robin`: All agents play against each other.
-    - `gauntlet`: First agent passed plays against all others.
-    - `matchmaking`: TODO
-- `-a <name>` or `--agent <name>`: The agents to include in the tournament. The name must match agents defined in the environment file. You can specify as many agents you want. Agents for a match will be chosen based on the tournament format.
-    - e.g. `--agent latest --agent v1 --agent v2`
-    - e.g. `-a latest -a v1 -a v2`
-
-You **may** specify the following options:
-
-- `--N <number>` or `--games <number>`: The number of matches to run. By default, it is `0`, which means it will run matches until stopped.
-- `--threads <number>` or `--network`: The execution mode. See [execution mode](#execution-mode-local-vs-p2p).
 
 ## Parameter optimization
 
 TODO! We must implement parameters in the bundler first
-
-## Execution mode (local vs. P2P)
-
-You need to decide wether you want to run matches in the same process or distribute them using P2P:
-
-1. `--threads` (default): Matches are run in the same process, and you can specify the number of threads to use.
-2. `--network`: No matches will run in the process and instead will wait until a P2P worker is available to receive matches.
-
-To start a P2P worker, run `arena worker`. Yes, it is that simple. You can specify the number of threads as well (`arena worker --threads 4`).
-
-**Note that only nodes in the same network can discover each other for now.**
-
-Note that by default, `--threads` has a value of `0`, which means it will use the number of **physical cores** in the machine **minus two**.
 
 ## FAQ
 
