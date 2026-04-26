@@ -1,4 +1,4 @@
-//! Integration tests for `wrapcmd replay`.
+//! Integration tests for `wrapcmd playback`.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -17,7 +17,7 @@ fn save_transcript(events: Vec<Event>) -> (tempfile::TempDir, std::path::PathBuf
 fn run_replay(path: &std::path::Path, stdin: &[u8]) -> std::process::Output {
     let mut child = Command::cargo_bin("wrapcmd")
         .expect("cargo_bin wrapcmd")
-        .arg("replay")
+        .arg("playback")
         .arg(path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -76,7 +76,7 @@ fn replay_no_stdin_events() {
 
     let output = Command::cargo_bin("wrapcmd")
         .expect("cargo_bin wrapcmd")
-        .arg("replay")
+        .arg("playback")
         .arg(&path)
         .stdin(Stdio::null())
         .output()

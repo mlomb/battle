@@ -85,13 +85,13 @@ Runs the same game on a reference and a candidate referee and stops at the first
   </tr>
   <tr>
     <td rowspan="2"><code>battle wrap</code></br></br>
-Records and later replays a command's stdin / stdout / stderr. See <a href="crates/wrapcmd">wrapcmd</a>.</td>
+Records and later plays back a command's stdin / stdout / stderr. See <a href="crates/wrapcmd">wrapcmd</a>.</td>
     <td><code>battle wrap capture out.txt -- ./bot</code></td>
     <td>Run <code>./bot</code> transparently while writing a transcript to <code>out.txt</code>.</td>
   </tr>
   <tr>
-    <td><code>battle wrap replay out.txt</code></td>
-    <td>Replays the transcript: writes the recorded stdout/stderr and validates that stdin matches.</td>
+    <td><code>battle wrap playback out.txt</code></td>
+    <td>Plays back the transcript: writes the recorded stdout/stderr and validates that stdin matches.</td>
   </tr>
 </table>
 

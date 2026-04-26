@@ -115,7 +115,7 @@ enum Commands {
         network_args: NetworkArgs,
     },
 
-    /// Wraps an executable to record/replay stdin, stdout, and stderr.
+    /// Wraps an executable to record/playback stdin, stdout, and stderr.
     Wrap {
         #[command(subcommand)]
         command: WrapCmdCommand,

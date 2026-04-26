@@ -4,7 +4,7 @@ use std::{path::PathBuf, process::ExitCode};
 use crate::transcript::Transcript;
 
 pub mod capture;
-pub mod replay;
+pub mod playback;
 pub mod transcript;
 
 #[derive(Parser, Debug)]
@@ -28,11 +28,11 @@ pub enum WrapCmdCommand {
         cmd: Vec<std::ffi::OsString>,
     },
 
-    /// Reads a transcript and replays it.
+    /// Reads a transcript and plays it back.
     ///
     /// It will consume stdin, checking that stdin matches the transcript.
     /// At the same time, it will write to stdout and stderr in the same order.
-    Replay {
+    Playback {
         /// Path to the transcript file.
         transcript: PathBuf,
     },
@@ -41,10 +41,10 @@ pub enum WrapCmdCommand {
 pub fn wrap_main(command: WrapCmdCommand) -> ExitCode {
     match command {
         WrapCmdCommand::Capture { out, cmd } => capture::run_capture(&cmd, &out),
-        WrapCmdCommand::Replay { transcript: path } => {
+        WrapCmdCommand::Playback { transcript: path } => {
             let text = std::fs::read_to_string(&path).expect("read transcript");
             let transcript: Transcript = text.parse().expect("parse transcript");
-            replay::run_replay(&transcript)
+            playback::run_replay(&transcript)
         }
     }
 }
