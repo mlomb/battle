@@ -18,6 +18,7 @@ use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
 use bundler::{BundlerArgs, bundle};
+use cgsync::cgsync;
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
 use wrapcmd::{WrapCmdCommand, wrap_main};
@@ -44,6 +45,14 @@ enum Commands {
         bundler_args: BundlerArgs,
         // TODO: output binary
         // TODO: platform, architecture, etc
+    },
+
+    /// Sync code between your local Rust/C++ project and CodinGame in the browser.
+    /// It watches for file changes and sends the code to the CG Local extension via a WebSocket.
+    #[command(alias = "cgsync")]
+    CGSync {
+        #[clap(flatten)]
+        bundler_args: BundlerArgs,
     },
 
     /// Start a worker node
@@ -187,6 +196,9 @@ async fn main() -> ExitCode {
         Commands::Build { bundler_args } => {
             let exec = bundle_and_build(bundler_args).expect("correct bundle and build");
             println!("  OK: {:?}", exec);
+        }
+        Commands::CGSync { bundler_args } => {
+            cgsync(bundler_args).await;
         }
         Commands::Worker { mut threads, port } => {
             info!("Starting worker node...");
