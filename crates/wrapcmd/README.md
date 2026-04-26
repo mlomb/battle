@@ -1,6 +1,6 @@
 # wrapcmd
 
-Wraps a child process so you can **record** everything that goes in and out on stdin, stdout, and stderr, then **play back** that session later. From the caller’s perspective, capture mode behaves like running the command directly: streams are forwarded while a transcript file is written.
+Wraps a child process so you can **record** everything that goes in and out on stdin, stdout, and stderr, then **play back** that session later. From the caller's perspective, capture mode behaves like running the command directly*: streams are forwarded while a transcript file is written.
 
 This is used to implement agent I/O capturing and referee diffing in `battle`.
 
@@ -17,7 +17,7 @@ If you want to capture `./main a b c`, you would run:
 battle wrap capture /tmp/trans.io ./main a b c
 ```
 
-Then, you can check the file `/tmp/trans.io`, [the format is specified below](#transcript-format).
+You can check the file `/tmp/trans.io`, [the format is specified below](#transcript-format).
 
 ### Playback
 
