@@ -20,11 +20,11 @@ You need to install the [CG Local Extension](https://github.com/jmerle/cg-local-
 Then use `cgsync` the same way you would use `bundler`. Open the folder of your C++ or Rust project and run:
 
 ```sh
-cgsync
+battle cgsync
 ```
 
-When changes are made, `cgsync` will bundle and send the code to the browser automatically. Don't forget to click the extension to initiate the connection.
+When changes are made, `cgsync` will bundle and send the code to the browser automatically. **Don't forget to click the extension to initiate the connection.**
 
 ## How it works
 
-The process starts a local web socket server on port 53135. The browser extension then connects to this server. When a file changes, the code is bundled using `bundler` and sent to the browser extension, which pastes it into the browser IDE.
+The process starts a local web socket server on port `53135`. The browser extension then connects to this server. When a file changes, the code is bundled using `bundler` and sent to the browser extension, which pastes it into the browser IDE.
