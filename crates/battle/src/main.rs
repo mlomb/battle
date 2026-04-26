@@ -70,7 +70,7 @@ enum Commands {
     /// Play a game between multiple bots
     Play {
         /// The referee of the game
-        #[arg(short, long)]
+        #[arg(short, long, env = "BATTLE_REFEREE")]
         referee: String,
 
         /// List of agents participating in the game
