@@ -1,7 +1,4 @@
-use bundler::{
-    bundler::{bundle, Bundle},
-    BundlerArgs,
-};
+use bundler::{bundle, Bundle, BundlerArgs};
 use console::style;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{collections::HashSet, error::Error, path::PathBuf, sync::mpsc::Receiver};

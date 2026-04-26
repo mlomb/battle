@@ -71,7 +71,7 @@ impl CGLocalClient {
 
     async fn send(&mut self, msg: serde_json::Value) {
         self.ws_stream
-            .send(Message::Text(msg.to_string()))
+            .send(Message::Text(msg.to_string().into()))
             .await
             // we don't care about errors when sending messages
             .ok();
