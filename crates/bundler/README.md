@@ -4,16 +4,17 @@ A tool to bundle C++ and Rust projects into a single source unit for submission.
 
 ## Usage
 
-Open the terminal in a folder which contains a C++ or Rust project (see [What is a project?](#what-is-a-project)), and run:
+Open a terminal in a folder which contains a C++ or Rust project (see [What is a project?](#what-is-a-project)), and run:
 
 ```sh
-bundler
+battle bundle
+# or `bundler` if installed locally
 ```
 
-This will output the final source code into the console. You can redirect it to a file (`>`) or use `--output`:
+This will output the final source code into stdout. You can redirect it to a file (`>`) or use `--output`:
 
 ```sh
-bundler --output submit.cpp
+battle bundle --output submit.cpp
 ```
 
 ## What is a project?
@@ -29,25 +30,21 @@ When the entry point is a folder, the bundler will look for a `main.cpp` or `Car
 
 ```sh
 # C++
-bundler --entry src
-bundler --entry src/main.cpp
-bundler --entry main.cpp
-bundler # (looks for main.cpp inside cwd)
+battle bundle --entry src
+battle bundle --entry src/main.cpp
+battle bundle --entry main.cpp
+battle bundle # (looks for main.cpp inside cwd)
 
 # Rust
-bundler --entry mycrate
-bundler --entry mycrate/Cargo.toml
-bundler --entry Cargo.toml
-bundler # (looks for Cargo.toml inside cwd)
+battle bundle --entry mycrate
+battle bundle --entry mycrate/Cargo.toml
+battle bundle --entry Cargo.toml
+battle bundle # (looks for Cargo.toml inside cwd)
 ```
 
 ## Parameters
 
 TODO
-
-arrays are converted to ARR[0], ARR[1], ARR[2]
-
-ARR[0] { min=0, max=5, default=3 }
 
 ## How it works
 
@@ -83,7 +80,7 @@ TODO explain
 - [ ] Rust: inline relative packages: `subpkg = { path = "../subpkg" }`.
 - [ ] Allow for configuration, e.g. `--keep-comments`.
 - [ ] Basic dead code elimination to reduce size. Probably too hard, maybe for C++ macros and basic heuristics?
-- [ ] Cleaning like
+- [ ] Cleaning
     - [ ] Remove duplicate includes (e.g. `#include <iostream>` twice)
 - [ ] Add support for other languages?
 
