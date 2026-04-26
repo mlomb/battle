@@ -44,9 +44,44 @@ A tool to bundle C++ and Rust projects into a single source unit for submission.
     <td>Same as <code>bundle</code>, it will try to find an entrypoint automaticaly.</td>
   </tr>
   <tr>
-    <td>Cell 1</td>
-    <td>Cell 2</td>
-    <td>Cell 2</td>
+    <td rowspan="2"><code>battle worker</code></br></br>
+Starts a worker node that the distributed runner uses to play games.</td>
+    <td><code>battle worker</code></td>
+    <td>Listens on the default port using <em>physical CPUs − 2</em> threads.</td>
+  </tr>
+  <tr>
+    <td><code>battle worker --threads 32 --port 8080</code></td>
+    <td>Override the thread count and listening port.</td>
+  </tr>
+  <tr>
+    <td rowspan="2"><code>battle play</code></br></br>
+Plays one or more games between bots through the worker pool, streaming results as they finish.</td>
+    <td><code>battle play -r cg-fall-2023-fish -a v1.cpp -a v2.cpp</code></td>
+    <td>Play a single game with the given referee and agents (repeat <code>-a</code> per agent).</td>
+  </tr>
+  <tr>
+    <td><code>battle play -r ... -a v1.cpp -a v2.cpp -n 100</code></td>
+    <td>Play <code>-n</code> games in total.</td>
+  </tr>
+  <tr>
+    <td rowspan="2"><code>battle referee-diff</code></br></br>
+Runs the same game on a reference and a candidate referee and stops at the first score / status mismatch. Useful when porting or optimizing a referee while preserving outcomes.</td>
+    <td><code>battle referee-diff --reference ref-impl --candidate cand-impl -a main.cpp</code></td>
+    <td>Compare both referees using the given agent(s). Use a non-trivial, non-deterministic agent for meaningful comparisons.</td>
+  </tr>
+  <tr>
+    <td><code>battle referee-diff ... --max-games 50</code></td>
+    <td>Run up to <code>--max-games</code> identical games before declaring success (default <code>10</code>).</td>
+  </tr>
+  <tr>
+    <td rowspan="2"><code>battle wrap</code></br></br>
+Records and later replays a command's stdin / stdout / stderr. See <a href="crates/wrapcmd">wrapcmd</a>.</td>
+    <td><code>battle wrap capture out.txt -- ./bot</code></td>
+    <td>Run <code>./bot</code> transparently while writing a transcript to <code>out.txt</code>.</td>
+  </tr>
+  <tr>
+    <td><code>battle wrap replay out.txt</code></td>
+    <td>Replays the transcript: writes the recorded stdout/stderr and validates that stdin matches.</td>
   </tr>
 </table>
 
