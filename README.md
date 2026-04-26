@@ -93,3 +93,9 @@ Records and later plays back a command's stdin / stdout / stderr. See <a href="c
   </tr>
 </table>
 
+
+## Tips
+
+* Make aliases for common commands: `battle build` -> `bb`
+* Pass the referee as an environment variable to skip writing it each time: `-r some-game` -> `BATTLE_REFEREE=some-game`
+* Keep your worker list in an environment variable: `BATTLE_WORKERS=100.100.1.1,100.100.1.2,etc`
