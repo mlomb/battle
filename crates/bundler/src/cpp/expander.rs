@@ -92,11 +92,122 @@ impl CppExpander {
 
     fn mark_as_included(&mut self, include_path: &Path) {
         self.files_included
-            .insert(std::fs::canonicalize(include_path).unwrap());
+            .insert(std::path::absolute(include_path).unwrap());
     }
 
     fn has_been_included(&self, include_path: &Path) -> bool {
         self.files_included
-            .contains(&std::fs::canonicalize(include_path).unwrap())
+            .contains(&std::path::absolute(include_path).unwrap())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CppExpander;
+    use build_fs_tree::{dir, file, Build, FileSystemTree, MergeableFileSystemTree};
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    fn prepare_fixture(tree: FileSystemTree<&str, &str>) -> TempDir {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let tree: MergeableFileSystemTree<_, _> = MergeableFileSystemTree::from(tree);
+        tree.build(root).expect("build fs fixture");
+        tmp
+    }
+
+    #[test]
+    fn expands_includes_and_handles_dedup() {
+        let tmp = prepare_fixture(dir! {
+            "point.h" => file!("#pragma once\n\nstruct Point { int x; int y; };\n")
+            "main.cpp" => file!(concat!(
+                "#include \"./point.h\"\n",
+                "#include \"point.h\"\n",
+                "#include \"./point.h\"\n",
+                "int main() { return 0; }\n",
+            ))
+        });
+
+        let mut expander = CppExpander::new();
+        let out = expander
+            .expand_source(&tmp.path().join("main.cpp"))
+            .expect("expand main.cpp")
+            .expect("expected source content");
+
+        assert_eq!(
+            out.matches("struct Point").count(),
+            1,
+            "Point should be included only once"
+        );
+
+        assert!(
+            !out.contains("#pragma once"),
+            "#pragma once should be stripped"
+        );
+
+        assert_eq!(
+            out.matches("already included").count(),
+            2,
+            "duplicate includes leave `already included` markers"
+        );
+
+        assert_eq!(
+            expander.files_included.len(),
+            2,
+            "expected main.cpp and point.h to be tracked, got: {:?}",
+            expander.files_included
+        );
+
+        // re-expanding an already-visited file should return None
+        let second = expander
+            .expand_source(&tmp.path().join("point.h"))
+            .expect("re-expand main.cpp");
+        assert!(
+            second.is_none(),
+            "expected None on already-included file, got: {:?}",
+            second
+        );
+    }
+
+    #[test]
+    fn fails_on_missing_include() {
+        let tmp = prepare_fixture(dir! {
+            "exists.h" => file!("#pragma once\n\nstruct Point { int x; int y; };\n"),
+            "main.cpp" => file!(concat!(
+                "#include \"exists.h\"\n",
+                "#include \"does_not_exist.h\"\n",
+                "int main() { return 0; }\n",
+            ))
+        });
+
+        let mut expander = CppExpander::new();
+        let result = expander.expand_source(&tmp.path().join("main.cpp"));
+
+        assert!(
+            result.is_err(),
+            "expected an error when including a missing header, got: {:?}",
+            result.map(|opt| opt.unwrap_or_default())
+        );
+    }
+
+    #[test]
+    fn deep_include_tree() {
+        let tmp = prepare_fixture(dir! {
+            "main.cpp" => file!(concat!(
+                "#include \"a.h\"\n",
+                "int main() { return 0; }\n",
+            )),
+            "a.h" => file!("#pragma once\n#include \"b.h\"\n"),
+            "b.h" => file!("#pragma once\n#include \"c.h\"\n"),
+            "c.h" => file!("#pragma once\n\nstruct Point { int x; int y; };\n"),
+        });
+
+        let mut expander = CppExpander::new();
+        let out = expander
+            .expand_source(&tmp.path().join("main.cpp"))
+            .expect("expand main.cpp")
+            .expect("expected source content");
+
+        assert_eq!(out.matches("struct Point").count(), 1);
     }
 }
