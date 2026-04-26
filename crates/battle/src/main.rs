@@ -175,7 +175,8 @@ async fn main() -> ExitCode {
                 if let Some(output) = output {
                     std::fs::write(output, bundle.source.code).expect("a writeable output file");
                 } else {
-                    info!("{}", bundle.source.code);
+                    // raw stdout
+                    println!("{}", bundle.source.code);
                 }
             }
             Err(err) => {
