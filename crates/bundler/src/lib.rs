@@ -2,25 +2,16 @@ extern crate cargo_metadata;
 extern crate quote;
 extern crate syn;
 
-pub mod bundler;
+mod bundler;
 mod cpp;
 mod parameter;
 mod rust;
 pub mod source;
 
-use bundler::Bundler;
 use clap::Parser;
-use cpp::CppBundler;
-use parameter::Parameter;
-use rust::RustBundler;
-use source::Source;
-use std::{
-    collections::{HashMap, HashSet},
-    error::Error,
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
-use crate::bundler::bundle;
+pub use crate::bundler::{bundle, Bundle};
 
 #[derive(Debug, Parser)]
 pub struct BundlerArgs {
