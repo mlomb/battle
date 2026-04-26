@@ -1,8 +1,6 @@
-use crate::{
-    cpp::CppBundler, parameter::Parameter, rust::RustBundler, source::Source, BundlerArgs,
-};
+use crate::{cpp::CppBundler, rust::RustBundler, source::Source, BundlerArgs};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     error::Error,
     path::{Path, PathBuf},
 };
@@ -43,7 +41,7 @@ pub struct Bundle {
     pub source: Source,
 
     /// Parameters found in the original source. Now available to set via standard arguments
-    pub params: HashMap<String, Parameter>,
+    // pub params: HashMap<String, Parameter>,
 
     /// All relevant files used to create the bundle (and should be watched)
     // TODO: change to just files, since not every file might be source code

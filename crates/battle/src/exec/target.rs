@@ -1,4 +1,4 @@
-use bundler::source::Source;
+use bundler::Source;
 use serde::{Deserialize, Serialize};
 
 use crate::exec::executable::Executable;

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 /// The language of the bundled source code
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

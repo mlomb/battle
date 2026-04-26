@@ -148,7 +148,7 @@ pub fn run_capture(cmd: &[OsString], out_path: &Path) -> ExitCode {
 /// Ties the lifetime of the child process to the current process.
 ///
 /// See the same function in `execution.rs` in the `battle` crate for more details.
-pub fn tie_child_lifetime_to_ours(child: &Child) -> io::Result<()> {
+pub fn tie_child_lifetime_to_ours(_child: &Child) -> io::Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::io::AsRawHandle;
@@ -158,7 +158,7 @@ pub fn tie_child_lifetime_to_ours(child: &Child) -> io::Result<()> {
         info.limit_kill_on_job_close();
 
         let job = Job::create_with_limit_info(&info).map_err(io::Error::other)?;
-        job.assign_process(child.as_raw_handle() as isize)
+        job.assign_process(_child.as_raw_handle() as isize)
             .map_err(io::Error::other)?;
 
         let _ = job.into_handle();

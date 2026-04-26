@@ -4,14 +4,14 @@ extern crate syn;
 
 mod bundler;
 mod cpp;
-mod parameter;
 mod rust;
-pub mod source;
+mod source;
 
 use clap::Parser;
 use std::path::PathBuf;
 
 pub use crate::bundler::{bundle, Bundle};
+pub use crate::source::{Language, Source};
 
 #[derive(Debug, Parser)]
 pub struct BundlerArgs {

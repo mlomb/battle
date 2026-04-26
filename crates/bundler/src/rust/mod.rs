@@ -6,7 +6,7 @@ use crate::source::{Language, Source};
 use cargo_metadata::{MetadataCommand, TargetKind};
 use format::{format_code, FmtError};
 use quote::quote;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::error::Error;
 use std::path::Path;
 use visitors::resolve_source;
@@ -77,7 +77,6 @@ impl Bundler for RustBundler {
                         code: source,
                         language: Language::Rust,
                     },
-                    params: HashMap::new(),
                     src_files,
                 })
             }
