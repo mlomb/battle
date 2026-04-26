@@ -120,4 +120,16 @@ mod tests {
             Some(OsStr::new("source.cpp"))
         );
     }
+
+    #[test]
+    fn file_cpp() {
+        let tmp = prepare_fixture(dir! {
+            "main.cpp" => file!(""),
+        });
+        let got = CppBundler::find_entrypoint(&tmp.path().join("main.cpp"));
+        assert_eq!(
+            got.as_ref().map(|p| p.file_name().unwrap()),
+            Some(OsStr::new("main.cpp"))
+        );
+    }
 }
