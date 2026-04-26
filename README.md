@@ -1,4 +1,4 @@
-# Bot tools
+# `battle` bot tools
 
 Tools for building competitive bots, e.g. for [CodinGame](https://codingame.com) contests.
 
