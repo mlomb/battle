@@ -1,10 +1,8 @@
 # Bot tools
 
-Tools for building competitive bots. The project is composed of [multiple Rust crates](crates/README.md), conviniently accesible under the same CLI tool called `battle`.
+Tools for building competitive bots, e.g. for [CodinGame](https://codingame.com) contests.
 
-The tools are designed to "just work" and aim to have good DX.
-
-🛠️ **Still work in progress**
+The project is composed of [multiple Rust crates](crates/README.md), conveniently accesible under the same CLI tool called `battle`. The tools are designed to "just work" and aim to have good DX. 🛠️ Still a lot to do.
 
 ## Install
 
