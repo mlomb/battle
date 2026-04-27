@@ -44,3 +44,48 @@ impl VisitMut for AttributeRemover {
     remove_attrs!(visit_variant_mut, Variant);
     remove_attrs!(visit_impl_item_fn_mut, ImplItemFn);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AttributeRemover;
+    use syn::{visit_mut::VisitMut, File, Item};
+
+    #[test]
+    fn remove_some_attributes() {
+        let mut input: File = syn::parse_str(
+            r#"
+            #[doc = "doc on struct"]
+            #[derive(Debug)]
+            pub struct Foo {
+                #[doc = "doc on field"]
+                pub bar: i32,
+            }
+
+            #[wasm_bindgen]
+            #[inline]
+            pub fn boom() {}
+        "#,
+        )
+        .expect("parse input");
+
+        let expected_src: File = syn::parse_str(
+            r#"
+            #[derive(Debug)]
+            pub struct Foo {
+                pub bar: i32,
+            }
+
+            #[inline]
+            pub fn boom() {}
+        "#,
+        )
+        .expect("parse expected");
+
+        AttributeRemover::new()
+            .with_attribute("doc")
+            .with_attribute("wasm_bindgen")
+            .visit_file_mut(&mut input);
+
+        assert_eq!(input, expected_src);
+    }
+}
