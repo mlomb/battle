@@ -40,20 +40,23 @@ impl CGLocalClient {
             select! {
                 // wait for code updates
                 // it will be triggered automatically the first time
-                _ = code_rx.changed() => {
-                    let code = code_rx.borrow().clone();
-                    self.send_code(&code).await;
+                res = code_rx.changed() => match res {
+                    Err(_) => break, // the channel was closed, stop the loop
+                    Ok(_) => {
+                        let code = code_rx.borrow().clone();
+                        self.send_code(&code).await;
 
-                    println!(
-                        "{} Code updated {}",
-                        style("[U]").green(),
-                        style(format!(
-                            "({} chars)",
-                            HumanCount(code.chars().count() as u64).to_string()
-                        ))
-                        .cyan()
-                        .bold()
-                    );
+                        println!(
+                            "{} Code updated {}",
+                            style("[U]").green(),
+                            style(format!(
+                                "({} chars)",
+                                HumanCount(code.chars().count() as u64).to_string()
+                            ))
+                            .cyan()
+                            .bold()
+                        );
+                    }
                 },
 
                 // receive messages
@@ -110,9 +113,7 @@ pub async fn start_ws_server(code_rx: CodeRx) {
         style("CG Local extension").yellow().underlined()
     );
 
-    tokio::spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
-            tokio::spawn(CGLocalClient::run_from_stream(stream, code_rx.clone()));
-        }
-    });
+    while let Ok((stream, _)) = listener.accept().await {
+        tokio::spawn(CGLocalClient::run_from_stream(stream, code_rx.clone()));
+    }
 }

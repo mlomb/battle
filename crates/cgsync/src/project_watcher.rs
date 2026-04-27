@@ -1,7 +1,8 @@
 use bundler::{bundle, Bundle, BundlerArgs};
 use console::style;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
-use std::{collections::HashSet, error::Error, path::PathBuf, sync::mpsc::Receiver};
+use std::{collections::HashSet, error::Error, path::PathBuf};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 type CodeTx = tokio::sync::watch::Sender<String>;
 
@@ -14,15 +15,18 @@ pub struct ProjectWatcher {
     /// The file watcher
     file_watcher: RecommendedWatcher,
     /// The receiver for file change events
-    event_rx: Receiver<notify::Result<Event>>,
+    event_rx: UnboundedReceiver<notify::Result<Event>>,
     /// The files that are currently being watched
     currently_watching: HashSet<PathBuf>,
 }
 
 impl ProjectWatcher {
     pub fn new(bundler_args: BundlerArgs) -> Self {
-        let (event_tx, event_rx) = std::sync::mpsc::channel();
-        let file_watcher = notify::recommended_watcher(event_tx).unwrap();
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let file_watcher = notify::recommended_watcher(move |res| {
+            let _ = event_tx.send(res);
+        })
+        .unwrap();
 
         Self {
             bundler_args,
@@ -32,16 +36,21 @@ impl ProjectWatcher {
         }
     }
 
-    fn run_loop(mut self, code_tx: CodeTx) {
+    async fn run_loop(mut self, code_tx: CodeTx) {
         loop {
             // bundle the project
             match self.run_bundler() {
-                Ok(bundle) => code_tx.send(bundle.source.code).expect("a code receiver"),
+                Ok(bundle) => {
+                    code_tx.send(bundle.source.code).ok();
+                }
                 Err(err) => println!("{} Failed to bundle: {:?}", style("[E]").red(), err),
             }
 
-            // wait for changes
-            self.wait_for_changes();
+            // wait for changes, or exit if code_tx closed
+            tokio::select! {
+                _ = code_tx.closed() => break,
+                _ = self.wait_for_changes() => {},
+            }
         }
     }
 
@@ -71,14 +80,14 @@ impl ProjectWatcher {
         Ok(bundle)
     }
 
-    fn wait_for_changes(&mut self) {
-        // block until a file changes
-        let evt = self.event_rx.recv().expect("a file event");
+    async fn wait_for_changes(&mut self) {
+        // wait until a file changes
+        let evt = self.event_rx.recv().await.expect("a file event");
         let mut changed_paths = evt.unwrap().paths;
 
         // sleep some ms to throttle the watcher
         // this allows the IDE to run any formatters
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // consume any other events so that they don't re-trigger
         while let Ok(Ok(evt)) = self.event_rx.try_recv() {
@@ -106,6 +115,6 @@ impl ProjectWatcher {
     }
 }
 
-pub fn run_project_watcher(bundler_args: BundlerArgs, code_tx: CodeTx) {
-    ProjectWatcher::new(bundler_args).run_loop(code_tx);
+pub async fn run_project_watcher(bundler_args: BundlerArgs, code_tx: CodeTx) {
+    ProjectWatcher::new(bundler_args).run_loop(code_tx).await;
 }
