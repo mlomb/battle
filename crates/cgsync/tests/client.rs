@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::path::Path;
 use std::process::Child;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::MaybeTlsStream;
@@ -20,8 +20,33 @@ pub struct CGExtensionClient {
 
 impl Drop for CGExtensionClient {
     fn drop(&mut self) {
-        self.child.kill().ok();
-        self.child.wait().ok();
+        // we want to send SIGINT first so that the child can shut down gracefully
+        // this way, we get proper line coverage, otherwise it does not write any coverage
+        #[cfg(unix)]
+        {
+            let pid = self.child.id();
+            if pid != 0 {
+                let _ = Command::new("kill")
+                    .args(["-INT", &pid.to_string()])
+                    .status();
+            }
+
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                match self.child.try_wait() {
+                    Ok(Some(_)) => return,
+                    Ok(None) => {}
+                    Err(_) => return,
+                }
+                if Instant::now() >= deadline {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+
+        self.child.kill().expect("kill cgsync");
+        self.child.wait().expect("wait cgsync");
     }
 }
 

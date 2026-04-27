@@ -3,6 +3,7 @@ mod ws_server;
 
 use bundler::BundlerArgs;
 use clap::Parser;
+use console::style;
 use tokio::sync::watch;
 
 use project_watcher::run_project_watcher;
@@ -21,6 +22,12 @@ pub struct CGSyncCli {
 pub async fn cgsync_main(args: CGSyncCli) {
     let (code_tx, code_rx) = watch::channel("(bundler failed, check console)".to_string());
 
-    start_ws_server(code_rx).await;
-    run_project_watcher(args.bundler_args, code_tx);
+    tokio::spawn(start_ws_server(code_rx));
+    tokio::spawn(run_project_watcher(args.bundler_args, code_tx));
+
+    tokio::signal::ctrl_c().await.ok();
+
+    println!("{} Exit signal received, exiting...", style("[I]").blue());
+    // TODO: proper shutdown?
+    println!("{} Goodbye!", style("[I]").blue());
 }
