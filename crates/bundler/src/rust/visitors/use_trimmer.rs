@@ -41,3 +41,42 @@ impl VisitMut for UseTrimmer {
         // syn::visit_mut::visit_item_use_mut(self, i);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::UseTrimmer;
+    use syn::{visit_mut::VisitMut, File};
+
+    #[test]
+    fn trim_matching_use_prefixes() {
+        let mut input: File = syn::parse_str(
+            r#"
+            use mypkg::foo::Bar;
+            use mypkg;
+            use other::foo;
+            use other;
+            use foo as bar;
+            use mypkg::{ a, b };
+            use mypkg_extra::foo;
+            "#,
+        )
+        .expect("parse input");
+
+        let expected: File = syn::parse_str(
+            r#"
+            use foo::Bar;
+            use {};
+            use other::foo;
+            use other;
+            use foo as bar;
+            use { a, b };
+            use foo;
+            "#,
+        )
+        .expect("parse expected");
+
+        UseTrimmer::with_prefix("mypkg".into()).visit_file_mut(&mut input);
+
+        assert_eq!(input, expected);
+    }
+}
