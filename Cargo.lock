@@ -210,6 +210,7 @@ dependencies = [
 name = "bundler"
 version = "0.1.0"
 dependencies = [
+ "assert_cmd",
  "build-fs-tree",
  "cargo_metadata",
  "clap",
