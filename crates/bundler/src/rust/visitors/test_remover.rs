@@ -53,3 +53,74 @@ fn is_test_attribute(attr: &syn::Attribute) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::TestRemover;
+    use syn::{visit_mut::VisitMut, File};
+
+    #[test]
+    fn remove_test_only_items() {
+        let mut input: File = syn::parse_str(
+            r#"
+            mod outer {
+                mod decl_only;
+
+                #[test]
+                fn it_works() {}
+
+                #[cfg(test)]
+                mod tests {
+                    fn helper() {}
+                }
+
+                #[cfg()]
+                fn cfg_empty_paren() {}
+
+                #[cfg((test))]
+                fn cfg_group_first_token() {}
+
+                #[doc = "stay"]
+                #[cfg(target_os = "linux")]
+                fn regular() {}
+
+                mod normal {}
+
+                struct Foo;
+
+                const BAZ: i32 = 1;
+            }
+            "#,
+        )
+        .expect("parse input");
+
+        let expected: File = syn::parse_str(
+            r#"
+            mod outer {
+                mod decl_only;
+
+                #[cfg()]
+                fn cfg_empty_paren() {}
+
+                #[cfg((test))]
+                fn cfg_group_first_token() {}
+
+                #[doc = "stay"]
+                #[cfg(target_os = "linux")]
+                fn regular() {}
+
+                mod normal {}
+
+                struct Foo;
+
+                const BAZ: i32 = 1;
+            }
+            "#,
+        )
+        .expect("parse expected");
+
+        TestRemover::new().visit_file_mut(&mut input);
+
+        assert_eq!(input, expected);
+    }
+}
