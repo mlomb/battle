@@ -48,7 +48,7 @@ impl VisitMut for AttributeRemover {
 #[cfg(test)]
 mod tests {
     use super::AttributeRemover;
-    use syn::{visit_mut::VisitMut, File, Item};
+    use syn::{visit_mut::VisitMut, File};
 
     #[test]
     fn remove_some_attributes() {
