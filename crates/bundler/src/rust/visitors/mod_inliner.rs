@@ -95,6 +95,7 @@ impl VisitMut for ModInliner {
                 Ok(file) => {
                     // Note: file attributes are being dropped (shebangs #!)
                     i.content = Some((Default::default(), file.items));
+                    i.semi = None;
                 }
                 Err(err) => {
                     let msg = format!("Failed to resolve: {}", err);
@@ -103,5 +104,118 @@ impl VisitMut for ModInliner {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ModInliner;
+    use build_fs_tree::{dir, file, Build, FileSystemTree, MergeableFileSystemTree};
+    use syn::File;
+    use tempfile::TempDir;
+
+    fn prepare_fixture(tree: FileSystemTree<&str, &str>) -> TempDir {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tree: MergeableFileSystemTree<_, _> = MergeableFileSystemTree::from(tree);
+        tree.build(tmp.path()).expect("build fs fixture");
+        tmp
+    }
+
+    #[test]
+    fn inline_file_backed_module() {
+        let tmp = prepare_fixture(dir! {
+            "lib.rs" => file!(r#"
+            mod child;
+            mod inline {
+                pub fn already_here() {}
+            }
+
+            pub fn root_fn() {}
+            "#),
+            "child.rs" => file!("pub struct InChild;"),
+        });
+        let root = tmp.path().join("lib.rs");
+
+        let mut inliner = ModInliner::new();
+        let got = inliner.resolve(&root).expect("resolve");
+
+        let expected: File = syn::parse_str(
+            r#"
+            mod child {
+                pub struct InChild;
+            }
+            mod inline {
+                pub fn already_here() {}
+            }
+
+            pub fn root_fn() {}
+            "#,
+        )
+        .expect("parse expected");
+
+        assert_eq!(got, expected);
+    }
+
+    /// Second candidate path: `name/mod.rs` when `name.rs` does not exist.
+    #[test]
+    fn resolves_module_via_mod_rs_subdir() {
+        let tmp = prepare_fixture(dir! {
+            "lib.rs" => file!("mod nested;"),
+            "nested" => dir! {
+                "mod.rs" => file!("pub struct FromModRs;"),
+            },
+        });
+
+        let mut inliner = ModInliner::new();
+        let got = inliner.resolve(tmp.path().join("lib.rs")).expect("resolve");
+
+        let expected: File = syn::parse_str(
+            r#"
+            mod nested {
+                pub struct FromModRs;
+            }
+            "#,
+        )
+        .expect("parse expected");
+
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn unresolved_module_gets_doc_attribute() {
+        let tmp = prepare_fixture(dir! {
+            "lib.rs" => file!(r#"
+            mod nope;
+
+            pub fn ok() {}
+            "#),
+        });
+
+        let mut inliner = ModInliner::new();
+        let got = inliner.resolve(tmp.path().join("lib.rs")).expect("resolve");
+
+        let expected: File = syn::parse_str(
+            r#"
+            #[doc = "Failed to resolve: mod 'nope' not found!"]
+            mod nope;
+
+            pub fn ok() {}
+            "#,
+        )
+        .expect("parse expected");
+
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn resolve_propagates_parse_errors() {
+        let tmp = prepare_fixture(dir! {
+            "lib.rs" => file!("this is not valid rust"),
+        });
+
+        let mut inliner = ModInliner::new();
+        inliner
+            .resolve(tmp.path().join("lib.rs"))
+            .expect_err("invalid source should fail");
     }
 }
