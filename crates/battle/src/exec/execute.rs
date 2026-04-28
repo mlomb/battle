@@ -201,8 +201,20 @@ mod tests {
 
     #[test]
     fn capture_stdout_from_echo() {
-        let mut cmd = Command::new("echo");
-        cmd.arg("hello");
+        let mut cmd = {
+            #[cfg(unix)]
+            {
+                let mut c = Command::new("echo");
+                c.arg("hello");
+                c
+            }
+            #[cfg(windows)]
+            {
+                let mut c = Command::new("cmd");
+                c.args(["/C", "echo", "hello"]);
+                c
+            }
+        };
         let r = cmd.execute(Duration::from_secs(2), None);
         assert!(matches!(r.status, Status::Exited(0)));
         assert!(r.stdout.contains("hello"), "stdout={:?}", r.stdout);
@@ -219,8 +231,8 @@ mod tests {
             }
             #[cfg(windows)]
             {
-                let mut cmd = Command::new("exit");
-                cmd.arg("1");
+                let mut cmd = Command::new("cmd");
+                cmd.args(["/C", "exit", "1"]);
                 cmd
             }
         };
@@ -233,8 +245,20 @@ mod tests {
 
     #[test]
     fn timeout_kills_long_running() {
-        let mut cmd = Command::new("sleep");
-        cmd.arg("5");
+        let mut cmd = {
+            #[cfg(unix)]
+            {
+                let mut c = Command::new("sleep");
+                c.arg("5");
+                c
+            }
+            #[cfg(windows)]
+            {
+                let mut c = Command::new("cmd");
+                c.args(["/C", "timeout /t 5 /nobreak >nul 2>&1"]);
+                c
+            }
+        };
         let r = cmd.execute(Duration::from_millis(500), None);
         assert!(matches!(r.status, Status::Timeout));
         assert!(r.duration < Duration::from_secs(2));
