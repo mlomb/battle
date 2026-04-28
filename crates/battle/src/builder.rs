@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::{path::PathBuf, process::Command};
 use tempfile::tempdir;
 
-use crate::exec::executable::Executable;
+use crate::exec::Executable;
 
 #[derive(Debug)]
 pub enum BuildError {

@@ -8,11 +8,7 @@ use tempfile::tempdir;
 use tokio::sync::Mutex;
 use wrapcmd::Transcript;
 
-use crate::exec::{
-    executable::Executable,
-    execution::{Execute, ExecutionResult},
-    target::{Target, TargetId},
-};
+use crate::exec::{Executable, Execute, ExecutionResult, Target, TargetId};
 use crate::referee::Referee;
 
 /// Lightweight game setup referencing pre-registered targets by content hash.

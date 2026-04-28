@@ -135,6 +135,7 @@ dependencies = [
  "console",
  "env_logger",
  "futures-util",
+ "libc",
  "log",
  "message-io",
  "num_cpus",

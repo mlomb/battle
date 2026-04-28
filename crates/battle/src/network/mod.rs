@@ -5,7 +5,7 @@ use message_io::network::Transport;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    exec::target::{Target, TargetId},
+    exec::{Target, TargetId},
     game::{GameResult, GameSetup},
 };
 
