@@ -219,7 +219,9 @@ mod tests {
             }
             #[cfg(windows)]
             {
-                Command::new("exit").arg("1");
+                let mut cmd = Command::new("exit");
+                cmd.arg("1");
+                cmd
             }
         };
         let r = cmd.execute(Duration::from_secs(2), None);
