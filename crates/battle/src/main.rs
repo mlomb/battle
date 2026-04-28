@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, process::ExitCode};
 
 use crate::builder::BuildError;
-use crate::exec::executable::Executable;
-use crate::exec::target::{Target, TargetKind};
+use crate::exec::Executable;
+use crate::exec::{Target, TargetKind};
 use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;

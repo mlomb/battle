@@ -3,11 +3,7 @@ use std::{path::Path, process::Command, sync::Arc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::exec::{
-    command::CommandExt,
-    executable::Executable,
-    target::{Target, TargetKind},
-};
+use crate::exec::{CommandExt, Executable, Target, TargetKind};
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.

@@ -128,7 +128,8 @@ impl Executable {
                 self.files.values().map(|v| v.len()).sum::<usize>()
             );
 
-            let tmp = TempDir::new().map_err(|io_err| String::from("failed to create temp dir"))?;
+            let tmp =
+                TempDir::new().map_err(|io_err| format!("failed to create temp dir: {io_err}"))?;
 
             // write files to disk
             for (name, content) in &self.files {
@@ -139,10 +140,10 @@ impl Executable {
                 opts.mode(0o755);
                 let mut file = opts
                     .open(&path)
-                    .map_err(|_| String::from("failed to open file"))?;
+                    .map_err(|io_err| format!("failed to open file: {path:?}: {io_err}"))?;
 
                 file.write_all(content)
-                    .map_err(|_| String::from("failed to write file"))?;
+                    .map_err(|io_err| format!("failed to write file: {path:?}: {io_err}"))?;
             }
 
             self.tmp_workdir = Some(tmp);

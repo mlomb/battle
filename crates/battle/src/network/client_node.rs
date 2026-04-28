@@ -14,7 +14,7 @@ use std::{
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::{
-    exec::target::{Target, TargetId},
+    exec::{Target, TargetId},
     game::{GameResultData, GameSetup},
     network::{
         DEFAULT_WORKER_PORT, FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats,
