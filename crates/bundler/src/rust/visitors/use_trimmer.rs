@@ -22,17 +22,13 @@ impl VisitMut for UseTrimmer {
         match i.tree {
             // `use pkg::...`
             // skip the prefix
-            UseTree::Path(ref use_path) => {
-                if use_path.ident.to_string().starts_with(&self.prefix) {
-                    i.tree = use_path.tree.as_ref().clone();
-                }
+            UseTree::Path(ref use_path) if use_path.ident.to_string().starts_with(&self.prefix) => {
+                i.tree = use_path.tree.as_ref().clone();
             }
             // `use pkg`
             // replace by `use {}`
-            UseTree::Name(ref use_name) => {
-                if use_name.ident.to_string().starts_with(&self.prefix) {
-                    i.tree = parse_quote! { {} };
-                }
+            UseTree::Name(ref use_name) if use_name.ident.to_string().starts_with(&self.prefix) => {
+                i.tree = parse_quote! { {} };
             }
             _ => {}
         }
