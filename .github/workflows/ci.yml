@@ -11,6 +11,7 @@ jobs:
   build_and_test:
     name: Build and test
     runs-on: ${{ matrix.os }}
+    fail-fast: false
     strategy:
       matrix:
         toolchain:
