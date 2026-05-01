@@ -26,7 +26,7 @@ pub trait Bundler {
             path.read_dir()
                 .expect("failed to read directory")
                 .filter_map(|entry| entry.ok())
-                .filter_map(|entry| Some(entry.path()))
+                .map(|entry| entry.path())
                 .collect::<Vec<_>>()
         } else {
             vec![path.to_path_buf()]

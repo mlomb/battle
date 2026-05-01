@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-/// Used by integration tests
+// Used by integration tests
 
 fn main() -> io::Result<()> {
     let mut line = String::new();

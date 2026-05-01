@@ -51,7 +51,7 @@ impl CGLocalClient {
                             style("[U]").green(),
                             style(format!(
                                 "({} chars)",
-                                HumanCount(code.chars().count() as u64).to_string()
+                                HumanCount(code.chars().count() as u64)
                             ))
                             .cyan()
                             .bold()

@@ -14,7 +14,7 @@ impl Bundler for CppBundler {
     fn is_entrypoint(path: &Path) -> bool {
         path.extension()
             .map(|ext| ext.to_ascii_lowercase())
-            .map_or(false, |ext| ext == "cpp" || ext == "c")
+            .is_some_and(|ext| ext == "cpp" || ext == "c")
     }
 
     fn priority(path: &Path) -> u8 {
