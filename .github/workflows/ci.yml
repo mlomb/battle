@@ -1,4 +1,4 @@
-name: Cargo Build & Test
+name: CI
 
 on:
   push:
@@ -41,32 +41,19 @@ jobs:
           files: lcov.info
           fail_ci_if_error: true
 
-  clippy:
-    name: Clippy
+  clippy_fmt:
+    name: Clippy & Formatting
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
       uses: actions/checkout@v4
     - name: Install Rust
-      run: rustup update stable
+      run: rustup install 1.95.0
     - name: Cache dependencies
       uses: Swatinem/rust-cache@v2
-    - name: Install clippy
-      run: rustup component add clippy
+    - name: Install clippy & rustfmt
+      run: rustup component add clippy rustfmt
     - name: Run clippy
       run: cargo clippy -- -D warnings
-
-  fmt:
-    name: rustfmt
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Install Rust
-      run: rustup update stable
-    - name: Cache dependencies
-      uses: Swatinem/rust-cache@v2
-    - name: Install rustfmt
-      run: rustup component add rustfmt
     - name: Check formatting
       run: cargo fmt -- --check
