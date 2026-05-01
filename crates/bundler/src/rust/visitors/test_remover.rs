@@ -45,7 +45,7 @@ fn is_test_attribute(attr: &syn::Attribute) -> bool {
         Meta::List(ref list) => {
             list.path.is_ident("cfg")
                 && match list.tokens.clone().into_iter().next() {
-                    Some(TokenTree::Ident(i)) => i.to_string() == "test",
+                    Some(TokenTree::Ident(i)) => i == "test",
                     _ => false,
                 }
         }

@@ -22,18 +22,17 @@ impl CppExpander {
 
     /// Expands the source file by resolving all the includes
     pub fn expand_source(&mut self, source_file: &Path) -> Result<Option<String>, Box<dyn Error>> {
-        if self.has_been_included(&source_file) {
+        if self.has_been_included(source_file) {
             return Ok(None);
         }
         self.mark_as_included(source_file);
 
         let lines = std::fs::read_to_string(source_file)?
             .lines()
-            .into_iter()
             .map(|line| self.process_line(source_file, line))
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
-            .filter_map(|line| line)
+            .flatten()
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -81,8 +80,7 @@ impl CppExpander {
         candidates
             .iter()
             .map(|dir| dir.join(include_path))
-            .filter(|candidate| candidate.exists())
-            .next()
+            .find(|candidate| candidate.exists())
             .ok_or(format!(
                 "Failed to resolve include: {} in file: {}",
                 include_path.to_str().unwrap(),
