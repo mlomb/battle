@@ -17,18 +17,20 @@ pub enum BuildError {
     },
     /// There was a problem constructing the [`ExecutableCommand`].
     /// This is a string to avoid recursion
+    #[allow(unused)]
     CommandError(String),
     /// Some I/O error occurred
     IoError(String),
 }
 
-pub trait SourceBuilder {
+#[allow(unused)]
+trait SourceBuilder {
     /// Compiles the source code for the current platform (where the code is running) and returns an [`ExecutableCommand`]
     fn build(&self, files: HashMap<PathBuf, Vec<u8>>) -> Result<Executable, BuildError>;
 }
 
 impl SourceBuilder for Source {
-    fn build(&self, files: HashMap<PathBuf, Vec<u8>>) -> Result<Executable, BuildError> {
+    fn build(&self, _files: HashMap<PathBuf, Vec<u8>>) -> Result<Executable, BuildError> {
         match self.language {
             Language::Cpp => build_cpp(&self.code, HashMap::new()),
             //Language::Rust => build_rust(&self.code, assets),
@@ -39,7 +41,7 @@ impl SourceBuilder for Source {
 
 pub fn build_cpp(
     src: &String,
-    mut files: HashMap<PathBuf, Vec<u8>>,
+    mut _files: HashMap<PathBuf, Vec<u8>>,
 ) -> Result<Executable, BuildError> {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
     let src_path = dir.path().join("main.cpp");
@@ -89,7 +91,7 @@ pub fn build_cpp(
     Ok(Executable::from_binary(out_path)?)
 }
 
-fn build_rust(src: &String, assets: HashMap<String, Vec<u8>>) -> Result<(), BuildError> {
+fn _build_rust(src: &String, assets: HashMap<String, Vec<u8>>) -> Result<(), BuildError> {
     let temp_dir = tempdir()?;
     let toml_path = temp_dir.path().join("Cargo.toml");
     let src_path = temp_dir.path().join("main.rs");
@@ -110,17 +112,18 @@ fn build_rust(src: &String, assets: HashMap<String, Vec<u8>>) -> Result<(), Buil
     execute_build_command(cmd, target_path, assets)
 }
 
+#[allow(unused)]
 fn execute_build_command(
     mut build_command: Command,
-    target_binary: PathBuf,
-    assets: HashMap<String, Vec<u8>>,
+    _target_binary: PathBuf,
+    _assets: HashMap<String, Vec<u8>>,
 ) -> Result<(), BuildError> {
     // info!(
     //     "Build command: {}",
     //     style(build_command.command_line_string()).cyan()
     // );
 
-    let output = build_command.output()?;
+    let _output = build_command.output()?;
 
     /*
     if output.status.success() {
@@ -141,6 +144,7 @@ fn execute_build_command(
 ///
 /// Dependencies are taken from CodinGame's available libraries
 /// https://www.codingame.com/playgrounds/40701/help-center/languages-versions
+#[allow(unused)]
 const CARGO_TOML: &str = r#"
 [package]
 name = "main"
