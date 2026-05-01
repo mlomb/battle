@@ -169,7 +169,7 @@ impl WorkerNode {
                     self.send_stats_update();
                 }
                 NetEvent::Message(endpoint, input_data) => {
-                    let message: FromClient = net_deserialize(&input_data);
+                    let message: FromClient = net_deserialize(input_data);
                     println!("message: {:?}", message);
 
                     match message {

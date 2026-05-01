@@ -113,6 +113,7 @@ enum Commands {
     },
 
     /// Start an MCP server
+    #[allow(clippy::upper_case_acronyms)]
     MCP {
         /// The protocol to use
         #[arg(short, long)]

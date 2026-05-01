@@ -165,7 +165,7 @@ impl ClientNode {
                         .send_with_timer(ClientSignal::Reconnect(endpoint.addr()), RECONNECT_DELAY);
                 }
                 NetEvent::Message(endpoint, input_data) => {
-                    let message: FromWorker = net_deserialize(&input_data);
+                    let message: FromWorker = net_deserialize(input_data);
 
                     match message {
                         FromWorker::Stats(stats) => {
@@ -179,7 +179,7 @@ impl ClientNode {
 
                             self.handler.network().send(
                                 endpoint,
-                                &net_serialize(&FromClient::SendTarget(
+                                &net_serialize(FromClient::SendTarget(
                                     target_id,
                                     target.as_ref().clone(),
                                 )),
@@ -235,7 +235,7 @@ impl ClientNode {
     fn try_send_game(&mut self) {
         // find available worker
         if let Some(&worker) = self.workers_available.iter().next().filter(|&worker| {
-            let pending = self.pending_games.get(worker).map(|m| m.len()).unwrap_or(0) as usize;
+            let pending = self.pending_games.get(worker).map(|m| m.len()).unwrap_or(0);
 
             self.workers_stats
                 .get(worker)
