@@ -1,4 +1,3 @@
-mod builder;
 mod exec;
 mod game;
 mod network;
@@ -10,8 +9,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, process::ExitCode};
 
-use crate::builder::BuildError;
 use crate::exec::Executable;
+use crate::exec::{BuildError, BuildExecutable};
 use crate::exec::{Target, TargetKind};
 use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
@@ -146,7 +145,7 @@ fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildError>
         BUILDING
     );
 
-    match builder::build_cpp(&bundle.source.code, HashMap::new()) {
+    match bundle.source.build() {
         Ok(executable) => Ok(executable),
         Err(BuildError::MissingCompiler(e)) => {
             eprintln!("Missing compiler: {}", e);

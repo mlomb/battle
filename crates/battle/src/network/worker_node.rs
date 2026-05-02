@@ -12,8 +12,7 @@ use std::{
 };
 
 use crate::{
-    builder::build_cpp,
-    exec::{Executable, Status, TargetId, TargetKind},
+    exec::{BuildExecutable, Executable, Status, TargetId, TargetKind},
     game::{GameResult, GameSetup, run_game},
     network::{
         FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats, net_deserialize,
@@ -202,15 +201,13 @@ impl WorkerNode {
                         }
                         FromClient::SendTarget(target_id, target) => {
                             let executable = match target.kind {
-                                TargetKind::SourceCode(source) => {
-                                    match build_cpp(&source.code, HashMap::new()) {
-                                        Ok(exe) => exe,
-                                        Err(e) => {
-                                            error!("Failed to build target {target_id}: {e:?}");
-                                            return;
-                                        }
+                                TargetKind::SourceCode(source) => match source.build() {
+                                    Ok(exe) => exe,
+                                    Err(e) => {
+                                        error!("Failed to build target {target_id}: {e:?}");
+                                        return;
                                     }
-                                }
+                                },
                                 TargetKind::Executable(executable) => executable,
                             };
 
