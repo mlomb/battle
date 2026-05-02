@@ -1,8 +1,10 @@
 use bundler::{Language, Source};
-use std::process::Command;
+use console::style;
+use log::info;
+use std::{path::Path, process::Command};
 use tempfile::tempdir;
 
-use crate::exec::Executable;
+use crate::exec::{CommandExt, Executable};
 
 #[derive(Debug)]
 pub enum BuildError {
@@ -45,40 +47,28 @@ fn build_cpp(src: &String) -> Result<Executable, BuildError> {
 
     let target = format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS);
 
-    // NOTE: if target is not specified, some symbols will fail to resolve in Apple Silicon
-    let output = Command::new("zig")
-        .args([
-            "c++",
-            "-O3",
-            "-std=c++20",
-            "-march=native",
-            "-target",
-            &target,
-            "-lc++",
-            // match GCC's default constexpr steps
-            "-fconstexpr-steps=33554432",
-            "-o",
-        ])
-        .arg(&out_path)
-        .arg(&src_path)
-        .output();
+    let mut cmd = Command::new("zig");
+    cmd.args([
+        "c++",
+        "-O3",
+        "-std=c++20",
+        "-march=native",
+        // if target is not specified, some symbols will fail to resolve in Apple Silicon
+        "-target",
+        &target,
+        "-lc++",
+        // match GCC's default constexpr steps
+        "-fconstexpr-steps=33554432",
+        "-o",
+    ])
+    .arg(&out_path)
+    .arg(&src_path);
 
-    let output = output.map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => BuildError::MissingCompiler(
-            "zig executable was not found, make sure it is in your PATH. Zig is used for C++ cross-compilation, please install it from https://ziglang.org/learn/getting-started/#managers".to_string(),
-        ),
-        _ => BuildError::IoError(format!("failed to invoke zig c++: {}", e)),
-    })?;
-
-    if !output.status.success() {
-        return Err(BuildError::CompilerErrored {
-            exit_code: output.status.code(),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        });
-    }
-
-    Ok(Executable::from_binary(out_path)?)
+    execute_build_command(
+        &mut cmd,
+        &out_path,
+        "zig executable was not found, make sure it is in your PATH. Zig is used for C++ cross-compilation, please install it from https://ziglang.org/learn/getting-started/#managers",
+    )
 }
 
 fn build_rust(src: &String) -> Result<Executable, BuildError> {
@@ -99,7 +89,41 @@ fn build_rust(src: &String) -> Result<Executable, BuildError> {
         .arg("--release")
         .current_dir(temp_dir.path());
 
-    Ok(Executable::from_binary(target_path)?)
+    execute_build_command(
+        &mut cmd,
+        &target_path,
+        "cargo executable was not found, make sure it is in your PATH. Cargo is used for Rust cross-compilation, please install it from https://www.rust-lang.org/tools/install",
+    )
+}
+
+fn execute_build_command(
+    build_command: &mut Command,
+    target_binary: &Path,
+    not_found_msg: &str,
+) -> Result<Executable, BuildError> {
+    info!(
+        "Build command: {}",
+        style(build_command.command_line_string()).cyan()
+    );
+
+    let output = build_command.output().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => BuildError::MissingCompiler(not_found_msg.to_string()),
+        _ => BuildError::IoError(format!(
+            "failed to invoke {:?}: {}",
+            build_command.get_program(),
+            e
+        )),
+    })?;
+
+    if !output.status.success() {
+        return Err(BuildError::CompilerErrored {
+            exit_code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    Ok(Executable::from_binary(target_binary.to_path_buf())?)
 }
 
 /// Cargo configuration for compiling Rust code.
@@ -157,5 +181,70 @@ impl std::fmt::Display for BuildError {
 impl From<std::io::Error> for BuildError {
     fn from(e: std::io::Error) -> Self {
         BuildError::IoError(format!("{:?}", e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bundler::{Language, Source};
+
+    fn zig_assert() {
+        assert!(
+            Command::new("zig")
+                .arg("version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false),
+            "zig not found; install from https://ziglang.org or run tests with --ignored when zig is unavailable"
+        );
+    }
+
+    #[test]
+    fn build_cpp_minimal_succeeds() {
+        zig_assert();
+
+        Source {
+            code: "int main() { return 0; }\n".into(),
+            language: Language::Cpp,
+        }
+        .build()
+        .expect("build should succeed");
+    }
+
+    #[test]
+    fn build_cpp_invalid_fails() {
+        zig_assert();
+
+        let err = Source {
+            code: "not valid c++!!!\n".into(),
+            language: Language::Cpp,
+        }
+        .build()
+        .expect_err("should not compile");
+
+        assert!(matches!(err, BuildError::CompilerErrored { .. }));
+    }
+
+    #[test]
+    fn build_rust_minimal_succeeds() {
+        Source {
+            code: "fn main() { println!(\"Hello, world!\"); }\n".into(),
+            language: Language::Rust,
+        }
+        .build()
+        .expect("build should succeed");
+    }
+
+    #[test]
+    fn build_rust_invalid_fails() {
+        let err = Source {
+            code: "not valid rust!!!\n".into(),
+            language: Language::Rust,
+        }
+        .build()
+        .expect_err("should not compile");
+
+        assert!(matches!(err, BuildError::CompilerErrored { .. }));
     }
 }
