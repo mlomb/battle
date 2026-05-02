@@ -13,8 +13,6 @@ pub enum ExecutableKind {
     Binary,
     /// A Java executable file (.jar)
     Jar,
-    /// Python source code (.py)
-    Python,
     /// A wrapcmd transcript to play back via `<current_exe> wrap playback <file>`.
     Playback,
 }
@@ -177,7 +175,135 @@ impl Executable {
                 cmd.args(["wrap", "playback"]).arg(entry);
                 cmd
             }
-            _ => todo!(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs::File, path::Path};
+
+    use tempfile::TempDir;
+    use wrapcmd::Event;
+
+    use crate::exec::BuildExecutable;
+    use bundler::{Language, Source};
+
+    use super::*;
+
+    fn sample_binary() -> Executable {
+        Source {
+            code: "int main() { return 0; }\n".into(),
+            language: Language::Cpp,
+        }
+        .build()
+        .expect("sample binary should build")
+    }
+
+    const SAMPLE_JAR_BYTES: &[u8] = &[
+        0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    fn sample_jar() -> Executable {
+        let dir = TempDir::new().expect("temp dir for jar");
+        let path = dir.path().join("sample.jar");
+        std::fs::write(&path, SAMPLE_JAR_BYTES).expect("write minimal jar");
+        Executable::from_jar(path).expect("jar executable to be created")
+    }
+
+    fn sample_transcript() -> Executable {
+        let transcript = Transcript {
+            events: vec![
+                Event::In("hello".into()),
+                Event::Out("world".into()),
+                Event::Err("error".into()),
+            ],
+        };
+        Executable::from_transcript(&transcript)
+    }
+
+    #[test]
+    fn command_program_should_exist() {
+        let mut exe = sample_binary();
+        let cmd = exe.command();
+
+        assert!(
+            Path::new(cmd.get_program()).is_file(),
+            "command program should exist on disk: {:?}",
+            cmd.get_program()
+        );
+        assert_eq!(cmd.get_args().len(), 0, "binary should have no arguments");
+    }
+
+    #[test]
+    fn command_must_reuse_files() {
+        let mut exe = sample_binary();
+        let cmd1 = exe.command();
+        let cmd2 = exe.command();
+        let mut exe_cloned = exe.clone();
+        let cmd3 = exe_cloned.command();
+        let cmd4 = exe_cloned.command();
+        assert_eq!(cmd1.get_program(), cmd2.get_program());
+        assert_eq!(cmd3.get_program(), cmd4.get_program());
+        // cloned should be different
+        assert_ne!(cmd1.get_program(), cmd3.get_program());
+    }
+
+    #[test]
+    fn debug_does_not_print_full_binary_content() {
+        let mut exe = sample_binary();
+
+        assert!(
+            File::open(exe.command().get_program())
+                .expect("program to exist")
+                .metadata()
+                .expect("metadata to be retrieved")
+                .len()
+                > 1000,
+            "program should be larger than 1000 bytes"
+        );
+
+        assert!(
+            format!("{:?}", exe).len() < 1000,
+            "debug should not print full binary content"
+        );
+    }
+
+    #[test]
+    fn jar_command_should_invoke_java_and_our_jar() {
+        let mut exe = sample_jar();
+        let cmd = exe.command();
+        assert_eq!(cmd.get_program(), "java");
+
+        let args: Vec<_> = cmd.get_args().collect();
+        let jar_idx = args
+            .iter()
+            .position(|a| *a == std::ffi::OsStr::new("-jar"))
+            .expect("java argv should contain -jar");
+        let jar_os = args
+            .get(jar_idx + 1)
+            .expect("java argv should have jar path after -jar");
+
+        assert_eq!(
+            std::fs::read(jar_os).expect("read jar from workdir"),
+            SAMPLE_JAR_BYTES,
+            "jar on disk should match bytes loaded into Executable"
+        );
+    }
+
+    #[test]
+    fn playback_transcript_is_on_disk() {
+        let mut exe = sample_transcript();
+        let cmd = exe.command();
+        let transcript_path = cmd
+            .get_args()
+            .find(|a| Path::new(a).extension() == Some(std::ffi::OsStr::new("io")))
+            .expect("argv should include a path ending in .io");
+        assert!(
+            !std::fs::read(transcript_path)
+                .expect("read transcript")
+                .is_empty()
+        );
     }
 }
