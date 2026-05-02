@@ -10,18 +10,18 @@ use crate::exec::{CommandExt, Executable};
 pub enum BuildError {
     /// Build system missing
     MissingCompiler(String),
+    /// Some I/O error occurred
+    IoError(String),
     /// The compiler did not exit successfully
     CompilerErrored {
         exit_code: Option<i32>,
         stdout: String,
         stderr: String,
     },
-    /// Some I/O error occurred
-    IoError(String),
 }
 
 pub trait BuildExecutable {
-    /// Compiles the source code for the current platform (where the code is running) and returns an [`Executable`]
+    /// Compiles the source code for the current platform (runtime) and returns an [`Executable`]
     fn build(&self) -> Result<Executable, BuildError>;
 }
 
@@ -67,7 +67,7 @@ fn build_cpp(src: &String) -> Result<Executable, BuildError> {
     execute_build_command(
         &mut cmd,
         &out_path,
-        "zig executable was not found, make sure it is in your PATH. Zig is used for C++ cross-compilation, please install it from https://ziglang.org/learn/getting-started/#managers",
+        "zig executable was not found, make sure it is in your PATH. Zig is used for C++ compilation, please install it from https://ziglang.org/learn/getting-started/#managers",
     )
 }
 
@@ -92,7 +92,7 @@ fn build_rust(src: &String) -> Result<Executable, BuildError> {
     execute_build_command(
         &mut cmd,
         &target_path,
-        "cargo executable was not found, make sure it is in your PATH. Cargo is used for Rust cross-compilation, please install it from https://www.rust-lang.org/tools/install",
+        "cargo executable was not found, make sure it is in your PATH. Cargo is used for Rust compilation, please install it from https://www.rust-lang.org/tools/install",
     )
 }
 
@@ -200,6 +200,24 @@ mod tests {
         );
     }
 
+    fn assert_compiler_errored(err: &BuildError) {
+        let BuildError::CompilerErrored {
+            exit_code,
+            stdout,
+            stderr,
+        } = err
+        else {
+            panic!("expected CompilerErrored, got {:?}", err);
+        };
+
+        assert!(exit_code.is_some_and(|c| c != 0));
+        assert!(
+            !stdout.is_empty() || !stderr.is_empty(),
+            "error must have feedback"
+        );
+        assert!(format!("{err}").contains("Compilation failed"));
+    }
+
     #[test]
     fn build_cpp_minimal_succeeds() {
         zig_assert();
@@ -207,6 +225,16 @@ mod tests {
         Source {
             code: "int main() { return 0; }\n".into(),
             language: Language::Cpp,
+        }
+        .build()
+        .expect("build should succeed");
+    }
+
+    #[test]
+    fn build_rust_minimal_succeeds() {
+        Source {
+            code: "fn main() { println!(\"Hello, world!\"); }\n".into(),
+            language: Language::Rust,
         }
         .build()
         .expect("build should succeed");
@@ -223,17 +251,7 @@ mod tests {
         .build()
         .expect_err("should not compile");
 
-        assert!(matches!(err, BuildError::CompilerErrored { .. }));
-    }
-
-    #[test]
-    fn build_rust_minimal_succeeds() {
-        Source {
-            code: "fn main() { println!(\"Hello, world!\"); }\n".into(),
-            language: Language::Rust,
-        }
-        .build()
-        .expect("build should succeed");
+        assert_compiler_errored(&err);
     }
 
     #[test]
@@ -245,6 +263,33 @@ mod tests {
         .build()
         .expect_err("should not compile");
 
-        assert!(matches!(err, BuildError::CompilerErrored { .. }));
+        assert_compiler_errored(&err);
+    }
+
+    #[test]
+    fn missing_compiler_maps_to_error() {
+        let mut cmd = Command::new("nonexistent_compiler");
+        let err = execute_build_command(
+            &mut cmd,
+            Path::new("/tmp/ignored"),
+            "nonexistent_compiler not in PATH",
+        )
+        .expect_err("spawn should fail with NotFound");
+
+        assert!(format!("{err}").contains("nonexistent_compiler not in PATH"));
+        assert!(
+            matches!(err, BuildError::MissingCompiler(msg) if msg.contains("nonexistent_compiler not in PATH"))
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn non_executable_maps_to_io_error() {
+        let mut cmd = Command::new("/dev/null");
+        let err = execute_build_command(&mut cmd, Path::new("/tmp/ignored"), "unused")
+            .expect_err("executing /dev/null should fail at spawn");
+
+        assert!(format!("{err}").contains("failed to invoke"));
+        assert!(matches!(err, BuildError::IoError(msg) if msg.contains("/dev/null")));
     }
 }
