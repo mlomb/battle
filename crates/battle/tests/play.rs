@@ -14,7 +14,7 @@ fn play_one_olymbits_game() {
         .args(["worker", "--threads", "1"])
         .spawn_interruptible()
         .expect("spawn battle worker");
-    let guard = ExecGuard(worker);
+    let _guard = ExecGuard(worker);
 
     std::thread::sleep(Duration::from_millis(500));
 
