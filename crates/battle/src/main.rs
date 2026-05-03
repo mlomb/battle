@@ -187,7 +187,16 @@ async fn main() -> ExitCode {
             info!("Worker listening on port {}", style(port).yellow());
             info!("Using {}", style(format!("{} threads", threads)).cyan());
 
-            WorkerNode::new(threads, port).run();
+            let (node, handler) = WorkerNode::new(threads, port);
+            let join = std::thread::spawn(move || {
+                node.run();
+            });
+
+            let _ = tokio::signal::ctrl_c().await;
+            info!("Received interrupt, shutting down worker...");
+
+            handler.stop();
+            join.join().expect("worker thread panicked");
 
             info!("Exiting!");
         }

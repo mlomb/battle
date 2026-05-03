@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-enum WorkerSignal {
+pub enum WorkerSignal {
     GameFinished(Endpoint, GameId, GameResult),
 }
 
@@ -58,7 +58,7 @@ pub struct WorkerNode {
 }
 
 impl WorkerNode {
-    pub fn new(capacity: usize, port: u16) -> Self {
+    pub fn new(capacity: usize, port: u16) -> (Self, NodeHandler<WorkerSignal>) {
         let (handler, listener) = node::split::<WorkerSignal>();
 
         handler
@@ -66,17 +66,20 @@ impl WorkerNode {
             .listen(MESSAGE_IO_TRANSPORT, ("0.0.0.0", port))
             .expect("to listen");
 
-        Self {
+        (
+            Self {
+                handler: handler.clone(),
+                listener: Some(listener),
+                capacity,
+                connected_clients: HashSet::new(),
+                targets: HashMap::new(),
+                inflight_requests: HashMap::new(),
+                waiting_games: Vec::new(),
+                abort_flags: HashMap::new(),
+                running_games: HashSet::new(),
+            },
             handler,
-            listener: Some(listener),
-            capacity,
-            connected_clients: HashSet::new(),
-            targets: HashMap::new(),
-            inflight_requests: HashMap::new(),
-            waiting_games: Vec::new(),
-            abort_flags: HashMap::new(),
-            running_games: HashSet::new(),
-        }
+        )
     }
 
     /// Send the updated stats to all connected clients.
