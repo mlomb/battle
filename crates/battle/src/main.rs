@@ -274,7 +274,16 @@ async fn main() -> ExitCode {
             network_args,
         } => {
             let reference = Referee::from_preset(reference).unwrap();
-            let candidate = Referee::from_preset(candidate).unwrap();
+            let candidate = if let Ok(referee) = Referee::from_preset(candidate.clone()) {
+                referee
+            } else {
+                let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(candidate)))
+                    .expect("correct bundle")
+                    .source
+                    .clone();
+
+                Referee::from_target(Target::new(TargetKind::SourceCode(source)))
+            };
 
             let mut game_channel = GameChannel::new(network_args);
 

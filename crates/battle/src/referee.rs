@@ -69,6 +69,15 @@ impl Referee<Arc<Target>> {
             max_agents,
         })
     }
+
+    pub fn from_target(target: Target) -> Self {
+        Self {
+            protocol: Protocol::CodinGame,
+            target: Arc::new(target),
+            min_agents: 1,
+            max_agents: 4,
+        }
+    }
 }
 
 impl Referee<Arc<Mutex<Executable>>> {
