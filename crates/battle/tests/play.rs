@@ -12,7 +12,7 @@ fn play_one_olymbits_game() {
     let agents_dir = format!("{}/tests/agents", env!("CARGO_MANIFEST_DIR"));
     let left = format!("{agents_dir}/olymbits_left.cpp");
     let random = format!("{agents_dir}/olymbits_random.cpp");
-    let wait = format!("{agents_dir}/olymbits_wait.cpp");
+    let up = format!("{agents_dir}/olymbits_up.cpp");
 
     let output = Command::cargo_bin("battle")
         .expect("cargo_bin battle")
@@ -27,7 +27,7 @@ fn play_one_olymbits_game() {
             "-a",
             &left,
             "-a",
-            &wait,
+            &up,
         ])
         .timeout(Duration::from_secs(10))
         .output()

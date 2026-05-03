@@ -12,7 +12,7 @@ fn referee_diff_matches_identical_referees_one_olymbits_game() {
     let agents_dir = format!("{}/tests/agents", env!("CARGO_MANIFEST_DIR"));
     let left = format!("{agents_dir}/olymbits_left.cpp");
     let random = format!("{agents_dir}/olymbits_random.cpp");
-    let wait = format!("{agents_dir}/olymbits_wait.cpp");
+    let up = format!("{agents_dir}/olymbits_up.cpp");
 
     let olympics = "cg-spring-2024-olympics";
 
@@ -31,7 +31,7 @@ fn referee_diff_matches_identical_referees_one_olymbits_game() {
             "-a",
             &left,
             "-a",
-            &wait,
+            &up,
         ])
         .timeout(Duration::from_secs(30))
         .output()
