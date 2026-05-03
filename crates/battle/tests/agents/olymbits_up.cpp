@@ -28,7 +28,7 @@ int main()
             cin >> gpu >> reg0 >> reg1 >> reg2 >> reg3 >> reg4 >> reg5 >> reg6; cin.ignore();
         }
 
-        // always stay still
-        cout << "WAIT" << endl;
+        // always move up
+        cout << "UP" << endl;
     }
 }
