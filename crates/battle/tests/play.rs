@@ -1,20 +1,13 @@
-use assert_cmd::cargo::CommandCargoExt;
-use send_ctrlc::InterruptibleCommand;
-use std::process::Command;
+use assert_cmd::Command;
 use std::time::Duration;
 
 mod common;
 
-use common::ExecGuard;
+use crate::common::BattleWorker;
 
 #[test]
 fn play_one_olymbits_game() {
-    let worker = Command::cargo_bin("battle")
-        .expect("cargo_bin battle")
-        .args(["worker", "--threads", "1"])
-        .spawn_interruptible()
-        .expect("spawn battle worker");
-    let _guard = ExecGuard(worker);
+    let _worker = BattleWorker::spawn();
 
     std::thread::sleep(Duration::from_millis(500));
 
@@ -38,6 +31,7 @@ fn play_one_olymbits_game() {
             "-a",
             &wait,
         ])
+        .timeout(Duration::from_secs(10))
         .output()
         .expect("battle play");
 

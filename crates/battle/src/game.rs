@@ -85,12 +85,6 @@ pub fn run_game(
         .filter_map(Result::ok)
         .collect::<Vec<i32>>();
 
-    // random number between 0 and 1000
-    let random_number = rand::random::<u64>() % 1000;
-    if random_number < 50 {
-        return Err("Random number is less than 50".to_string());
-    }
-
     Ok(GameResultData {
         agents: setup
             .agents
