@@ -12,7 +12,7 @@ fn save_transcript(events: Vec<Event>) -> (tempfile::TempDir, std::path::PathBuf
     (dir, path)
 }
 
-fn run_replay(path: &std::path::Path, stdin: &[u8]) -> std::process::Output {
+fn run_playback(path: &std::path::Path, stdin: &[u8]) -> std::process::Output {
     let mut child = Command::cargo_bin("wrapcmd")
         .expect("cargo_bin wrapcmd")
         .arg("playback")
@@ -35,7 +35,7 @@ fn run_replay(path: &std::path::Path, stdin: &[u8]) -> std::process::Output {
 
 /// Matching stdin → exit 0, stdout/stderr replayed in order.
 #[test]
-fn replay_matching_stdin() {
+fn playback_matching_stdin() {
     let (_dir, path) = save_transcript(vec![
         Event::In("hello".into()),
         Event::Out("world".into()),
@@ -44,7 +44,7 @@ fn replay_matching_stdin() {
         Event::Out("goodbye".into()),
     ]);
 
-    let output = run_replay(&path, b"hello\nbye\n");
+    let output = run_playback(&path, b"hello\nbye\n");
 
     assert!(output.status.success(), "expected exit 0");
     assert_eq!(output.stdout, b"world\ngoodbye\n");
@@ -53,10 +53,10 @@ fn replay_matching_stdin() {
 
 /// Wrong stdin on first In event → non-zero exit with mismatch message.
 #[test]
-fn replay_stdin_mismatch() {
+fn playback_stdin_mismatch() {
     let (_dir, path) = save_transcript(vec![Event::In("hello".into()), Event::Out("world".into())]);
 
-    let output = run_replay(&path, b"wrong\n");
+    let output = run_playback(&path, b"wrong\n");
 
     assert!(!output.status.success(), "expected non-zero exit");
     assert!(
@@ -67,7 +67,7 @@ fn replay_stdin_mismatch() {
 
 /// Transcript with no In events — stdin is ignored, stdout/stderr replayed.
 #[test]
-fn replay_no_stdin_events() {
+fn playback_no_stdin_events() {
     let (_dir, path) = save_transcript(vec![
         Event::Out("line one".into()),
         Event::Err("err one".into()),
@@ -89,10 +89,10 @@ fn replay_no_stdin_events() {
 
 /// Empty transcript → exit 0, no output.
 #[test]
-fn replay_empty_transcript() {
+fn playback_empty_transcript() {
     let (_dir, path) = save_transcript(vec![]);
 
-    let output = run_replay(&path, b"");
+    let output = run_playback(&path, b"");
 
     assert!(output.status.success());
     assert!(output.stdout.is_empty());
