@@ -9,8 +9,6 @@ use crate::common::BattleWorker;
 fn play_one_olymbits_game() {
     let _worker = BattleWorker::spawn();
 
-    std::thread::sleep(Duration::from_millis(500));
-
     let agents_dir = format!("{}/tests/agents", env!("CARGO_MANIFEST_DIR"));
     let left = format!("{agents_dir}/olymbits_left.cpp");
     let random = format!("{agents_dir}/olymbits_random.cpp");

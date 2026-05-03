@@ -369,6 +369,9 @@ async fn main() -> ExitCode {
                                 // TODO: improve
                                 if scores_match {
                                     println!("{}", style("MATCH").green().bold());
+                                    if pending_ref.is_empty() && pending_cand.is_empty() {
+                                        break;
+                                    }
                                 } else {
                                     println!("{}", style("MISMATCH").red().bold());
                                     break;
