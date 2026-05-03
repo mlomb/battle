@@ -3,9 +3,9 @@ use std::process::Command;
 
 use assert_cmd::cargo_bin;
 
-fn case(name: &str) -> PathBuf {
+fn stub(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("test_cases")
+        .join("tests/stubs")
         .join(name)
 }
 
@@ -20,7 +20,7 @@ fn bundle_stdout(entry: impl AsRef<Path>) -> String {
 
 #[test]
 fn cpp_matches_test_case_tree() {
-    let code = bundle_stdout(case("cpp"));
+    let code = bundle_stdout(stub("cpp"));
 
     assert!(code.contains("struct Point"));
     assert_eq!(code.matches("struct Point").count(), 1);
@@ -30,7 +30,7 @@ fn cpp_matches_test_case_tree() {
 
 #[test]
 fn rust_main_matches_test_case_tree() {
-    let code = bundle_stdout(case("rust_main"));
+    let code = bundle_stdout(stub("rust_main"));
 
     assert!(!code.contains("mod point;"));
     assert!(!code.contains("mod submod;"));
@@ -43,7 +43,7 @@ fn rust_main_matches_test_case_tree() {
 
 #[test]
 fn rust_bin_matches_test_case_tree() {
-    let code = bundle_stdout(case("rust_bin"));
+    let code = bundle_stdout(stub("rust_bin"));
 
     assert!(code.contains("fn hello"));
     assert!(code.contains("fn main"));
