@@ -72,9 +72,12 @@ enum Commands {
         #[arg(short, long, default_value_t = 1)]
         n: usize,
 
+        /// Match RNG seed passed to the referee as `-s` (must be non-zero for the C++ Olymbits referee).
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+
         #[clap(flatten)]
         network_args: NetworkArgs,
-        // TODO: seed
     },
 
     /// Compare two referees by running the same game on both.
@@ -204,12 +207,24 @@ async fn main() -> ExitCode {
             referee,
             agent,
             n,
+            seed,
             network_args,
         } => {
             info!("Using a networked worker pool");
 
-            let game_setup = GameSetup {
-                referee: Referee::from_preset(referee).unwrap(),
+            let referee = if let Ok(referee) = Referee::from_preset(referee.clone()) {
+                referee
+            } else {
+                let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(referee)))
+                    .expect("correct bundle")
+                    .source
+                    .clone();
+
+                Referee::from_target(Target::new(TargetKind::SourceCode(source)))
+            };
+
+            let mut next_game_setup = GameSetup {
+                referee,
                 agents: agent
                     .iter()
                     .map(|path| {
@@ -220,7 +235,7 @@ async fn main() -> ExitCode {
                         Arc::new(Target::new(TargetKind::SourceCode(source)))
                     })
                     .collect(),
-                seed: 0,
+                seed,
                 capture_io: false,
             };
 
@@ -257,8 +272,9 @@ async fn main() -> ExitCode {
                         None => break,
                     },
 
-                    _ = game_channel.tx.send(game_setup.clone()), if in_flight + results_received < n => {
+                    _ = game_channel.tx.send(next_game_setup.clone()), if in_flight + results_received < n => {
                         in_flight += 1;
+                        next_game_setup.seed += 1;
                     },
                 }
             }
@@ -273,7 +289,15 @@ async fn main() -> ExitCode {
             max_games,
             network_args,
         } => {
-            let reference = Referee::from_preset(reference).unwrap();
+            let reference = if let Ok(referee) = Referee::from_preset(reference.clone()) {
+                referee
+            } else {
+                let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(reference)))
+                    .expect("correct bundle")
+                    .source
+                    .clone();
+                Referee::from_target(Target::new(TargetKind::SourceCode(source)))
+            };
             let candidate = if let Ok(referee) = Referee::from_preset(candidate.clone()) {
                 referee
             } else {
