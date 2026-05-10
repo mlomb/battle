@@ -72,7 +72,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 1)]
         n: usize,
 
-        /// Match RNG seed passed to the referee as `-s` (must be non-zero for the C++ Olymbits referee).
+        /// Match seed passed to the referee
         #[arg(long, default_value_t = 1)]
         seed: u64,
 
