@@ -87,7 +87,8 @@ fn build_rust(src: &String) -> Result<Executable, BuildError> {
     let mut cmd = Command::new("cargo");
     cmd.arg("build")
         .arg("--release")
-        .current_dir(temp_dir.path());
+        .arg("--manifest-path")
+        .arg(&toml_path);
 
     execute_build_command(
         &mut cmd,
