@@ -4,11 +4,16 @@ Referees are provided for convenience.
 
 ## Available referees
 
-| Platform | Contest | Reference | Fast |
-|-|-|-|-|
-| CodinGame | Spring 2024 - Olymbits | ✅ `cg-spring-2024-olymbits-ref` | ✅ `cg-spring-2024-olymbits` |
-
-TODO: write full list
+| Platform | Contest | Validated | Reference | Fast |
+|-|-|-|-|-|
+| CodinGame | Spring 2021 - Mad Pod Racing | ❌ | `cg-spring-2021-ref` | |
+| CodinGame | Spring 2022 - Spider Attack | ❌ | `cg-spider-attack-spring-2022-ref` | |
+| CodinGame | Fall Challenge 2022 - Keep Off the Grass | ❌ | `cg-fall-challenge-2022-keep-off-the-grass-ref` | |
+| CodinGame | Spring 2023 - Ants | ❌ | `cg-spring-2023-ants-ref` | |
+| CodinGame | Fall 2023 - Fish | ❌ | `cg-fall-2023-fish-ref` | |
+| CodinGame | Winter 2024 - Sprawl | ❌ | `cg-winter-2024-sprawl-ref` | |
+| CodinGame | Spring 2024 - Olymbits | ✅ | `cg-spring-2024-olymbits-ref` <br/> [cg-spring-2024-olymbits.jar](cg-jar/cg-spring-2024-olympics.jar) | `cg-spring-2024-olymbits` <br/> [cg-spring-2024-olympics.cpp](cg-cpp/cg-spring-2024-olympics.cpp) |
+| CodinGame | Fall Challenge 2024 - Moon City | ❌ | `cg-fall-challenge-2024-moon-city-ref` | |
 
 ## CodinGame
 
@@ -21,7 +26,7 @@ For CodinGame contests, there are two types of referees:
 Most of the time you will want to use the C++ version since it is WAY WAY faster, usually due Java startup taking _seconds_. For Olymbits 2024 I measured 80 seconds vs 2 seconds for 100 games (8 threads).
 
 Java referees are stored in the repository as compiled Jar binaries. C++ referees are stored as source code.
-
+ 
 > [!WARNING]
 > I will never distribute Java referees via [crates.io](https://crates.io), only C++ ones via source code.
 
