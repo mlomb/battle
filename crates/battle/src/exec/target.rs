@@ -1,4 +1,6 @@
-use bundler::Source;
+use std::path::PathBuf;
+
+use bundler::{BundlerArgs, BundlerError, Source, bundle};
 use serde::{Deserialize, Serialize};
 
 use crate::exec::executable::Executable;
@@ -25,7 +27,7 @@ pub struct Target {
 }
 
 impl Target {
-    pub fn new(kind: TargetKind) -> Self {
+    fn new(kind: TargetKind) -> Self {
         Target {
             id: {
                 let bytes = postcard::to_allocvec(&kind).expect("failed to serialize target");
@@ -34,5 +36,14 @@ impl Target {
             },
             kind,
         }
+    }
+
+    pub fn from_executable(executable: Executable) -> Self {
+        Self::new(TargetKind::Executable(executable))
+    }
+
+    pub fn from_entrypoint(entry: impl Into<PathBuf>) -> Result<Self, BundlerError> {
+        let bundle_out = bundle(&BundlerArgs::default_from_entry(entry.into()))?;
+        Ok(Self::new(TargetKind::SourceCode(bundle_out.source)))
     }
 }
