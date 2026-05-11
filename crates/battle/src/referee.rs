@@ -37,12 +37,6 @@ pub struct Referee<T> {
     pub max_agents: usize,
 }
 
-#[derive(Debug)]
-pub enum RefereeError {
-    /// The referee did not compile
-    CompilationError(String),
-}
-
 impl Referee<Arc<Target>> {
     /// Creates a new referee from a curated list of referess available in the `referees` directory.
     /// For now, only CodinGame referees are supported.
