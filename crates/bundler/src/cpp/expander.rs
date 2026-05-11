@@ -1,8 +1,6 @@
-use std::{
-    collections::HashSet,
-    error::Error,
-    path::{Path, PathBuf},
-};
+use crate::error::BundlerError;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 pub struct CppExpander {
     /// Directories to search for included files (-I)
@@ -21,13 +19,17 @@ impl CppExpander {
     }
 
     /// Expands the source file by resolving all the includes
-    pub fn expand_source(&mut self, source_file: &Path) -> Result<Option<String>, Box<dyn Error>> {
+    pub fn expand_source(&mut self, source_file: &Path) -> Result<Option<String>, BundlerError> {
         if self.has_been_included(source_file) {
             return Ok(None);
         }
         self.mark_as_included(source_file);
 
-        let lines = std::fs::read_to_string(source_file)?
+        let lines = std::fs::read_to_string(source_file)
+            .map_err(|e| BundlerError::Io {
+                path: source_file.to_path_buf(),
+                error: e,
+            })?
             .lines()
             .map(|line| self.process_line(source_file, line))
             .collect::<Result<Vec<_>, _>>()?
@@ -44,7 +46,7 @@ impl CppExpander {
         &mut self,
         source_file: &Path,
         line: &str,
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    ) -> Result<Option<String>, BundlerError> {
         // we are looking for includes which contain a quoted path
         if line.trim().starts_with("#include \"") {
             let include_str = line.trim_start_matches("#include \"").trim_end_matches('"');
@@ -70,7 +72,7 @@ impl CppExpander {
         &mut self,
         source_file: &Path,
         include_path: &Path,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, BundlerError> {
         // folders to search for the include file
         let mut candidates = self.include_dirs.clone();
         // the current source directory has priority
@@ -81,11 +83,17 @@ impl CppExpander {
             .iter()
             .map(|dir| dir.join(include_path))
             .find(|candidate| candidate.exists())
-            .ok_or(format!(
-                "Failed to resolve include: {} in file: {}",
-                include_path.to_str().unwrap(),
-                source_file.to_str().unwrap()
-            ))
+            .ok_or_else(|| BundlerError::Io {
+                path: source_file.to_path_buf(),
+                error: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!(
+                        "failed to resolve include: {} in file {}",
+                        include_path.to_string_lossy(),
+                        source_file.to_string_lossy()
+                    ),
+                ),
+            })
     }
 
     fn mark_as_included(&mut self, include_path: &Path) {

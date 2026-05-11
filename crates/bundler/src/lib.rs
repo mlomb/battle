@@ -4,6 +4,7 @@ extern crate syn;
 
 mod bundler;
 mod cpp;
+mod error;
 mod rust;
 mod source;
 
@@ -11,6 +12,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 pub use crate::bundler::{bundle, Bundle};
+pub use crate::error::BundlerError;
 pub use crate::source::{Language, Source};
 
 #[derive(Debug, Parser)]

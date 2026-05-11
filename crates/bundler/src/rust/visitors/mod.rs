@@ -5,8 +5,10 @@ mod use_trimmer;
 
 use attribute_remover::AttributeRemover;
 use cargo_metadata::camino::Utf8Path;
+use crate::error::BundlerError;
 use mod_inliner::ModInliner;
-use std::{collections::HashSet, error::Error, path::PathBuf};
+use std::collections::HashSet;
+use std::path::PathBuf;
 use syn::{visit_mut::VisitMut, File};
 use test_remover::TestRemover;
 use use_trimmer::UseTrimmer;
@@ -16,7 +18,7 @@ pub fn resolve_source(
     src_path: &Utf8Path,
     lib_package_name: Option<String>,
     src_files: &mut HashSet<PathBuf>,
-) -> Result<File, Box<dyn Error>> {
+) -> Result<File, BundlerError> {
     let mut mod_inliner = ModInliner::new();
     let mut file = mod_inliner.resolve(src_path.as_std_path())?;
 

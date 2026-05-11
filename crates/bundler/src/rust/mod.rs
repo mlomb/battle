@@ -2,12 +2,12 @@ mod format;
 mod visitors;
 
 use crate::bundler::{Bundle, Bundler};
+use crate::error::BundlerError;
 use crate::source::{Language, Source};
 use cargo_metadata::{MetadataCommand, TargetKind};
 use format::{format_code, FmtError};
 use quote::quote;
 use std::collections::HashSet;
-use std::error::Error;
 use std::path::Path;
 use visitors::resolve_source;
 
@@ -22,21 +22,27 @@ impl Bundler for RustBundler {
             .eq("cargo.toml")
     }
 
-    fn bundle(manifest_path: &Path) -> Result<Bundle, Box<dyn Error>> {
+    fn bundle(manifest_path: &Path) -> Result<Bundle, BundlerError> {
         assert!(Self::is_entrypoint(manifest_path));
 
         let metadata = MetadataCommand::new()
             .manifest_path(manifest_path)
             // .features(CargoOpt::AllFeatures)
-            .exec()?;
-        let package = metadata.root_package().ok_or("no root package found")?;
+            .exec()
+            .map_err(|e| BundlerError::Other(format!("failed to read Cargo.toml: {}", e)))?;
+
+        let package = metadata.root_package().ok_or(BundlerError::Other(
+            "cargo project has no root package".to_string(),
+        ))?;
 
         // take the first occurrence of a binary target as the entry point
         let target = package
             .targets
             .iter()
             .find(|target| target.kind.iter().any(|t| matches!(t, TargetKind::Bin)))
-            .ok_or("no binary target found")?;
+            .ok_or(BundlerError::Other(
+                "cargo project has no binary target".to_string(),
+            ))?;
 
         // check if package has a lib
         // packages can only have one lib
