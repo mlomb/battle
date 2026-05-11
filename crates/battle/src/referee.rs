@@ -4,11 +4,14 @@ use std::{
     sync::Arc,
 };
 
-use bundler::{BundlerArgs, bundle};
+use include_dir::{Dir, include_dir};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::exec::{CommandExt, Executable, Target, TargetKind};
+use crate::exec::{CommandExt, Executable, Target};
+
+static REFEREES_CG_CPP: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../referees/cg-cpp");
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.
@@ -40,23 +43,46 @@ pub struct Referee<T> {
 impl Referee<Arc<Target>> {
     /// Creates a new referee from a curated list of referess available in the `referees` directory.
     /// For now, only CodinGame referees are supported.
-    pub fn from_preset<T: ToString>(preset: T) -> Result<Self, String> {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../referees")
-            .join(format!("{}.jar", preset.to_string()));
+    pub fn from_preset(preset: &str) -> Result<Self, String> {
+        let target = if preset.ends_with("-ref") {
+            // try to look up Jar files locally
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../referees/cg-jar")
+                .join(format!("{}.jar", preset.trim_end_matches("-ref")));
 
-        if !path.is_file() {
-            return Err(format!("Referee not found: {}", path.to_string_lossy()));
-        }
+            if !path.is_file() {
+                return Err(format!(
+                    "Jar referee not found: {}.\n\nNote that Jar referees are not distributed via crates.io.",
+                    path.to_string_lossy()
+                ));
+            }
 
-        let (min_agents, max_agents) = match preset.to_string().as_str() {
+            Target::from_executable(Executable::from_jar(path.clone()).expect("read success"))
+        } else {
+            // look up C++ referees from REFEREES_CG_CPP
+            let path = PathBuf::from(format!("{}.cpp", preset));
+
+            if !REFEREES_CG_CPP.contains(&path) {
+                return Err(format!("Referee not found: {preset}"));
+            }
+
+            // extract the folder
+            let tmp = tempfile::tempdir().expect("failed to create temp dir");
+            REFEREES_CG_CPP
+                .extract(tmp.path())
+                .expect("extract success");
+
+            Target::from_entrypoint(tmp.path().join(&path)).expect("correct bundle")
+        };
+
+        let (min_agents, max_agents) = match preset.trim_end_matches("-ref").to_string().as_str() {
             "cg-fall-2023-fish" => (2, 2),
             "cg-winter-2024-sprawl" => (2, 2),
             "cg-spring-2024-olympics" => (3, 3),
             _ => {
                 log::warn!(
                     "Referee file available '{}', but min/max agents is unknown. Assuming min=2 max=4.",
-                    preset.to_string()
+                    preset
                 );
                 (2, 4)
             }
@@ -67,9 +93,7 @@ impl Referee<Arc<Target>> {
 
         Ok(Self {
             protocol: Protocol::CodinGame,
-            target: Arc::new(Target::new(TargetKind::Executable(
-                Executable::from_jar(path.clone()).expect("read success"),
-            ))),
+            target: Arc::new(target),
             min_agents,
             max_agents,
         })
@@ -85,18 +109,17 @@ impl Referee<Arc<Target>> {
     }
 
     // TODO: return Result
-    pub fn from_string<T: ToString>(str: T) -> Self {
-        if let Ok(referee) = Referee::from_preset(str.to_string()) {
-            referee
-        } else {
-            let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(
-                str.to_string(),
-            )))
-            .expect("to compile referee")
-            .source
-            .clone();
+    pub fn from_string(str: &str) -> Self {
+        match Referee::from_preset(str) {
+            Ok(referee) => referee,
+            Err(err) => {
+                warn!("Failed to load referee from preset: {err}");
 
-            Referee::from_target(Target::new(TargetKind::SourceCode(source)))
+                Referee::from_target(
+                    Target::from_entrypoint(PathBuf::from(str.to_string()))
+                        .expect("to compile referee"),
+                )
+            }
         }
     }
 }

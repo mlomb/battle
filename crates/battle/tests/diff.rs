@@ -14,7 +14,7 @@ fn referee_diff_matches_identical_referees_one_olymbits_game() {
     let random = format!("{agents_dir}/olymbits_random.cpp");
     let up = format!("{agents_dir}/olymbits_up.cpp");
 
-    let olympics = "cg-spring-2024-olympics";
+    let olympics = "cg-spring-2024-olympics-ref";
 
     let output = Command::cargo_bin("battle")
         .expect("cargo_bin battle")

@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, process::ExitCode};
 
 use crate::exec::Executable;
+use crate::exec::Target;
 use crate::exec::{BuildError, BuildExecutable};
-use crate::exec::{Target, TargetKind};
 use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
@@ -212,18 +212,16 @@ async fn main() -> ExitCode {
         } => {
             info!("Using a networked worker pool");
 
-            let referee = Referee::from_string(referee);
+            let referee = Referee::from_string(&referee);
 
             let mut next_game_setup = GameSetup {
                 referee,
                 agents: agent
                     .iter()
                     .map(|path| {
-                        let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(path)))
-                            .expect("correct bundle")
-                            .source
-                            .clone();
-                        Arc::new(Target::new(TargetKind::SourceCode(source)))
+                        Arc::new(
+                            Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"),
+                        )
                     })
                     .collect(),
                 seed,
@@ -280,19 +278,15 @@ async fn main() -> ExitCode {
             max_games,
             network_args,
         } => {
-            let reference = Referee::from_string(reference);
-            let candidate = Referee::from_string(candidate);
+            let reference = Referee::from_string(&reference);
+            let candidate = Referee::from_string(&candidate);
 
             let mut game_channel = GameChannel::new(network_args);
 
             let real_agents: Vec<Arc<Target>> = agent
                 .iter()
                 .map(|path| {
-                    let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(path)))
-                        .expect("correct bundle")
-                        .source
-                        .clone();
-                    Arc::new(Target::new(TargetKind::SourceCode(source)))
+                    Arc::new(Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"))
                 })
                 .collect();
 
@@ -353,9 +347,9 @@ async fn main() -> ExitCode {
                                         .agents
                                         .iter()
                                         .map(|a| {
-                                            Arc::new(Target::new(TargetKind::Executable(Executable::from_transcript(
+                                            Arc::new(Target::from_executable(Executable::from_transcript(
                                                             a.transcript.as_ref().unwrap_or(&Default::default()),
-                                            ))))
+                                            )))
                                         })
                                     .collect(),
                                     seed: setup.seed, // same seed
