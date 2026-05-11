@@ -1,5 +1,10 @@
-use std::{path::Path, process::Command, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+};
 
+use bundler::{BundlerArgs, bundle};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -30,6 +35,12 @@ pub struct Referee<T> {
 
     /// The maximum number of agents accepted by the referee
     pub max_agents: usize,
+}
+
+#[derive(Debug)]
+pub enum RefereeError {
+    /// The referee did not compile
+    CompilationError(String),
 }
 
 impl Referee<Arc<Target>> {
@@ -76,6 +87,22 @@ impl Referee<Arc<Target>> {
             target: Arc::new(target),
             min_agents: 1,
             max_agents: 4,
+        }
+    }
+
+    // TODO: return Result
+    pub fn from_string<T: ToString>(str: T) -> Self {
+        if let Ok(referee) = Referee::from_preset(str.to_string()) {
+            referee
+        } else {
+            let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(
+                str.to_string(),
+            )))
+            .expect("to compile referee")
+            .source
+            .clone();
+
+            Referee::from_target(Target::new(TargetKind::SourceCode(source)))
         }
     }
 }

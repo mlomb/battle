@@ -212,16 +212,7 @@ async fn main() -> ExitCode {
         } => {
             info!("Using a networked worker pool");
 
-            let referee = if let Ok(referee) = Referee::from_preset(referee.clone()) {
-                referee
-            } else {
-                let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(referee)))
-                    .expect("correct bundle")
-                    .source
-                    .clone();
-
-                Referee::from_target(Target::new(TargetKind::SourceCode(source)))
-            };
+            let referee = Referee::from_string(referee);
 
             let mut next_game_setup = GameSetup {
                 referee,
@@ -289,25 +280,8 @@ async fn main() -> ExitCode {
             max_games,
             network_args,
         } => {
-            let reference = if let Ok(referee) = Referee::from_preset(reference.clone()) {
-                referee
-            } else {
-                let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(reference)))
-                    .expect("correct bundle")
-                    .source
-                    .clone();
-                Referee::from_target(Target::new(TargetKind::SourceCode(source)))
-            };
-            let candidate = if let Ok(referee) = Referee::from_preset(candidate.clone()) {
-                referee
-            } else {
-                let source = bundle(&BundlerArgs::default_from_entry(PathBuf::from(candidate)))
-                    .expect("correct bundle")
-                    .source
-                    .clone();
-
-                Referee::from_target(Target::new(TargetKind::SourceCode(source)))
-            };
+            let reference = Referee::from_string(reference);
+            let candidate = Referee::from_string(candidate);
 
             let mut game_channel = GameChannel::new(network_args);
 
@@ -380,10 +354,10 @@ async fn main() -> ExitCode {
                                         .iter()
                                         .map(|a| {
                                             Arc::new(Target::new(TargetKind::Executable(Executable::from_transcript(
-                                                a.transcript.as_ref().unwrap_or(&Default::default()),
+                                                            a.transcript.as_ref().unwrap_or(&Default::default()),
                                             ))))
                                         })
-                                        .collect(),
+                                    .collect(),
                                     seed: setup.seed, // same seed
                                     capture_io: true,
                                 };
@@ -397,7 +371,7 @@ async fn main() -> ExitCode {
 
                                 let scores_match = reference_result.agents.len() == candidate_result.agents.len()
                                     && reference_result.agents.iter().zip(candidate_result.agents.iter())
-                                        .all(|(r, c)| r.score == c.score);
+                                    .all(|(r, c)| r.score == c.score);
 
                                 // TODO: improve
                                 if scores_match {
