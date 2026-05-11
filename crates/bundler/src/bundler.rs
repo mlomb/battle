@@ -1,8 +1,7 @@
-use crate::{cpp::CppBundler, rust::RustBundler, source::Source, BundlerArgs};
+use crate::{cpp::CppBundler, error::BundlerError, rust::RustBundler, source::Source, BundlerArgs};
 use std::{
     cmp::Reverse,
     collections::HashSet,
-    error::Error,
     path::{Path, PathBuf},
 };
 
@@ -17,7 +16,7 @@ pub trait Bundler {
     }
 
     /// Bundles the project into a single source unit
-    fn bundle(path: &Path) -> Result<Bundle, Box<dyn Error>>;
+    fn bundle(path: &Path) -> Result<Bundle, BundlerError>;
 
     /// Find the entrypoint file of a project
     fn find_entrypoint(path: &Path) -> Option<PathBuf> {
@@ -61,7 +60,7 @@ pub struct Bundle {
 }
 
 /// Bundles a C++/Rust project directory into a single source unit
-pub fn bundle(args: &BundlerArgs) -> Result<Bundle, Box<dyn Error>> {
+pub fn bundle(args: &BundlerArgs) -> Result<Bundle, BundlerError> {
     let entry = args.entry.clone().unwrap_or_else(|| PathBuf::from("."));
 
     if let Some(entry) = RustBundler::find_entrypoint(entry.as_path()) {
@@ -72,5 +71,5 @@ pub fn bundle(args: &BundlerArgs) -> Result<Bundle, Box<dyn Error>> {
         return CppBundler::bundle(entry.as_path());
     }
 
-    Err("No entrypoint found".into())
+    Err(BundlerError::NoEntrypoint)
 }

@@ -1,7 +1,7 @@
-use bundler::{bundle, Bundle, BundlerArgs};
+use bundler::{bundle, Bundle, BundlerArgs, BundlerError};
 use console::style;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
-use std::{collections::HashSet, error::Error, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 type CodeTx = tokio::sync::watch::Sender<String>;
@@ -54,7 +54,7 @@ impl ProjectWatcher {
         }
     }
 
-    fn run_bundler(&mut self) -> Result<Bundle, Box<dyn Error>> {
+    fn run_bundler(&mut self) -> Result<Bundle, BundlerError> {
         let bundle = bundle(&self.bundler_args)?;
 
         // add new files to watch

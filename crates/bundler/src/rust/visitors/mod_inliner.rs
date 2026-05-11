@@ -1,6 +1,6 @@
+use crate::error::BundlerError;
 use std::{
     collections::HashSet,
-    error::Error,
     fs,
     path::{Path, PathBuf},
 };
@@ -27,22 +27,22 @@ impl ModInliner {
 }
 
 impl ModInliner {
-    pub fn resolve(&mut self, rust_file: impl AsRef<Path>) -> Result<syn::File, Box<dyn Error>> {
+    pub fn resolve(&mut self, rust_file: impl AsRef<Path>) -> Result<syn::File, BundlerError> {
         // convert to PathBuf
         let rust_file = rust_file.as_ref().to_path_buf();
 
         // load source from disk
-        let source_code = fs::read_to_string(&rust_file)?;
+        let source_code = fs::read_to_string(&rust_file).map_err(|e| BundlerError::Io {
+            path: rust_file.clone(),
+            error: e,
+        })?;
 
         // parse into syn::File
-        let mut file = syn::parse_file(&source_code).map_err(|e| {
-            format!(
-                "failed to parse file {} @ Ln {} Col {}: {}",
-                rust_file.file_name().unwrap().to_str().unwrap(),
-                e.span().start().line,
-                e.span().start().column,
-                e
-            )
+        let mut file = syn::parse_file(&source_code).map_err(|e| BundlerError::Syntax {
+            path: rust_file.clone(),
+            line: e.span().start().line,
+            column: e.span().start().column,
+            error: e.to_string(),
         })?;
 
         // add to the list of visited files (so they can be watched later)

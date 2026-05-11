@@ -2,10 +2,11 @@ mod expander;
 
 use crate::{
     bundler::{Bundle, Bundler},
+    error::BundlerError,
     source::{Language, Source},
 };
 use expander::CppExpander;
-use std::{error::Error, path::Path};
+use std::path::Path;
 
 pub struct CppBundler {}
 
@@ -43,11 +44,13 @@ impl Bundler for CppBundler {
         }
     }
 
-    fn bundle(main_path: &Path) -> Result<Bundle, Box<dyn Error>> {
+    fn bundle(main_path: &Path) -> Result<Bundle, BundlerError> {
         assert!(Self::is_entrypoint(main_path));
 
         let mut expander = CppExpander::new();
-        let source = expander.expand_source(main_path)?.ok_or("No source")?;
+        let source = expander
+            .expand_source(main_path)?
+            .ok_or(BundlerError::Other("source was empty".to_string()))?;
 
         Ok(Bundle {
             source: Source {
