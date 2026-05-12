@@ -2,6 +2,7 @@
 name = "battle"
 version = "0.0.2"
 edition = "2024"
+authors = ["mlomb <hello@mlomb.dev>"]
 description = "Tools for building competitive bots"
 license = "MIT"
 repository = "https://github.com/mlomb/battle"
