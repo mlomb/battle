@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use bundler::{BundlerArgs, BundlerError, Source, bundle};
+use battle_bundler::{BundlerArgs, BundlerError, Source, bundle};
 use serde::{Deserialize, Serialize};
 
 use crate::exec::executable::Executable;

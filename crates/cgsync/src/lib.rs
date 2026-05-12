@@ -1,7 +1,7 @@
 mod project_watcher;
 mod ws_server;
 
-use bundler::BundlerArgs;
+use battle_bundler::BundlerArgs;
 use clap::Parser;
 use console::style;
 use tokio::sync::watch;

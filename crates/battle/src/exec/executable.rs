@@ -1,3 +1,4 @@
+use battle_wrapcmd::Transcript;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -5,7 +6,6 @@ use std::collections::HashMap;
 use std::os::unix::fs::OpenOptionsExt;
 use std::{fs::OpenOptions, io::Write, path::PathBuf, process::Command};
 use tempfile::TempDir;
-use wrapcmd::Transcript;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutableKind {
@@ -183,11 +183,11 @@ impl Executable {
 mod tests {
     use std::{fs::File, path::Path};
 
+    use battle_wrapcmd::Event;
     use tempfile::TempDir;
-    use wrapcmd::Event;
 
     use crate::exec::BuildExecutable;
-    use bundler::{Language, Source};
+    use battle_bundler::{Language, Source};
 
     use super::*;
 

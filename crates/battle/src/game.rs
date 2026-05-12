@@ -3,10 +3,10 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
+use battle_wrapcmd::Transcript;
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
 use tokio::sync::Mutex;
-use wrapcmd::Transcript;
 
 use crate::exec::{Executable, Execute, ExecutionResult, Target, TargetId};
 use crate::referee::Referee;
