@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 
 use assert_cmd::prelude::*;
 use tempfile::tempdir;
-use wrapcmd::{Event, Transcript};
+use battle_wrapcmd::{Event, Transcript};
 
 #[test]
 fn capture_stdin_stdout_stderr() {

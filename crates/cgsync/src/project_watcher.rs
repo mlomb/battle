@@ -1,4 +1,4 @@
-use bundler::{bundle, Bundle, BundlerArgs, BundlerError};
+use battle_bundler::{bundle, Bundle, BundlerArgs, BundlerError};
 use console::style;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{collections::HashSet, path::PathBuf};

@@ -1,4 +1,4 @@
-use bundler::{Language, Source};
+use battle_bundler::{Language, Source};
 use console::style;
 use log::info;
 use std::{path::Path, process::Command};
@@ -188,7 +188,7 @@ impl From<std::io::Error> for BuildError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bundler::{Language, Source};
+    use battle_bundler::{Language, Source};
 
     fn zig_assert() {
         assert!(

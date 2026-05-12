@@ -123,15 +123,16 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "battle"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "async-channel",
+ "battle-bundler",
+ "battle-cgsync",
+ "battle-wrapcmd",
  "blake3",
  "build-fs-tree",
- "bundler",
- "cgsync",
  "clap",
  "console",
  "env_logger",
@@ -148,7 +149,53 @@ dependencies = [
  "tempfile",
  "tokio",
  "win32job",
- "wrapcmd",
+]
+
+[[package]]
+name = "battle-bundler"
+version = "0.0.1"
+dependencies = [
+ "assert_cmd",
+ "build-fs-tree",
+ "cargo_metadata",
+ "clap",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "syn 2.0.117",
+ "tempfile",
+ "toolchain_find",
+]
+
+[[package]]
+name = "battle-cgsync"
+version = "0.0.1"
+dependencies = [
+ "assert_cmd",
+ "battle-bundler",
+ "build-fs-tree",
+ "clap",
+ "console",
+ "futures-util",
+ "indicatif",
+ "notify",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "battle-wrapcmd"
+version = "0.0.1"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "console",
+ "serde",
+ "tempfile",
+ "win32job",
 ]
 
 [[package]]
@@ -211,22 +258,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bundler"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "build-fs-tree",
- "cargo_metadata",
- "clap",
- "proc-macro2",
- "quote",
- "serde",
- "syn 2.0.117",
- "tempfile",
- "toolchain_find",
-]
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -286,25 +317,6 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
-
-[[package]]
-name = "cgsync"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "build-fs-tree",
- "bundler",
- "clap",
- "console",
- "futures-util",
- "indicatif",
- "notify",
- "serde_json",
- "serial_test",
- "tempfile",
- "tokio",
- "tokio-tungstenite",
-]
 
 [[package]]
 name = "chacha20"
@@ -2508,18 +2520,6 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
-]
-
-[[package]]
-name = "wrapcmd"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "console",
- "serde",
- "tempfile",
- "win32job",
 ]
 
 [[package]]

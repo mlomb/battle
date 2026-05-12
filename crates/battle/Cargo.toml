@@ -1,6 +1,6 @@
 [package]
 name = "battle"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 description = "Tools for building competitive bots"
 license = "MIT"
@@ -10,9 +10,9 @@ keywords = ["bots","codingame"]
 
 [dependencies]
 clap = { version = "4.5.19", features = ["derive", "env"] }
-bundler = { path = "../bundler" }
-wrapcmd = { path = "../wrapcmd" }
-cgsync = { path = "../cgsync" }
+battle-bundler = { path = "../bundler", version = "0.0.1" }
+battle-wrapcmd = { path = "../wrapcmd", version = "0.0.1" }
+battle-cgsync = { path = "../cgsync", version = "0.0.1" }
 console = { version = "0.16.3", default-features = false, features = ["ansi-parsing", "std"] }
 tempfile = "3.27.0"
 build-fs-tree = "0.8.1"

@@ -1,4 +1,4 @@
-use cgsync::{cgsync_main, CGSyncCli};
+use battle_cgsync::{cgsync_main, CGSyncCli};
 use clap::Parser;
 
 #[tokio::main]

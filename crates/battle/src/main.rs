@@ -16,11 +16,11 @@ use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
-use bundler::{BundlerArgs, BundlerCli, bundle, bundler_main};
-use cgsync::{CGSyncCli, cgsync_main};
+use battle_bundler::{BundlerArgs, BundlerCli, bundle, bundler_main};
+use battle_cgsync::{CGSyncCli, cgsync_main};
+use battle_wrapcmd::{WrapCmdCli, wrapcmd_main};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
-use wrapcmd::{WrapCmdCli, wrapcmd_main};
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
