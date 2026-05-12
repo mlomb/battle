@@ -123,7 +123,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "battle"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -153,7 +153,7 @@ dependencies = [
 
 [[package]]
 name = "battle-bundler"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "assert_cmd",
  "build-fs-tree",
@@ -169,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "battle-cgsync"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "assert_cmd",
  "battle-bundler",
@@ -188,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "battle-wrapcmd"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "assert_cmd",
  "clap",

@@ -1,18 +1,19 @@
 [package]
 name = "battle"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 description = "Tools for building competitive bots"
 license = "MIT"
 repository = "https://github.com/mlomb/battle"
 categories = ["command-line-utilities","development-tools"]
 keywords = ["bots","codingame"]
+readme = "../../README.md"
 
 [dependencies]
 clap = { version = "4.5.19", features = ["derive", "env"] }
-battle-bundler = { path = "../bundler", version = "0.0.1" }
-battle-wrapcmd = { path = "../wrapcmd", version = "0.0.1" }
-battle-cgsync = { path = "../cgsync", version = "0.0.1" }
+battle-bundler = { path = "../bundler", version = "0.0.2" }
+battle-wrapcmd = { path = "../wrapcmd", version = "0.0.2" }
+battle-cgsync = { path = "../cgsync", version = "0.0.2" }
 console = { version = "0.16.3", default-features = false, features = ["ansi-parsing", "std"] }
 tempfile = "3.27.0"
 build-fs-tree = "0.8.1"

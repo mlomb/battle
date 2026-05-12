@@ -1,6 +1,6 @@
 [package]
 name = "battle-wrapcmd"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 resolver = "2"
 description = "Run commands under OS job/process limits for sandboxed bot toolchains"
