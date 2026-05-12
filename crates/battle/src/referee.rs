@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 use crate::exec::{CommandExt, Executable, Target};
 
-static REFEREES_CG_CPP: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../referees/cg-cpp");
+static REFEREES_CG_CPP: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/assets/cg-cpp");
 
 /// The protocol used by the referee.
 /// It defines how the agents are passed to the referee, how logs are collected, etc.

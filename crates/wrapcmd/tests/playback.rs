@@ -2,8 +2,8 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use assert_cmd::prelude::*;
-use tempfile::tempdir;
 use battle_wrapcmd::{Event, Transcript};
+use tempfile::tempdir;
 
 fn save_transcript(events: Vec<Event>) -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempdir().expect("tempdir");
