@@ -3,6 +3,9 @@ name = "battle-bundler"
 version = "0.0.1"
 edition = "2021"
 resolver = "2"
+description = "Bundle C++ and Rust bot projects into a single source unit for submission"
+license = "MIT"
+repository = "https://github.com/mlomb/battle"
 
 [dependencies]
 cargo_metadata = "0.23.1"
