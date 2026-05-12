@@ -3,19 +3,28 @@
 
 # `battle` bot tools
 
+[![](https://img.shields.io/crates/v/battle)](https://crates.io/crates/battle)
+[![codecov](https://codecov.io/gh/mlomb/battle/graph/badge.svg?token=748JIN3FVS)](https://codecov.io/gh/mlomb/battle)
+
 Tools for building competitive bots, e.g. for [CodinGame](https://codingame.com) contests.
 
-The project is composed of [multiple Rust crates](crates/README.md), conveniently accesible under the same CLI tool called `battle`. The tools are designed to "just work" and aim to have good DX. 🛠️ Still a lot to do.
+The project is composed of [multiple Rust crates](https://github.com/mlomb/battle/tree/main/crates), conveniently accesible under the same CLI tool called `battle`. The tools are designed to "just work" and aim to have good DX. 🛠️ Still a lot to do.
 
 ## Install
 
-Clone and run:
+From [crates.io](https://crates.io/crates/battle):
+
+```
+cargo install battle
+```
+
+or clone and run:
 
 ```sh
 cargo install --path crates/battle
 ```
 
-To update, pull the latest changes and run the commands again.
+To update, install the crate again or pull the latest changes and run the command again.
 
 ## Usage / Cheatsheet
 
@@ -29,7 +38,7 @@ To update, pull the latest changes and run the commands again.
     <td rowspan="3"><code>battle bundle</code></br></br>
 A tool to bundle C++ and Rust projects into a single source unit for submission.</td>
     <td><code>battle bundle</code></td>
-    <td>It will look for a C++ or Rust project (see <a href="crates/bundler/README.md#what-is-a-project">What is a project?</a>) and print a single file to stdout.</td>
+    <td>It will look for a C++ or Rust project (see <a href="https://github.com/mlomb/battle/tree/main/crates/bundler/README.md#what-is-a-project">What is a project?</a>) and print a single file to stdout.</td>
   </tr>
   <tr>
     <td><code>battle build v5.cpp</code></td>
@@ -46,7 +55,7 @@ A tool to bundle C++ and Rust projects into a single source unit for submission.
   </tr>
   <tr>
     <td rowspan="2"><code>battle cgsync</code></br></br>
-Watches your project, bundles on every change, and pushes the result to the CodinGame browser IDE through the <a href="https://github.com/jmerle/cg-local-ext">CG Local extension</a>. See <a href="crates/cgsync">cgsync</a>.</td>
+Watches your project, bundles on every change, and pushes the result to the CodinGame browser IDE through the <a href="https://github.com/jmerle/cg-local-ext">CG Local extension</a>. See <a href="https://github.com/mlomb/battle/tree/main/crates/cgsync">cgsync</a>.</td>
     <td><code>battle cgsync</code></td>
     <td>Auto-detects the project in the current folder. Click the browser extension to attach after starting.</td>
   </tr>
@@ -86,7 +95,7 @@ Runs the same game on a reference and a candidate referee and stops at the first
   </tr>
   <tr>
     <td rowspan="2"><code>battle wrap</code></br></br>
-Records and later plays back a command's stdin / stdout / stderr. See <a href="crates/wrapcmd">wrapcmd</a>.</td>
+Records and later plays back a command's stdin / stdout / stderr. See <a href="https://github.com/mlomb/battle/tree/main/crates/wrapcmd">wrapcmd</a>.</td>
     <td><code>battle wrap capture out.txt -- ./bot</code></td>
     <td>Run <code>./bot</code> transparently while writing a transcript to <code>out.txt</code>.</td>
   </tr>
