@@ -1,3 +1,6 @@
+> [!WARNING]
+> This repository and crate are still under development, APIs will change, CLI arguments will change, and there is no timeline on sight. I usually work on it prior / during a contest.
+
 # `battle` bot tools
 
 Tools for building competitive bots, e.g. for [CodinGame](https://codingame.com) contests.
