@@ -165,6 +165,7 @@ fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildError>
 async fn main() -> ExitCode {
     env_logger::Builder::new()
         .filter_module("battle", LevelFilter::Trace)
+        .filter_module("battle::network", LevelFilter::Warn)
         .init();
 
     let args = Args::parse();
@@ -246,14 +247,21 @@ async fn main() -> ExitCode {
                             results_received += 1;
                             in_flight -= 1;
 
-                            let s = |i: usize| data.agents.get(i).map(|a| a.score).unwrap_or(0);
-                            println!(
-                                "#{} {} {} {}",
-                                results_received,
-                                style(s(0)).cyan(),
-                                style(s(1)).magenta(),
-                                style(s(2)).yellow(),
-                            );
+                            let styled_score = |i: usize, score: i32| match i {
+                                0 => style(score).cyan(),
+                                1 => style(score).magenta(),
+                                2 => style(score).yellow(),
+                                3 => style(score).green(),
+                                _ => style(score).white(),
+                            };
+                            let scores = data
+                                .agents
+                                .iter()
+                                .enumerate()
+                                .map(|(i, a)| styled_score(i, a.score).to_string())
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            info!("#{} {}", results_received, scores);
                             if results_received >= n {
                                 break;
                             }
@@ -329,14 +337,25 @@ async fn main() -> ExitCode {
                         Some((setup, result)) => {
                             let is_reference = Arc::ptr_eq(&setup.referee.target, &reference.target);
 
-                            let s = |i: usize| result.agents.get(i).map(|a| a.score).unwrap_or(0);
+                            let styled_score = |i: usize, score: i32| match i {
+                                0 => style(score).cyan(),
+                                1 => style(score).magenta(),
+                                2 => style(score).yellow(),
+                                3 => style(score).green(),
+                                _ => style(score).white(),
+                            };
+                            let scores = result
+                                .agents
+                                .iter()
+                                .enumerate()
+                                .map(|(i, a)| styled_score(i, a.score).to_string())
+                                .collect::<Vec<_>>()
+                                .join(" ");
                             println!(
-                                "[{}] {} -> {} {} {}",
+                                "[{}] {} -> {}",
                                 style(if is_reference { "ref" } else { "cand" }).bold().dim(),
                                 style(format!("Seed {}", setup.seed)).white().dim(),
-                                style(s(0)).cyan(),
-                                style(s(1)).magenta(),
-                                style(s(2)).yellow(),
+                                scores,
                             );
 
                             if is_reference {
@@ -375,6 +394,8 @@ async fn main() -> ExitCode {
                                     }
                                 } else {
                                     println!("{}", style("MISMATCH").red().bold());
+                                    println!("Reference: {}", reference_result.agents.iter().enumerate().map(|(i, a)| styled_score(i, a.score).to_string()).collect::<Vec<_>>().join(" "));
+                                    println!("Candidate: {}", candidate_result.agents.iter().enumerate().map(|(i, a)| styled_score(i, a.score).to_string()).collect::<Vec<_>>().join(" "));
                                     break;
                                 }
                             }
