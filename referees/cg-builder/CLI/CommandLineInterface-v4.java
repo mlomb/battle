@@ -29,13 +29,13 @@ public class CommandLineInterface {
                     .addOption("p3", true, "Player 3 command line (if applies)")
                     .addOption("p4", true, "Player 4 command line (if applies)")
                     .addOption("l", true, "File output for logs")
-                    .addOption("s", true, "Referee seed");
+                    .addOption("seed", true, "Referee seed");
 
             CommandLine cmd = new DefaultParser().parse(options, args);
 
             if (cmd.hasOption("h") || !cmd.hasOption("p1") || !cmd.hasOption("p2")) {
                 new HelpFormatter().printHelp(
-                        "-p1 <player1 command line> -p2 <player2 command line> [-p3 <cmd> -p4 <cmd> -l <log file> -s <seed>]",
+                        "-p1 <player1 command line> -p2 <player2 command line> [-p3 <cmd> -p4 <cmd> -l <log file> -seed <seed>]",
                         options);
                 System.exit(0);
             }
@@ -44,8 +44,8 @@ public class CommandLineInterface {
             gameRunner = new MultiplayerGameRunner();
             gameRunner.setLeagueLevel(19); // max
 
-            if (cmd.hasOption("s")) {
-                Long seed = Long.parseLong(cmd.getOptionValue("s"));
+            if (cmd.hasOption("seed")) {
+                Long seed = Long.parseLong(cmd.getOptionValue("seed"));
                 gameRunner.setSeed(seed);
             } else {
                 gameRunner.setSeed(System.nanoTime() + new Object().hashCode());
