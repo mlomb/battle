@@ -135,7 +135,7 @@ impl Referee<Arc<Mutex<Executable>>> {
                     cmd.arg(format!("-p{}", i + 1));
                     cmd.arg(agent.command_line_string());
                 }
-                cmd.arg("-s").arg(seed.to_string());
+                cmd.arg("-seed").arg(seed.to_string());
             }
         }
 
