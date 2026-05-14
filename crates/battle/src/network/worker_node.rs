@@ -238,7 +238,7 @@ impl WorkerNode {
             },
             NodeEvent::Signal(WorkerSignal::GameFinished(endpoint, game_id, result)) => {
                 match &result {
-                    Ok(data) => match &data.r.status {
+                    Ok(data) => match &data.exec_res.status {
                         Status::Exited(code) => info!("Game finished with code {code}"),
                         Status::Timeout => error!("Game timed out"),
                         Status::Cancelled => info!("Game cancelled (client disconnected)"),
