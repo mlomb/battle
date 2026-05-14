@@ -7,7 +7,7 @@ use log::{LevelFilter, info};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{collections::HashMap, process::ExitCode};
+use std::{collections::HashMap, fs, process::ExitCode};
 
 use crate::exec::Executable;
 use crate::exec::Target;
@@ -21,6 +21,7 @@ use battle_cgsync::{CGSyncCli, cgsync_main};
 use battle_wrapcmd::{WrapCmdCli, wrapcmd_main};
 use clap::{Parser, Subcommand};
 use console::{Emoji, style};
+use tempfile::tempdir;
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
@@ -118,6 +119,10 @@ enum Commands {
         /// A single non-trivial non-deterministic agent works wonders.
         #[arg(short, long)]
         agent: Vec<String>,
+
+        /// First game seed to use
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
 
         /// Number of games to compare (seed runs from `0` to `max_games - 1`)
         #[arg(long, default_value_t = 10)]
@@ -289,6 +294,7 @@ async fn main() -> ExitCode {
             reference,
             candidate,
             agent,
+            seed,
             max_games,
             network_args,
         } => {
@@ -308,7 +314,7 @@ async fn main() -> ExitCode {
                 .map(|index| GameSetup {
                     referee: reference.clone(),
                     agents: real_agents.clone(),
-                    seed: 1 + index,
+                    seed: seed + index,
                     // we want to capture the transcript to mock the agents for the candidate referee
                     capture_io: true,
                     capture_game_data: true,
@@ -386,9 +392,13 @@ async fn main() -> ExitCode {
                                     && reference_result.agents.iter().zip(candidate_result.agents.iter())
                                     .all(|(r, c)| r.score == c.score);
 
+                                let transcripts_match = reference_result.agents.len() == candidate_result.agents.len()
+                                    && reference_result.agents.iter().zip(candidate_result.agents.iter())
+                                    .all(|(r, c)| r.transcript == c.transcript);
+
                                 let game_data_match = reference_result.game_data == candidate_result.game_data;
 
-                                if scores_match && exit_code_match && game_data_match {
+                                if scores_match && exit_code_match && transcripts_match && game_data_match {
                                     info!(
                                         "[{}] {} -> {} {}",
                                         style("cand").bold().dim(),
@@ -403,6 +413,7 @@ async fn main() -> ExitCode {
                                 } else {
                                     println!("");
                                     println!("{} (reference vs candidate)", style("MISMATCH DETECTED").red().bold());
+                                    println!("Seed: {}", style(setup.seed).yellow());
 
                                     println!("Exit status: {:?} vs {:?}", style(reference_result.exec_res.status).blue(), style(candidate_result.exec_res.status).blue());
                                     println!(
@@ -410,7 +421,79 @@ async fn main() -> ExitCode {
                                         format_agent_scores(&reference_result.agents),
                                         format_agent_scores(&candidate_result.agents),
                                     );
-                                    break;
+
+                                    // TODO: improve the following outputs to be more readable
+                                    // while avoiding massive prints
+
+                                    for (i, (r, c)) in reference_result
+                                        .agents
+                                        .iter()
+                                        .zip(candidate_result.agents.iter())
+                                        .enumerate()
+                                    {
+                                        println!(
+                                            "Transcript agent {i}: {} ({} vs {} events)",
+                                            if r.transcript != c.transcript {
+                                                style("MISMATCH").red().bold()
+                                            } else {
+                                                style("MATCH").green().bold()
+                                            },
+                                            r.transcript.as_ref().map(|t| t.events.len()).unwrap_or_default(),
+                                            c.transcript.as_ref().map(|t| t.events.len()).unwrap_or_default(),
+                                        );
+                                    }
+
+                                    println!("Game data: {} ({} vs {} bytes)",
+                                        if reference_result.game_data != candidate_result.game_data {
+                                            style("MISMATCH").red().bold()
+                                        } else {
+                                            style("MATCH").green().bold()
+                                        },
+                                        reference_result.game_data.as_ref().map(|d| d.len()).unwrap_or_default(),
+                                        candidate_result.game_data.as_ref().map(|d| d.len()).unwrap_or_default(),
+                                    );
+
+                                    println!("");
+                                    println!("Files for further inspection:");
+
+                                    // `keep` relinquishes automatic cleanup so artifacts survive `exit`.
+                                    let dir = tempdir().expect("tempdir").keep();
+
+                                    for (i, (r, c)) in reference_result
+                                        .agents
+                                        .iter()
+                                        .zip(candidate_result.agents.iter())
+                                        .enumerate()
+                                    {
+                                        let ref_path = dir.join(format!("reference_agent_{i}.io"));
+                                        let cand_path = dir.join(format!("candidate_agent_{i}.io"));
+                                        if let Some(ref_transcript) = &r.transcript {
+                                            ref_transcript.save(&ref_path).expect("write reference transcript");
+                                        }
+                                        if let Some(cand_transcript) = &c.transcript {
+                                            cand_transcript.save(&cand_path).expect("write candidate transcript");
+                                        }
+                                    }
+
+                                    fs::write(
+                                        dir.join("reference_game.data"),
+                                        reference_result.game_data.as_deref().unwrap_or(""),
+                                    )
+                                    .expect("write reference game data");
+                                    fs::write(
+                                        dir.join("candidate_game.data"),
+                                        candidate_result.game_data.as_deref().unwrap_or(""),
+                                    )
+                                    .expect("write candidate game data");
+
+                                    let dir_display = dir.canonicalize().unwrap_or(dir);
+                                    println!("{}", style(dir_display.display()).bold().magenta());
+                                    println!("");
+
+                                    println!("Use '--seed {} --max-games 1' to replay the game.", style(setup.seed).yellow());
+                                    println!("");
+
+                                    std::process::exit(1);
                                 }
                             }
                         }
