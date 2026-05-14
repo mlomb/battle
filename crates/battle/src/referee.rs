@@ -5,7 +5,6 @@ use std::{
 };
 
 use include_dir::{Dir, include_dir};
-use log::warn;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
