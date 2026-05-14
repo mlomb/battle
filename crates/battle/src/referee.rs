@@ -77,8 +77,9 @@ impl Referee<Arc<Target>> {
 
         let (min_agents, max_agents) = match preset.trim_end_matches("-ref").to_string().as_str() {
             "cg-fall-2023-fish" => (2, 2),
-            "cg-winter-2024-sprawl" => (2, 2),
             "cg-spring-2024-olympics" => (3, 3),
+            "cg-spring-2026-troll-farm" => (2, 2),
+            "cg-winter-2024-sprawl" => (2, 2),
             _ => {
                 log::warn!(
                     "Referee file available '{}', but min/max agents is unknown. Assuming min=2 max=4.",
@@ -112,8 +113,8 @@ impl Referee<Arc<Target>> {
     pub fn from_string(str: &str) -> Self {
         match Referee::from_preset(str) {
             Ok(referee) => referee,
-            Err(err) => {
-                warn!("Failed to load referee from preset: {err}");
+            Err(_) => {
+                // warn!("Failed to load referee from preset: {err}");
 
                 Referee::from_target(
                     Target::from_entrypoint(PathBuf::from(str.to_string()))

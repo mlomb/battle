@@ -12,7 +12,7 @@ use std::{collections::HashMap, process::ExitCode};
 use crate::exec::Executable;
 use crate::exec::Target;
 use crate::exec::{BuildError, BuildExecutable};
-use crate::game::{GameResultData, GameSetup};
+use crate::game::{GameAgentResult, GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
@@ -24,6 +24,24 @@ use console::{Emoji, style};
 
 static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
 static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
+
+fn format_agent_scores(agents: &[GameAgentResult]) -> String {
+    agents
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let s = match i {
+                0 => style(a.score).cyan(),
+                1 => style(a.score).magenta(),
+                2 => style(a.score).yellow(),
+                3 => style(a.score).green(),
+                _ => style(a.score).white(),
+            };
+            s.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 #[derive(Subcommand, Debug)]
 enum Commands {
@@ -227,7 +245,7 @@ async fn main() -> ExitCode {
                     .collect(),
                 seed,
                 capture_io: false,
-                capture_game_data: true,
+                capture_game_data: false,
             };
 
             let mut game_channel = GameChannel::new(network_args);
@@ -248,22 +266,7 @@ async fn main() -> ExitCode {
                             results_received += 1;
                             in_flight -= 1;
 
-                            println!("Game data: {}", data.game_data.unwrap_or_default());
-
-                            let styled_score = |i: usize, score: i32| match i {
-                                0 => style(score).cyan(),
-                                1 => style(score).magenta(),
-                                2 => style(score).yellow(),
-                                3 => style(score).green(),
-                                _ => style(score).white(),
-                            };
-                            let scores = data
-                                .agents
-                                .iter()
-                                .enumerate()
-                                .map(|(i, a)| styled_score(i, a.score).to_string())
-                                .collect::<Vec<_>>()
-                                .join(" ");
+                            let scores = format_agent_scores(&data.agents);
                             info!("#{} {}", results_received, scores);
                             if results_received >= n {
                                 break;
@@ -308,10 +311,14 @@ async fn main() -> ExitCode {
                     seed: 1 + index,
                     // we want to capture the transcript to mock the agents for the candidate referee
                     capture_io: true,
-                    capture_game_data: false,
+                    capture_game_data: true,
                 })
                 .collect();
 
+            // empty at first, since we need to wait for the reference to be played first
+            let mut pending_cand: VecDeque<GameSetup> = VecDeque::new();
+
+            // not actually used, but needed to satisfy the type checker
             let dummy_setup = GameSetup {
                 referee: reference.clone(),
                 agents: vec![],
@@ -319,9 +326,6 @@ async fn main() -> ExitCode {
                 capture_io: false,
                 capture_game_data: false,
             };
-
-            // empty at first, since we need to wait for the reference to be played first
-            let mut pending_cand: VecDeque<GameSetup> = VecDeque::new();
 
             // reference results by seed
             let mut reference_results: HashMap<u64, GameResultData> = HashMap::new();
@@ -342,28 +346,16 @@ async fn main() -> ExitCode {
                         Some((setup, result)) => {
                             let is_reference = Arc::ptr_eq(&setup.referee.target, &reference.target);
 
-                            let styled_score = |i: usize, score: i32| match i {
-                                0 => style(score).cyan(),
-                                1 => style(score).magenta(),
-                                2 => style(score).yellow(),
-                                3 => style(score).green(),
-                                _ => style(score).white(),
-                            };
-                            let scores = result
-                                .agents
-                                .iter()
-                                .enumerate()
-                                .map(|(i, a)| styled_score(i, a.score).to_string())
-                                .collect::<Vec<_>>()
-                                .join(" ");
-                            println!(
-                                "[{}] {} -> {}",
-                                style(if is_reference { "ref" } else { "cand" }).bold().dim(),
-                                style(format!("Seed {}", setup.seed)).white().dim(),
-                                scores,
-                            );
+                            let scores = format_agent_scores(&result.agents);
 
                             if is_reference {
+                                info!(
+                                    "[{}] {} -> {}",
+                                    style("ref").bold().dim(),
+                                    style(format!("Seed {}", setup.seed)).white().dim(),
+                                    scores,
+                                );
+
                                 // generate a new game, based on the transcript of the agents
                                 let new_game = GameSetup {
                                     referee: candidate.clone(), // candidate instead of reference
@@ -376,9 +368,9 @@ async fn main() -> ExitCode {
                                             )))
                                         })
                                     .collect(),
-                                    seed: setup.seed, // same seed
+                                    seed: setup.seed, // very important, same seed
                                     capture_io: true,
-                                    capture_game_data: false,
+                                    capture_game_data: true,
                                 };
 
                                 reference_results.insert(setup.seed, result);
@@ -388,20 +380,36 @@ async fn main() -> ExitCode {
                                 let reference_result = reference_results.remove(&setup.seed).expect("ref must precede candidate");
                                 let candidate_result = result;
 
+                                let exit_code_match = reference_result.exec_res.status == candidate_result.exec_res.status;
+
                                 let scores_match = reference_result.agents.len() == candidate_result.agents.len()
                                     && reference_result.agents.iter().zip(candidate_result.agents.iter())
                                     .all(|(r, c)| r.score == c.score);
 
-                                // TODO: improve
-                                if scores_match {
-                                    println!("{}", style("MATCH").green().bold());
+                                let game_data_match = reference_result.game_data == candidate_result.game_data;
+
+                                if scores_match && exit_code_match && game_data_match {
+                                    info!(
+                                        "[{}] {} -> {} {}",
+                                        style("cand").bold().dim(),
+                                        style(format!("Seed {}", setup.seed)).white().dim(),
+                                        scores,
+                                        style("MATCH").green().bold(),
+                                    );
+
                                     if pending_ref.is_empty() && pending_cand.is_empty() {
                                         break;
                                     }
                                 } else {
-                                    println!("{}", style("MISMATCH").red().bold());
-                                    println!("Reference: {}", reference_result.agents.iter().enumerate().map(|(i, a)| styled_score(i, a.score).to_string()).collect::<Vec<_>>().join(" "));
-                                    println!("Candidate: {}", candidate_result.agents.iter().enumerate().map(|(i, a)| styled_score(i, a.score).to_string()).collect::<Vec<_>>().join(" "));
+                                    println!("");
+                                    println!("{} (reference vs candidate)", style("MISMATCH DETECTED").red().bold());
+
+                                    println!("Exit status: {:?} vs {:?}", style(reference_result.exec_res.status).blue(), style(candidate_result.exec_res.status).blue());
+                                    println!(
+                                        "Scores: {} vs {}",
+                                        format_agent_scores(&reference_result.agents),
+                                        format_agent_scores(&candidate_result.agents),
+                                    );
                                     break;
                                 }
                             }

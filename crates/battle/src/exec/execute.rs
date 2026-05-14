@@ -14,7 +14,7 @@ use std::os::unix::process::CommandExt;
 /// Interval at which we poll the child process for status updates.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Status {
     /// The process exited with the given code
     Exited(i32),
