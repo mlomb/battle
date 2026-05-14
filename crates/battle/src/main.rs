@@ -227,6 +227,7 @@ async fn main() -> ExitCode {
                     .collect(),
                 seed,
                 capture_io: false,
+                capture_game_data: true,
             };
 
             let mut game_channel = GameChannel::new(network_args);
@@ -246,6 +247,8 @@ async fn main() -> ExitCode {
                         Some((_, data)) => {
                             results_received += 1;
                             in_flight -= 1;
+
+                            println!("Game data: {}", data.game_data.unwrap_or_default());
 
                             let styled_score = |i: usize, score: i32| match i {
                                 0 => style(score).cyan(),
@@ -305,6 +308,7 @@ async fn main() -> ExitCode {
                     seed: 1 + index,
                     // we want to capture the transcript to mock the agents for the candidate referee
                     capture_io: true,
+                    capture_game_data: false,
                 })
                 .collect();
 
@@ -313,6 +317,7 @@ async fn main() -> ExitCode {
                 agents: vec![],
                 seed: 0,
                 capture_io: false,
+                capture_game_data: false,
             };
 
             // empty at first, since we need to wait for the reference to be played first
@@ -373,6 +378,7 @@ async fn main() -> ExitCode {
                                     .collect(),
                                     seed: setup.seed, // same seed
                                     capture_io: true,
+                                    capture_game_data: false,
                                 };
 
                                 reference_results.insert(setup.seed, result);

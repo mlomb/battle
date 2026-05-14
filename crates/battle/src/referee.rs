@@ -125,7 +125,12 @@ impl Referee<Arc<Target>> {
 }
 
 impl Referee<Arc<Mutex<Executable>>> {
-    pub fn command(&self, agent_cmds: &[Command], seed: u64) -> Command {
+    pub fn command(
+        &self,
+        agent_cmds: &[Command],
+        seed: u64,
+        output_logs: Option<PathBuf>,
+    ) -> Command {
         let mut exe = self.target.blocking_lock();
         let mut cmd = exe.command();
 
@@ -135,7 +140,12 @@ impl Referee<Arc<Mutex<Executable>>> {
                     cmd.arg(format!("-p{}", i + 1));
                     cmd.arg(agent.command_line_string());
                 }
+
                 cmd.arg("-seed").arg(seed.to_string());
+
+                if let Some(logs_path) = output_logs {
+                    cmd.arg("-l").arg(logs_path);
+                }
             }
         }
 

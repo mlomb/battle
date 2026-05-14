@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    process::Command,
     sync::{Arc, atomic::AtomicBool},
 };
 
@@ -17,13 +18,16 @@ pub struct GameSetup<T = Arc<Target>> {
     pub referee: Referee<T>,
     pub agents: Vec<T>,
     pub seed: u64,
+
     pub capture_io: bool,
+    pub capture_game_data: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameResultData {
+    pub exec_res: ExecutionResult,
+    pub game_data: Option<String>,
     pub agents: Vec<GameAgentResult>,
-    pub r: ExecutionResult,
 }
 
 pub type GameResult = Result<GameResultData, String>;
@@ -38,13 +42,18 @@ pub fn run_game(
     setup: GameSetup<Arc<Mutex<Executable>>>,
     abort: Option<Arc<AtomicBool>>,
 ) -> GameResult {
-    let current_exe = std::env::current_exe().ok();
+    let current_exe = std::env::current_exe().expect("to get current executable path");
 
-    // Optionally wrap each agent command with `<current_exe> wrap capture <path> --`.
-    // We use a temp dir that lives for the duration of this function so the transcript
-    // files are still present when we read them back after the referee exits.
-    let capture_dir = if setup.capture_io {
-        Some(tempdir().map_err(|e| format!("failed to create temp dir for capture: {e}"))?)
+    // We use a temp dir that lives for the duration of this function so the transcript and
+    // game data files are still present when we read them back after the referee exits.
+    let game_dir = if setup.capture_io || setup.capture_game_data {
+        Some(tempdir().map_err(|e| format!("failed to create temp dir for io capture: {e}"))?)
+    } else {
+        None
+    };
+
+    let game_data_path = if setup.capture_game_data {
+        game_dir.as_ref().map(|dir| dir.path().join("game.data"))
     } else {
         None
     };
@@ -56,19 +65,18 @@ pub fn run_game(
         .map(|(i, a)| {
             let base_cmd = a.blocking_lock().command();
 
+            // Optionally wrap each agent command with `<current_exe> wrap capture <path> --`.
             if setup.capture_io {
-                let tr_path = capture_dir
+                let transcript_path = game_dir
                     .as_ref()
-                    .unwrap()
+                    .expect("game dir available")
                     .path()
                     .join(format!("agent_{i}.io"));
-                let mut w = std::process::Command::new(current_exe.as_ref().unwrap());
-                w.args(["wrap", "capture"]).arg(&tr_path).arg("--");
+
+                let mut w = Command::new(&current_exe);
+                w.args(["wrap", "capture"]).arg(&transcript_path).arg("--");
                 w.arg(base_cmd.get_program());
                 w.args(base_cmd.get_args());
-                if let Some(cwd) = base_cmd.get_current_dir() {
-                    w.current_dir(cwd);
-                }
                 w
             } else {
                 base_cmd
@@ -76,7 +84,9 @@ pub fn run_game(
         })
         .collect();
 
-    let mut cmd = setup.referee.command(&agent_cmds, setup.seed);
+    let mut cmd = setup
+        .referee
+        .command(&agent_cmds, setup.seed, game_data_path.clone());
     let result = cmd.execute(std::time::Duration::from_secs(200), abort.as_deref());
     let scores = result
         .stdout
@@ -92,7 +102,7 @@ pub fn run_game(
             .enumerate()
             .map(|(i, _)| {
                 // Read back the transcript file written by `wrap capture` for this agent.
-                let transcript = capture_dir.as_ref().map(|dir| {
+                let transcript = game_dir.as_ref().map(|dir| {
                     let tr_path = dir.path().join(format!("agent_{i}.io"));
                     let text = std::fs::read_to_string(&tr_path).unwrap_or_default();
                     text.parse::<Transcript>().unwrap_or_default()
@@ -103,7 +113,8 @@ pub fn run_game(
                 }
             })
             .collect(),
-        r: result,
+        exec_res: result,
+        game_data: game_data_path.map(|path| std::fs::read_to_string(&path).unwrap_or_default()),
     })
 }
 
@@ -129,6 +140,7 @@ impl GameSetup<Arc<Target>> {
             agents: self.agents.iter().map(|a| a.id).collect(),
             seed: self.seed,
             capture_io: self.capture_io,
+            capture_game_data: self.capture_game_data,
         }
     }
 }
@@ -155,6 +167,7 @@ impl GameSetup<TargetId> {
                 .collect(),
             seed: self.seed,
             capture_io: self.capture_io,
+            capture_game_data: self.capture_game_data,
         }
     }
 }
