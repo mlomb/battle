@@ -396,7 +396,7 @@ async fn main() -> ExitCode {
                                     && reference_result.agents.iter().zip(candidate_result.agents.iter())
                                     .all(|(r, c)| r.transcript == c.transcript);
 
-                                let game_data_match = true || reference_result.game_data == candidate_result.game_data;
+                                let game_data_match = true;// || reference_result.game_data == candidate_result.game_data;
 
                                 if scores_match && exit_code_match && transcripts_match && game_data_match {
                                     info!(
@@ -411,7 +411,7 @@ async fn main() -> ExitCode {
                                         break;
                                     }
                                 } else {
-                                    println!("");
+                                    println!();
                                     println!("{} (reference vs candidate)", style("MISMATCH DETECTED").red().bold());
                                     println!("Seed: {}", style(setup.seed).yellow());
 
@@ -453,7 +453,7 @@ async fn main() -> ExitCode {
                                         candidate_result.game_data.as_ref().map(|d| d.len()).unwrap_or_default(),
                                     );
 
-                                    println!("");
+                                    println!();
                                     println!("Files for further inspection:");
 
                                     // `keep` relinquishes automatic cleanup so artifacts survive `exit`.
@@ -488,10 +488,10 @@ async fn main() -> ExitCode {
 
                                     let dir_display = dir.canonicalize().unwrap_or(dir);
                                     println!("{}", style(dir_display.display()).bold().magenta());
-                                    println!("");
+                                    println!();
 
                                     println!("Use '--seed {} --max-games 1' to replay the game.", style(setup.seed).yellow());
-                                    println!("");
+                                    println!();
 
                                     std::process::exit(1);
                                 }
