@@ -113,7 +113,7 @@ impl Referee<Arc<Target>> {
         match Referee::from_preset(str) {
             Ok(referee) => referee,
             Err(_) => {
-                // warn!("Failed to load referee from preset: {err}");
+                // log::warn!("Failed to load referee from preset: {err}");
 
                 Referee::from_target(
                     Target::from_entrypoint(PathBuf::from(str.to_string()))
