@@ -25,7 +25,7 @@ pub enum Protocol {
 
 /// A referee (a program) that runs a match between agents (other programs) and collects the results.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Referee<T> {
+pub struct Referee<T = Arc<Target>> {
     /// The protocol used by the referee
     pub protocol: Protocol,
 
