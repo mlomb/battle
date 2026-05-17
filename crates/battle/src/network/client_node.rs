@@ -38,7 +38,7 @@ fn parse_worker_address(s: &str) -> Result<SocketAddr, String> {
     Err(format!("invalid worker address: {s}"))
 }
 
-#[derive(Debug, Parser)]
+#[derive(Clone, Debug, Parser)]
 pub struct NetworkArgs {
     /// Worker node addresses to connect to
     #[arg(short, long = "worker", env = "BATTLE_WORKERS", value_delimiter = ',', value_parser = parse_worker_address)]

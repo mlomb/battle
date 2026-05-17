@@ -19,6 +19,7 @@ console = { version = "0.16.3", default-features = false, features = ["ansi-pars
 tempfile = "3.27.0"
 build-fs-tree = "0.8.1"
 serde = { version = "1.0.228", features = ["serde_derive"] }
+serde_json = "1.0"
 num_cpus = "1.17.0"
 env_logger = "0.11.10"
 log = "0.4.29"
@@ -32,6 +33,8 @@ tokio = { version = "1.51.1", features = ["io-std", "io-util", "macros", "rt-mul
 rand = "0.10.1"
 message-io = "0.19.0"
 include_dir = "0.7.4"
+rmcp = { version = "1.7", features = ["server", "transport-io", "transport-streamable-http-server"] }
+schemars = { version = "1.2", features = ["derive"] }
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"

@@ -1,5 +1,7 @@
+mod commands;
 mod exec;
 mod game;
+mod mcp;
 mod network;
 mod referee;
 
@@ -9,40 +11,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, process::ExitCode};
 
+use crate::commands::play::{self};
 use crate::exec::Executable;
 use crate::exec::Target;
-use crate::exec::{BuildError, BuildExecutable};
-use crate::game::{GameAgentResult, GameResultData, GameSetup};
+use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
-use battle_bundler::{BundlerArgs, BundlerCli, bundle, bundler_main};
+use battle_bundler::{BundlerArgs, BundlerCli, bundler_main};
 use battle_cgsync::{CGSyncCli, cgsync_main};
 use battle_wrapcmd::{WrapCmdCli, wrapcmd_main};
 use clap::{Parser, Subcommand};
-use console::{Emoji, style};
+use console::style;
 use tempfile::tempdir;
-
-static BUILDING: Emoji<'_, '_> = Emoji("🏗️ ", "");
-static BOX: Emoji<'_, '_> = Emoji("📦 ", "");
-
-fn format_agent_scores(agents: &[GameAgentResult]) -> String {
-    agents
-        .iter()
-        .enumerate()
-        .map(|(i, a)| {
-            let s = match i {
-                0 => style(a.score).cyan(),
-                1 => style(a.score).magenta(),
-                2 => style(a.score).yellow(),
-                3 => style(a.score).green(),
-                _ => style(a.score).white(),
-            };
-            s.to_string()
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
 
 #[derive(Subcommand, Debug)]
 enum Commands {
@@ -91,7 +72,7 @@ enum Commands {
         #[arg(short, long, default_value_t = 1)]
         n: usize,
 
-        /// Match seed passed to the referee
+        /// Seed to use. If n > 1, the seed will be incremented each game.
         #[arg(long, default_value_t = 1)]
         seed: u64,
 
@@ -137,12 +118,15 @@ enum Commands {
         args: WrapCmdCli,
     },
 
-    /// Start an MCP server
+    /// Start an MCP server with the stdio transport
     #[allow(clippy::upper_case_acronyms)]
     MCP {
-        /// The protocol to use
-        #[arg(short, long)]
-        protocol: String,
+        /// The referee to use throughout this MCP session
+        #[arg(long)]
+        referee: String,
+
+        #[clap(flatten)]
+        network_args: NetworkArgs,
     },
 }
 
@@ -153,42 +137,12 @@ struct Args {
     command: Commands,
 }
 
-fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildError> {
-    info!(
-        "{} {}Bundling project... {}",
-        style("[1/2]").bold().dim(),
-        BOX,
-        bundler_args.entry.clone().unwrap().to_string_lossy()
-    );
-
-    let bundle = bundle(&bundler_args).expect("correct bundle");
-
-    info!("  OK {} bytes", bundle.source.code.len());
-
-    info!(
-        "{} {}Building binary...",
-        style("[2/2]").bold().dim(),
-        BUILDING
-    );
-
-    match bundle.source.build() {
-        Ok(executable) => Ok(executable),
-        Err(BuildError::MissingCompiler(e)) => {
-            eprintln!("Missing compiler: {}", e);
-            std::process::exit(1);
-        }
-        Err(e) => {
-            eprintln!("Error: {:?}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> ExitCode {
     env_logger::Builder::new()
-        .filter_module("battle", LevelFilter::Trace)
+        .filter_module("battle", LevelFilter::Info)
         .filter_module("battle::network", LevelFilter::Warn)
+        .target(env_logger::Target::Stderr)
         .init();
 
     let args = Args::parse();
@@ -198,8 +152,7 @@ async fn main() -> ExitCode {
             bundler_main(args);
         }
         Commands::Build { bundler_args } => {
-            let exec = bundle_and_build(bundler_args).expect("correct bundle and build");
-            println!("  OK: {:?}", exec);
+            commands::code::build_main(bundler_args);
         }
         Commands::CGSync { args } => {
             cgsync_main(args).await;
@@ -229,64 +182,21 @@ async fn main() -> ExitCode {
         }
         Commands::Play {
             referee,
-            agent,
+            agent: agents,
             n,
             seed,
             network_args,
         } => {
-            info!("Using a networked worker pool");
-
             let referee = Referee::from_string(&referee);
+            let agents = agents
+                .iter()
+                .map(|path| {
+                    Arc::new(Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"))
+                })
+                .collect();
 
-            let mut next_game_setup = GameSetup {
-                referee,
-                agents: agent
-                    .iter()
-                    .map(|path| {
-                        Arc::new(
-                            Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"),
-                        )
-                    })
-                    .collect(),
-                seed,
-                capture_io: false,
-                capture_game_data: false,
-            };
-
-            let mut game_channel = GameChannel::new(network_args);
-            let mut results_received = 0;
-            let mut in_flight = 0;
-
-            loop {
-                tokio::select! {
-                    biased; // prioritize receive over send
-
-                    _ = tokio::signal::ctrl_c() => {
-                        info!("Received Ctrl+C, stopping...");
-                        break;
-                    }
-
-                    item = game_channel.rx.recv() => match item {
-                        Some((_, data)) => {
-                            results_received += 1;
-                            in_flight -= 1;
-
-                            let scores = format_agent_scores(&data.agents);
-                            info!("#{} {}", results_received, scores);
-                            if results_received >= n {
-                                break;
-                            }
-                        }
-                        None => break,
-                    },
-
-                    _ = game_channel.tx.send(next_game_setup.clone()), if in_flight + results_received < n => {
-                        in_flight += 1;
-                        next_game_setup.seed += 1;
-                    },
-                }
-            }
-
+            info!("Using a networked worker pool");
+            play::play_games(referee, agents, n, seed, network_args, true).await;
             info!("Exiting!");
         }
 
@@ -352,7 +262,7 @@ async fn main() -> ExitCode {
                         Some((setup, result)) => {
                             let is_reference = Arc::ptr_eq(&setup.referee.target, &reference.target);
 
-                            let scores = format_agent_scores(&result.agents);
+                            let scores = play::format_agent_scores(&result.agents);
 
                             if is_reference {
                                 info!(
@@ -418,8 +328,8 @@ async fn main() -> ExitCode {
                                     println!("Exit status: {:?} vs {:?}", style(reference_result.exec_res.status).blue(), style(candidate_result.exec_res.status).blue());
                                     println!(
                                         "Scores: {} vs {}",
-                                        format_agent_scores(&reference_result.agents),
-                                        format_agent_scores(&candidate_result.agents),
+                                        play::format_agent_scores(&reference_result.agents),
+                                        play::format_agent_scores(&candidate_result.agents),
                                     );
 
                                     // TODO: improve the following outputs to be more readable
@@ -520,7 +430,16 @@ async fn main() -> ExitCode {
             return wrapcmd_main(args);
         }
 
-        Commands::MCP { protocol: _ } => todo!(),
+        Commands::MCP {
+            referee,
+            network_args,
+        } => {
+            let referee = Referee::from_string(&referee);
+            if let Err(e) = mcp::mcp_main(referee, network_args).await {
+                eprintln!("MCP server error: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
     }
 
     ExitCode::SUCCESS
