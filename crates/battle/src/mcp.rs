@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tempfile::TempDir;
 
 use crate::commands::code::bundle_and_build;
 use crate::commands::play::{self};
@@ -46,10 +47,10 @@ struct InspectMcp {
     seed: u64,
 }
 
-#[derive(Clone)]
 struct BattleMcpServer {
     referee: Referee,
     network_args: NetworkArgs,
+    temp_dir: TempDir,
 }
 
 #[tool_router(server_handler)]
@@ -81,6 +82,7 @@ impl BattleMcpServer {
             play_mcp.n,
             1,
             self.network_args.clone(),
+            false,
             false,
         )
         .await;
@@ -209,8 +211,67 @@ impl BattleMcpServer {
         name = "inspect",
         description = "Runs a single game between agents on a given seed, extracts each agent's transcript (stdin, stdout, stderr) for analysis"
     )]
-    async fn inspect(&self, Parameters(_inspect_mcp): Parameters<InspectMcp>) -> String {
-        unimplemented!()
+    async fn inspect(&self, Parameters(inspect_mcp): Parameters<InspectMcp>) -> String {
+        let mut results = play::play_games(
+            self.referee.clone(),
+            inspect_mcp
+                .agents
+                .iter()
+                .map(|p| Arc::new(Target::from_entrypoint(p.clone()).expect("correct bundle")))
+                .collect(),
+            1,
+            inspect_mcp.seed,
+            self.network_args.clone(),
+            false,
+            true,
+        )
+        .await;
+
+        let Some((setup, data)) = results.pop() else {
+            return "Error: game did not complete".to_string();
+        };
+
+        #[derive(serde::Serialize)]
+        struct AgentInspect {
+            score: i32,
+            transcript_path: String,
+            transcript_bytes: u64,
+        }
+
+        #[derive(serde::Serialize)]
+        struct InspectResult {
+            seed: u64,
+            agents: Vec<AgentInspect>,
+        }
+
+        let agents = data
+            .agents
+            .into_iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let path = self
+                    .temp_dir
+                    .path()
+                    .join(format!("seed{}_agent{}.io", setup.seed, i));
+
+                let transcript = a.transcript.unwrap_or_default();
+                transcript.save(&path).unwrap_or_default();
+
+                let transcript_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                AgentInspect {
+                    score: a.score,
+                    transcript_path: path.to_string_lossy().into_owned(),
+                    transcript_bytes,
+                }
+            })
+            .collect();
+
+        let result = InspectResult {
+            seed: setup.seed,
+            agents,
+        };
+
+        serde_json::to_string(&result).expect("json ok")
     }
 }
 
@@ -218,6 +279,7 @@ pub async fn mcp_main(referee: Referee, network_args: NetworkArgs) -> anyhow::Re
     let server = BattleMcpServer {
         referee,
         network_args,
+        temp_dir: tempfile::tempdir()?,
     }
     .serve(stdio())
     .await?;
