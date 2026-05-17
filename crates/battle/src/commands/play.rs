@@ -54,7 +54,7 @@ pub async fn play_games(
     first_seed: u64,
     network_args: NetworkArgs,
     interrupt_on_ctrl_c: bool,
-) -> Vec<GameResultData> {
+) -> Vec<(GameSetup, GameResultData)> {
     let mut next_game_setup = GameSetup {
         referee,
         agents,
@@ -84,7 +84,7 @@ pub async fn play_games(
 
                     let scores = format_agent_scores(&data.agents);
                     info!("#{} {} - seed {}", results_received, scores, setup.seed);
-                    out.push(data);
+                    out.push((setup, data));
                     if results_received >= n {
                         break;
                     }
