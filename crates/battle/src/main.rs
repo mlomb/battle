@@ -196,7 +196,7 @@ async fn main() -> ExitCode {
                 .collect();
 
             info!("Using a networked worker pool");
-            play::play_games(referee, agents, n, seed, network_args, true).await;
+            play::play_games(referee, agents, n, seed, network_args, true, false).await;
             info!("Exiting!");
         }
 

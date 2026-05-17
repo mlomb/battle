@@ -54,12 +54,13 @@ pub async fn play_games(
     first_seed: u64,
     network_args: NetworkArgs,
     interrupt_on_ctrl_c: bool,
+    capture_io: bool,
 ) -> Vec<(GameSetup, GameResultData)> {
     let mut next_game_setup = GameSetup {
         referee,
         agents,
         seed: first_seed,
-        capture_io: false,
+        capture_io,
         capture_game_data: false,
     };
 
