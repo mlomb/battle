@@ -1,4 +1,4 @@
-name: Deploy worker to Docker Hub
+name: CD
 
 on:
   push:
@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   deploy:
+    name: Deploy worker to Docker Hub
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
