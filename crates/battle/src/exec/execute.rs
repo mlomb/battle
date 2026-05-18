@@ -260,7 +260,7 @@ mod tests {
             }
         };
         let r = cmd.execute(Duration::from_millis(500), None);
-        assert!(matches!(r.status, Status::Timeout));
+        assert!(matches!(r.status, Status::Timeout), "status={:?}", r.status);
         assert!(r.duration < Duration::from_secs(2));
     }
 
