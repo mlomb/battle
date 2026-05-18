@@ -254,8 +254,16 @@ mod tests {
             }
             #[cfg(windows)]
             {
-                let mut c = Command::new("cmd");
-                c.args(["/C", "timeout /t 5 /nobreak >nul 2>&1"]);
+                // `timeout.exe` exits immediately with code 1 when stdin is not a console
+                // (typical under `cargo test` / CI: "Input redirection is not supported").
+                // PowerShell `Start-Sleep` does not need an interactive console.
+                let mut c = Command::new("powershell");
+                c.args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Start-Sleep -Seconds 5",
+                ]);
                 c
             }
         };
