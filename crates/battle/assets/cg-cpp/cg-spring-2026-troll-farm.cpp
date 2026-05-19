@@ -674,16 +674,41 @@ static void createMap(Board& b, SHA1PRNG& rng, BirdView& bird) {
 struct ChildProc {
     HANDLE hProcess = nullptr;
     HANDLE hStdinW = nullptr;   // write to child's stdin
-    HANDLE hStdoutR = nullptr;  // read child's stdout
+    HANDLE hStdoutR = nullptr;  // read child's stdout (overlapped)
     HANDLE hStderrW = nullptr;  // child's stderr (we keep a file or our stderr)
+    HANDLE hReadEvent = nullptr; // manual-reset event for overlapped reads on hStdoutR
     bool alive = false;
     std::string readBuf; // leftover
 
     bool start(const std::string& cmd, HANDLE stderrTarget) {
         SECURITY_ATTRIBUTES sa{}; sa.nLength=sizeof(sa); sa.bInheritHandle=TRUE; sa.lpSecurityDescriptor=nullptr;
         HANDLE inR=nullptr, inW=nullptr, outR=nullptr, outW=nullptr;
+        // stdin is plain synchronous — we only do blocking writes from the referee.
         if (!CreatePipe(&inR, &inW, &sa, 0)) return false;
-        if (!CreatePipe(&outR, &outW, &sa, 0)) { CloseHandle(inR); CloseHandle(inW); return false; }
+        // stdout must be overlapped on our (read) side so readLine() can wait with a precise
+        // millisecond timeout via WaitForSingleObject and wake immediately when bytes arrive.
+        // CreatePipe doesn't support FILE_FLAG_OVERLAPPED, so build the pair manually with a
+        // unique-named pipe (name only needs to be unique per pipe, never advertised externally).
+        char pipeName[96];
+        static volatile LONG s_pipeCounter = 0;
+        LONG pipeId = InterlockedIncrement(&s_pipeCounter);
+        std::snprintf(pipeName, sizeof(pipeName),
+                      "\\\\.\\pipe\\battle_referee_%lu_%ld",
+                      (unsigned long)GetCurrentProcessId(), (long)pipeId);
+        outR = CreateNamedPipeA(pipeName,
+                                PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+                                PIPE_TYPE_BYTE | PIPE_WAIT,
+                                1, 65536, 65536, 0, &sa);
+        if (outR == INVALID_HANDLE_VALUE) {
+            CloseHandle(inR); CloseHandle(inW);
+            return false;
+        }
+        outW = CreateFileA(pipeName, GENERIC_WRITE, 0, &sa, OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (outW == INVALID_HANDLE_VALUE) {
+            CloseHandle(inR); CloseHandle(inW); CloseHandle(outR);
+            return false;
+        }
         SetHandleInformation(inW, HANDLE_FLAG_INHERIT, 0);
         SetHandleInformation(outR, HANDLE_FLAG_INHERIT, 0);
         STARTUPINFOA si{}; si.cb=sizeof(si); si.dwFlags = STARTF_USESTDHANDLES;
@@ -709,6 +734,10 @@ struct ChildProc {
         CloseHandle(inR); CloseHandle(outW);
         if (!ok) { CloseHandle(inW); CloseHandle(outR); return false; }
         CloseHandle(pi.hThread);
+        // Manual-reset event for overlapped reads. Manual-reset matches GetOverlappedResult's
+        // expectations and lets us reuse the OVERLAPPED across reads.
+        hReadEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr);
+        if (!hReadEvent) { CloseHandle(inW); CloseHandle(outR); TerminateProcess(pi.hProcess, 1); CloseHandle(pi.hProcess); return false; }
         hProcess = pi.hProcess; hStdinW = inW; hStdoutR = outR; alive=true;
         return true;
     }
@@ -727,6 +756,7 @@ struct ChildProc {
         timedOut = false;
         line.clear();
         auto deadline = clock::now() + std::chrono::milliseconds(timeoutMs);
+        char tmp[4096];
         while (true) {
             size_t nl = readBuf.find('\n');
             if (nl != std::string::npos) {
@@ -735,37 +765,63 @@ struct ChildProc {
                 if (!line.empty() && line.back()=='\r') line.pop_back();
                 return true;
             }
-            if (clock::now() >= deadline) {
+            auto now = clock::now();
+            if (now >= deadline) {
                 timedOut = true;
                 alive = false;
                 return false;
             }
-            DWORD avail = 0;
-            if (!PeekNamedPipe(hStdoutR, nullptr, 0, nullptr, &avail, nullptr)) {
-                alive=false;
-                if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
-                return false;
-            }
-            if (avail > 0) {
-                char tmp[4096];
-                DWORD chunk = (DWORD)std::min<size_t>((size_t)avail, sizeof(tmp));
-                DWORD rd = 0;
-                if (!ReadFile(hStdoutR, tmp, chunk, &rd, nullptr) || rd==0) {
+            DWORD ms = (DWORD)std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+            if (ms < 1) ms = 1;
+            // Issue an overlapped read; it either completes synchronously (data already buffered),
+            // returns ERROR_IO_PENDING (we wait on the event), or fails (EOF / broken pipe).
+            OVERLAPPED ov{}; ov.hEvent = hReadEvent;
+            ResetEvent(hReadEvent);
+            DWORD rd = 0;
+            BOOL ok = ReadFile(hStdoutR, tmp, (DWORD)sizeof(tmp), &rd, &ov);
+            if (!ok) {
+                DWORD err = GetLastError();
+                if (err != ERROR_IO_PENDING) {
                     alive=false;
                     if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
                     return false;
                 }
-                readBuf.append(tmp, rd);
-            } else {
-                Sleep(1);
+                DWORD wr = WaitForSingleObject(hReadEvent, ms);
+                if (wr == WAIT_TIMEOUT) {
+                    // Bot blew its budget: cancel the pending read so it doesn't smear into a
+                    // future turn, then drain the cancellation result so the OVERLAPPED is freed.
+                    CancelIoEx(hStdoutR, &ov);
+                    DWORD ignored = 0;
+                    GetOverlappedResult(hStdoutR, &ov, &ignored, TRUE);
+                    timedOut = true;
+                    alive = false;
+                    return false;
+                }
+                if (wr != WAIT_OBJECT_0) {
+                    alive = false;
+                    if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
+                    return false;
+                }
+                if (!GetOverlappedResult(hStdoutR, &ov, &rd, FALSE)) {
+                    alive=false;
+                    if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
+                    return false;
+                }
             }
+            if (rd == 0) {
+                alive=false;
+                if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
+                return false;
+            }
+            readBuf.append(tmp, rd);
         }
     }
     void kill() {
         if (hStdinW) CloseHandle(hStdinW);
         if (hProcess) { TerminateProcess(hProcess, 0); WaitForSingleObject(hProcess, 2000); CloseHandle(hProcess); }
         if (hStdoutR) CloseHandle(hStdoutR);
-        hProcess=nullptr; hStdinW=nullptr; hStdoutR=nullptr; alive=false;
+        if (hReadEvent) CloseHandle(hReadEvent);
+        hProcess=nullptr; hStdinW=nullptr; hStdoutR=nullptr; hReadEvent=nullptr; alive=false;
     }
 };
 #else
