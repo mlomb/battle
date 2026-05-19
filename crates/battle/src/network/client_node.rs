@@ -1,6 +1,7 @@
 use clap::Parser;
 use log::{debug, error, info};
 use message_io::{
+    events::TimerId,
     network::{Endpoint, NetEvent},
     node::{self, NodeEvent, NodeHandler, NodeListener},
 };
@@ -82,8 +83,10 @@ impl GameChannel {
         for worker in network_args.workers {
             handler.signals().send(ClientSignal::Reconnect(worker));
         }
-        // start the game sending loop
-        handler.signals().send(ClientSignal::SendGame);
+        // seed the dispatcher
+        let initial_send_game = handler
+            .signals()
+            .send_with_timer(ClientSignal::SendGame, Duration::ZERO);
 
         let node = ClientNode {
             handler,
@@ -94,6 +97,7 @@ impl GameChannel {
             pending_games: HashMap::new(),
             workers_stats: HashMap::new(),
             known_targets: HashMap::new(),
+            pending_send_game: Some(initial_send_game),
         };
 
         thread::spawn(move || node.run());
@@ -115,6 +119,7 @@ enum ClientSignal {
 }
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(2);
+const SEND_GAME_TICK: Duration = Duration::from_millis(1);
 
 struct ClientNode {
     handler: NodeHandler<ClientSignal>,
@@ -129,6 +134,10 @@ struct ClientNode {
 
     /// Known targets received from rx, sent to workers when requested.
     known_targets: HashMap<TargetId, Arc<Target>>,
+
+    /// Timer id of the currently-scheduled `SendGame` signal, if any.
+    /// We keep at most one in flight; rescheduling cancels the previous one.
+    pending_send_game: Option<TimerId>,
 }
 
 impl ClientNode {
@@ -203,6 +212,9 @@ impl ClientNode {
                                     error!("Game failed: {err}");
                                 }
                             }
+
+                            // a slot just freed up on this worker, kick the dispatcher ASAP
+                            self.schedule_send_game(Duration::ZERO);
                         }
                     }
                 }
@@ -222,51 +234,78 @@ impl ClientNode {
                 }
             }
             NodeEvent::Signal(ClientSignal::SendGame) => {
-                self.try_send_game();
+                // the timer just fired; nothing to cancel
+                self.pending_send_game = None;
 
-                self.handler
-                    .signals()
-                    .send_with_timer(ClientSignal::SendGame, Duration::from_millis(10));
+                if self.try_send_game() {
+                    // dispatched a game, drain again ASAP (yielding to the event
+                    // loop so we observe new messages/stats in between)
+                    self.schedule_send_game(Duration::ZERO);
+                } else {
+                    // nothing to do right now, fall back to the periodic tick
+                    self.schedule_send_game(SEND_GAME_TICK);
+                }
             }
         });
     }
 
-    /// Finds an available worker and sends a game to it.
-    fn try_send_game(&mut self) {
+    /// Schedule a `SendGame` signal to fire after `delay`, cancelling any
+    /// previously-scheduled one. This guarantees at most one `SendGame` is
+    /// ever in flight, regardless of how many places call this.
+    fn schedule_send_game(&mut self, delay: Duration) {
+        if let Some(id) = self.pending_send_game.take() {
+            self.handler.signals().cancel_timer(id);
+        }
+        let id = self
+            .handler
+            .signals()
+            .send_with_timer(ClientSignal::SendGame, delay);
+        self.pending_send_game = Some(id);
+    }
+
+    /// Tries to send a single game to an available worker.
+    /// Returns `true` if a game was dispatched, `false` otherwise.
+    fn try_send_game(&mut self) -> bool {
         // find available worker
-        if let Some(&worker) = self.workers_available.iter().next().filter(|&worker| {
+        let Some(&worker) = self.workers_available.iter().find(|&worker| {
             let pending = self.pending_games.get(worker).map(|m| m.len()).unwrap_or(0);
 
             self.workers_stats
                 .get(worker)
                 .is_some_and(|stats| pending < stats.capacity)
-        }) {
-            // get game from input channel
-            if let Ok(game) = self.rx_input.try_recv() {
-                for target in game.all_targets() {
-                    self.known_targets
-                        .entry(target.id)
-                        .or_insert_with(|| target.clone());
-                }
+        }) else {
+            return false;
+        };
 
-                // generate a new id for this game
-                let game_id = rand::random();
+        // get game from input channel
+        let Ok(game) = self.rx_input.try_recv() else {
+            return false;
+        };
 
-                info!("Sending game id={} to worker {}", game_id, worker.addr());
-
-                self.handler.network().send(
-                    worker,
-                    &net_serialize(&FromClient::RunGame {
-                        id: game_id,
-                        game: game.to_target_id(),
-                    }),
-                );
-
-                self.pending_games
-                    .entry(worker)
-                    .or_default()
-                    .insert(game_id, game);
-            }
+        for target in game.all_targets() {
+            self.known_targets
+                .entry(target.id)
+                .or_insert_with(|| target.clone());
         }
+
+        // generate a new id for this game
+        let game_id = rand::random();
+
+        info!("Sending game id={} to worker {}", game_id, worker.addr());
+
+        self.handler.network().send(
+            worker,
+            &net_serialize(&FromClient::RunGame {
+                id: game_id,
+                game: game.to_target_id(),
+            }),
+        );
+
+        self.pending_games
+            .entry(worker)
+            .or_default()
+            .insert(game_id, game);
+
+        true
     }
 }
