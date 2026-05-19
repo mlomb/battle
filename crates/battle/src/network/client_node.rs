@@ -266,14 +266,21 @@ impl ClientNode {
     /// Tries to send a single game to an available worker.
     /// Returns `true` if a game was dispatched, `false` otherwise.
     fn try_send_game(&mut self) -> bool {
-        // find available worker
-        let Some(&worker) = self.workers_available.iter().find(|&worker| {
-            let pending = self.pending_games.get(worker).map(|m| m.len()).unwrap_or(0);
-
-            self.workers_stats
-                .get(worker)
-                .is_some_and(|stats| pending < stats.capacity)
-        }) else {
+        // pick the worker with the most free slots (capacity - pending). This
+        // keeps all workers saturated proportionally to their capacity, instead
+        // of always feeding the first one that has any free slot.
+        let Some(&worker) = self
+            .workers_available
+            .iter()
+            .filter_map(|worker| {
+                let capacity = self.workers_stats.get(worker)?.capacity;
+                let pending = self.pending_games.get(worker).map(|m| m.len()).unwrap_or(0);
+                let free = capacity.checked_sub(pending)?;
+                (free > 0).then_some((worker, free))
+            })
+            .max_by_key(|&(_, free)| free)
+            .map(|(w, _)| w)
+        else {
             return false;
         };
 
