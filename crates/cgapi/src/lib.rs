@@ -20,7 +20,7 @@ pub struct CGFetchCli {
     out: PathBuf,
 
     /// Max concurrent game downloads (global, across all agents).
-    #[arg(long, global = true, default_value_t = 4)]
+    #[arg(long, global = true, default_value_t = 1)]
     concurrency: usize,
 
     #[command(subcommand)]
