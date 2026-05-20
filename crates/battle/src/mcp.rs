@@ -34,7 +34,7 @@ struct PlayMcp {
 }
 
 fn default_play_games() -> usize {
-    100
+    1000
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

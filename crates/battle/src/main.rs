@@ -19,11 +19,25 @@ use crate::network::client_node::{GameChannel, NetworkArgs};
 use crate::network::worker_node::WorkerNode;
 use crate::referee::Referee;
 use battle_bundler::{BundlerArgs, BundlerCli, bundler_main};
+use battle_cgapi::{CGFetchCli, cgapi_main};
 use battle_cgsync::{CGSyncCli, cgsync_main};
 use battle_wrapcmd::{WrapCmdCli, wrapcmd_main};
 use clap::{Parser, Subcommand};
 use console::style;
 use tempfile::tempdir;
+
+/// CodinGame utilities (auto-syncing, fetching data, etc)
+#[derive(Subcommand, Debug)]
+enum CGCommand {
+    Fetch {
+        #[clap(flatten)]
+        args: CGFetchCli,
+    },
+    Sync {
+        #[clap(flatten)]
+        args: CGSyncCli,
+    },
+}
 
 #[derive(Subcommand, Debug)]
 enum Commands {
@@ -38,12 +52,6 @@ enum Commands {
         bundler_args: BundlerArgs,
         // TODO: output binary
         // TODO: platform, architecture, etc
-    },
-
-    #[command(alias = "cgsync")]
-    CGSync {
-        #[clap(flatten)]
-        args: CGSyncCli,
     },
 
     /// Start a worker node
@@ -118,6 +126,12 @@ enum Commands {
         args: WrapCmdCli,
     },
 
+    #[command(name = "cg")]
+    CodinGame {
+        #[command(subcommand)]
+        command: CGCommand,
+    },
+
     /// Start an MCP server with the stdio transport
     #[allow(clippy::upper_case_acronyms)]
     MCP {
@@ -153,9 +167,6 @@ async fn main() -> ExitCode {
         }
         Commands::Build { bundler_args } => {
             commands::code::build_main(bundler_args);
-        }
-        Commands::CGSync { args } => {
-            cgsync_main(args).await;
         }
         Commands::Worker { mut threads, port } => {
             info!("Starting worker node...");
@@ -429,6 +440,15 @@ async fn main() -> ExitCode {
         Commands::Wrap { args } => {
             return wrapcmd_main(args);
         }
+
+        Commands::CodinGame { command } => match command {
+            CGCommand::Fetch { args } => {
+                cgapi_main(args).await.unwrap();
+            }
+            CGCommand::Sync { args } => {
+                cgsync_main(args).await;
+            }
+        },
 
         Commands::MCP {
             referee,

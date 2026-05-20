@@ -161,6 +161,7 @@ dependencies = [
  "assert_cmd",
  "async-channel",
  "battle-bundler",
+ "battle-cgapi",
  "battle-cgsync",
  "battle-wrapcmd",
  "blake3",
@@ -201,6 +202,20 @@ dependencies = [
  "syn 2.0.117",
  "tempfile",
  "toolchain_find",
+]
+
+[[package]]
+name = "battle-cgapi"
+version = "0.0.2"
+dependencies = [
+ "anyhow",
+ "clap",
+ "console",
+ "futures",
+ "indicatif",
+ "reqwest",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -365,21 +380,6 @@ name = "cfg_aliases"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
-
-[[package]]
-name = "cgapi"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "console",
- "futures",
- "indicatif",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
 
 [[package]]
 name = "chacha20"
