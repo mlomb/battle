@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use console::style;
 use futures::future::join_all;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Semaphore;
@@ -60,7 +60,7 @@ async fn fetch_games_with_progress(
     client: &CGApiClient,
     title: &str,
     game_ids: Vec<GameId>,
-    out_dir: &PathBuf,
+    out_dir: &Path,
     game_sem: Arc<Semaphore>,
     mp: &MultiProgress,
 ) -> (u64, u64) {
@@ -80,7 +80,7 @@ async fn fetch_games_with_progress(
             .expect("acquiring semaphore");
 
         let client = client.clone();
-        let out_dir = out_dir.clone();
+        let out_dir = out_dir.to_path_buf();
         let bar = bar.clone();
         let mp = mp.clone();
         let failed = failed.clone();
@@ -172,7 +172,7 @@ pub async fn cgapi_main(cli: CGFetchCli) -> Result<()> {
             let agent_ids = client.fetch_top_agent_ids(&contest).await?;
             let mut futs = Vec::new();
 
-            for (agent_id, pseudo) in agent_ids.into_iter().take(n as usize) {
+            for (agent_id, pseudo) in agent_ids.into_iter().take(n) {
                 let client = client.clone();
                 let out_dir = cli.out.clone();
                 let game_sem = game_sem.clone();
