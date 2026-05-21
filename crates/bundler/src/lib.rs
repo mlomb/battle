@@ -19,13 +19,14 @@ pub use crate::source::{Language, Source};
 pub struct BundlerArgs {
     /// Entry point file (main.cpp, Cargo.toml) or directory containing an entry file.
     /// If not provided, it will find an appropiate entry point in the current folder.
-    pub entry: Option<PathBuf>,
+    #[arg(default_value_os_t = std::env::current_dir().unwrap())]
+    pub entry: PathBuf,
     // TODO: add flags: remove comments, etc
 }
 
 impl BundlerArgs {
     pub fn default_from_entry(entry: PathBuf) -> Self {
-        Self { entry: Some(entry) }
+        Self { entry }
     }
 }
 

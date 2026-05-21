@@ -61,7 +61,7 @@ pub struct Bundle {
 
 /// Bundles a C++/Rust project directory into a single source unit
 pub fn bundle(args: &BundlerArgs) -> Result<Bundle, BundlerError> {
-    let entry = args.entry.clone().unwrap_or_else(|| PathBuf::from("."));
+    let entry = args.entry.clone();
 
     if let Some(entry) = RustBundler::find_entrypoint(entry.as_path()) {
         return RustBundler::bundle(entry.as_path());
