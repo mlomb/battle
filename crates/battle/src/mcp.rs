@@ -58,7 +58,7 @@ impl BattleMcpServer {
     #[tool(name = "build", description = "Bundle and build a bot project")]
     async fn build_bot(&self, Parameters(bundler_mcp): Parameters<BuildMcp>) -> String {
         let result = bundle_and_build(BundlerArgs {
-            entry: Some(bundler_mcp.entry),
+            entry: bundler_mcp.entry,
         });
         match result {
             Ok(exec) => format!("OK: {:?}", exec),

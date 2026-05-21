@@ -12,7 +12,7 @@ pub fn bundle_and_build(bundler_args: BundlerArgs) -> Result<Executable, BuildEr
         "{} {}Bundling project... {}",
         style("[1/2]").bold().dim(),
         BOX,
-        bundler_args.entry.clone().unwrap().to_string_lossy()
+        bundler_args.entry.clone().to_string_lossy()
     );
 
     let bundle = bundle(&bundler_args).expect("correct bundle");
