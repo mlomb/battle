@@ -28,6 +28,14 @@ struct PlayMcp {
     /// Number of games to play
     #[serde(default = "default_play_games")]
     n: usize,
+
+    /// Seed to use. If n > 1, the seed will be incremented each game.
+    #[serde(default = "default_seed")]
+    seed: u64,
+
+    /// Optionally stores each agent's transcript (stdin, stdout, stderr) for analysis
+    #[serde(default = "default_capture_io")]
+    capture_io: bool,
     // About other possible params:
     // "referee": using MCP, this must be passed as an argument to mcp
     // "seed": we could also allow seed here but I prefer to give less params to the LLM
@@ -37,14 +45,12 @@ fn default_play_games() -> usize {
     1000
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-#[allow(dead_code)]
-struct InspectMcp {
-    /// Agent entrypoint paths (main.cpp, Cargo.toml) or directory containing an entry file.
-    agents: Vec<PathBuf>,
+fn default_seed() -> u64 {
+    1
+}
 
-    /// Seed to use
-    seed: u64,
+fn default_capture_io() -> bool {
+    false
 }
 
 struct BattleMcpServer {
@@ -80,10 +86,10 @@ impl BattleMcpServer {
                 .map(|p| Arc::new(Target::from_entrypoint(p.clone()).expect("correct bundle")))
                 .collect(),
             play_mcp.n,
-            1,
+            play_mcp.seed,
             self.network_args.clone(),
             false,
-            false,
+            play_mcp.capture_io,
         )
         .await;
 
@@ -110,6 +116,13 @@ impl BattleMcpServer {
             games: usize,
             agents: Vec<AgentSummary>,
             notable_games: serde_json::Value,
+
+            #[serde(skip_serializing_if = "Option::is_none")]
+            transcripts_dir: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            transcripts_access: Option<&'static str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            all_games: Option<Vec<NotableGame>>,
         }
 
         struct AgentAccum {
@@ -131,6 +144,7 @@ impl BattleMcpServer {
             })
             .collect();
         let mut draw_games: Vec<NotableGame> = vec![];
+        let mut all_games: Vec<NotableGame> = vec![];
 
         for (setup, data) in &results {
             let scores: Vec<i32> = data.agents.iter().map(|a| a.score).collect();
@@ -143,6 +157,22 @@ impl BattleMcpServer {
                     scores: scores.clone(),
                 });
             }
+
+            if play_mcp.capture_io {
+                for (i, a) in data.agents.iter().enumerate() {
+                    let path = self
+                        .temp_dir
+                        .path()
+                        .join(format!("seed{}_agent{}.io", setup.seed, i));
+                    let transcript = a.transcript.clone().unwrap_or_default();
+                    transcript.save(&path).unwrap_or_default();
+                }
+            }
+
+            all_games.push(NotableGame {
+                seed: setup.seed,
+                scores: scores.clone(),
+            });
 
             for (i, &score) in scores.iter().enumerate() {
                 let a = &mut accum[i];
@@ -198,77 +228,25 @@ impl BattleMcpServer {
             })
             .collect();
 
+        let transcripts_dir = play_mcp
+            .capture_io
+            .then(|| self.temp_dir.path().to_string_lossy().into_owned());
+
+        let transcripts_access = play_mcp.capture_io.then_some(
+            "Agent transcripts are at {transcripts_dir}/seed{seed}_agent{agent_index}.io (agent_index is 0-based, same order as the agents argument).",
+        );
+
         let result = PlayResult {
             games,
             agents,
             notable_games,
-        };
-
-        serde_json::to_string(&result).expect("json ok")
-    }
-
-    #[tool(
-        name = "inspect",
-        description = "Runs a single game between agents on a given seed, extracts each agent's transcript (stdin, stdout, stderr) for analysis"
-    )]
-    async fn inspect(&self, Parameters(inspect_mcp): Parameters<InspectMcp>) -> String {
-        let mut results = play::play_games(
-            self.referee.clone(),
-            inspect_mcp
-                .agents
-                .iter()
-                .map(|p| Arc::new(Target::from_entrypoint(p.clone()).expect("correct bundle")))
-                .collect(),
-            1,
-            inspect_mcp.seed,
-            self.network_args.clone(),
-            false,
-            true,
-        )
-        .await;
-
-        let Some((setup, data)) = results.pop() else {
-            return "Error: game did not complete".to_string();
-        };
-
-        #[derive(serde::Serialize)]
-        struct AgentInspect {
-            score: i32,
-            transcript_path: String,
-            transcript_bytes: u64,
-        }
-
-        #[derive(serde::Serialize)]
-        struct InspectResult {
-            seed: u64,
-            agents: Vec<AgentInspect>,
-        }
-
-        let agents = data
-            .agents
-            .into_iter()
-            .enumerate()
-            .map(|(i, a)| {
-                let path = self
-                    .temp_dir
-                    .path()
-                    .join(format!("seed{}_agent{}.io", setup.seed, i));
-
-                let transcript = a.transcript.unwrap_or_default();
-                transcript.save(&path).unwrap_or_default();
-
-                let transcript_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                AgentInspect {
-                    score: a.score,
-                    transcript_path: path.to_string_lossy().into_owned(),
-                    transcript_bytes,
-                }
-            })
-            .collect();
-
-        let result = InspectResult {
-            seed: setup.seed,
-            agents,
+            transcripts_dir,
+            transcripts_access,
+            all_games: if play_mcp.capture_io {
+                Some(all_games)
+            } else {
+                None
+            },
         };
 
         serde_json::to_string(&result).expect("json ok")
