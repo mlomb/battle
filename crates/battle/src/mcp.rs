@@ -22,14 +22,14 @@ struct BuildMcp {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct PlayMcp {
-    /// Agent entrypoint paths (main.cpp, Cargo.toml) or directory containing an entry file.
+    /// Agent entrypoint paths (main.cpp, Cargo.toml) or directory containing an entry file
     agents: Vec<PathBuf>,
 
     /// Number of games to play
     #[serde(default = "default_play_games")]
     n: usize,
 
-    /// Seed to use. If n > 1, the seed will be incremented each game.
+    /// Seed to use. If n > 1, the seed will be incremented each game
     #[serde(default = "default_seed")]
     seed: u64,
 
@@ -67,7 +67,7 @@ impl BattleMcpServer {
             entry: bundler_mcp.entry,
         });
         match result {
-            Ok(exec) => format!("OK: {:?}", exec),
+            Ok(exec) => format!("Ok: {:?}", exec),
             Err(e) => format!("Error: {:?}", e),
         }
     }
