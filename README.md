@@ -1,6 +1,11 @@
 > [!WARNING]
 > This repository and crate are still under development, APIs will change, CLI arguments will change, and there is no timeline on sight. I usually work on it prior / during a contest.
 
+> [!NOTE]
+> At this point, the project is not really open to big contributions. The shape of the repository is still evolving. Please open an issue first to discuss your idea.
+> 
+> Regarding AI use for this repository, please read rust-lang's [LLM policy](https://blog.rust-lang.org/inside-rust/2026/08/05/rust-langrust-is-adopting-an-llm-policy/).
+
 # `battle` bot tools
 
 [![](https://img.shields.io/crates/v/battle)](https://crates.io/crates/battle)
