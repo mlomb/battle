@@ -257,6 +257,9 @@ async fn main() -> ExitCode {
             // reference results by seed
             let mut reference_results: HashMap<u64, GameResultData> = HashMap::new();
 
+            // number of seeds compared so far, we are done once all of them have been compared
+            let mut compared = 0;
+
             loop {
                 tokio::select! {
 
@@ -328,7 +331,9 @@ async fn main() -> ExitCode {
                                         style("MATCH").green().bold(),
                                     );
 
-                                    if pending_ref.is_empty() && pending_cand.is_empty() {
+                                    // other games may still be running even if nothing is pending
+                                    compared += 1;
+                                    if compared == max_games {
                                         break;
                                     }
                                 } else {
