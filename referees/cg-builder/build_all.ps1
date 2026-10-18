@@ -11,5 +11,6 @@ docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInt
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/a-code-of-ice-and-fire
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2020
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/LegendsOfCodeAndMagic
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v1.java https://github.com/Illedan/BOTG-Refree "team-1 project" cg-botters-of-the-galaxy
 
 pause

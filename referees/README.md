@@ -6,6 +6,7 @@ Referees are provided for convenience.
 
 | Platform | Contest | Validated | Reference | Fast |
 |-|-|-|-|-|
+| CodinGame | Botters of the Galaxy | ✅ | `cg-botters-of-the-galaxy-ref` <br/> [cg-botters-of-the-galaxy.jar](cg-jar/cg-botters-of-the-galaxy.jar) | `cg-botters-of-the-galaxy` <br/> [cg-botters-of-the-galaxy.cpp](cg-cpp/cg-botters-of-the-galaxy.cpp) |
 | CodinGame | Spring 2021 - Mad Pod Racing | ❌ | `cg-spring-2021-ref` | |
 | CodinGame | Spring 2022 - Spider Attack | ❌ | `cg-spider-attack-spring-2022-ref` | |
 | CodinGame | Fall Challenge 2022 - Keep Off the Grass | ❌ | `cg-fall-challenge-2022-keep-off-the-grass-ref` | |
