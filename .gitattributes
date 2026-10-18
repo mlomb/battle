@@ -1,0 +1,2 @@
+# Ignore C++ referees (mostly AI-generated)
+crates/battle/assets/cg-cpp/* linguist-generated
