@@ -26,44 +26,18 @@
 #pragma GCC optimize("fp-contract=off")
 #endif
 
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <cmath>
+#include "common/agent.h"
+#include "common/java.h"
+
 #include <cfloat>
-#include <climits>
-#include <string>
-#include <vector>
-#include <deque>
-#include <algorithm>
 #include <charconv>
-#include <chrono>
+#include <deque>
 #include <system_error>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#endif
-
-typedef int32_t i32;
-typedef uint32_t u32;
-typedef int64_t i64;
-typedef uint64_t u64;
-
 // ----------------------------------------------------------------------------
-// Java semantics
+// Java semantics (java.h has the rest)
 // ----------------------------------------------------------------------------
 namespace java {
-
-// (int) cast of a double
-static inline i32 d2i(double d) {
-    if (d != d) return 0;
-    if (d >= 2147483647.0) return INT32_MAX;
-    if (d <= -2147483648.0) return INT32_MIN;
-    return (i32)d;
-}
 
 // Math.min / Math.max for doubles (NaN and -0.0 aware)
 static inline double min(double a, double b) {
@@ -76,17 +50,6 @@ static inline double max(double a, double b) {
     if (a == 0.0 && b == 0.0 && std::signbit(a)) return b;
     return (a >= b) ? a : b;
 }
-
-// java.util.Random
-struct Random {
-    u64 seed = 0;
-    void setSeed(i64 s) { seed = ((u64)s ^ 0x5DEECE66DULL) & ((1ULL << 48) - 1); }
-    i32 next(int bits) {
-        seed = (seed * 0x5DEECE66DULL + 0xBULL) & ((1ULL << 48) - 1);
-        return (i32)(u32)(seed >> (48 - bits));
-    }
-    double nextDouble() { return (double)(((i64)next(26) << 27) + next(27)) * 0x1.0p-53; }
-};
 
 // String.hashCode (ASCII strings only)
 static i32 stringHash(const std::string& s) {
@@ -341,7 +304,6 @@ namespace C {
     // GameManager defaults (engine 1.20)
     const int FIRST_TURN_MAX_TIME = 1000;
     const int TURN_MAX_TIME = 50;
-    const size_t AGENT_MAX_BUFFER_SIZE = 10000;
 
     // item stats, Const.STATS order
     enum Stat { DAMAGE, HEALTH, MAXHEALTH, MANA, MAXMANA, MOVESPEED, MANAREGEN, N_STATS };
@@ -2618,348 +2580,20 @@ static void initialize() {
 }
 
 // ----------------------------------------------------------------------------
-// Child process I/O (Windows)
-// ----------------------------------------------------------------------------
-#ifdef _WIN32
-struct ChildProc {
-    HANDLE hProcess = nullptr;
-    HANDLE hStdinW = nullptr;    // write to child's stdin
-    HANDLE hStdoutR = nullptr;   // read child's stdout (overlapped)
-    HANDLE hReadEvent = nullptr; // manual-reset event for overlapped reads on hStdoutR
-    bool alive = false;
-    std::string readBuf; // bytes read but not consumed yet
-    size_t readPos = 0;
-
-    bool start(const std::string& cmd, HANDLE stderrTarget) {
-        SECURITY_ATTRIBUTES sa{};
-        sa.nLength = sizeof(sa);
-        sa.bInheritHandle = TRUE;
-        sa.lpSecurityDescriptor = nullptr;
-        HANDLE inR = nullptr, inW = nullptr, outR = nullptr, outW = nullptr;
-        // stdin is plain synchronous, we only do blocking writes from the referee.
-        if (!CreatePipe(&inR, &inW, &sa, 0)) return false;
-        // stdout must be overlapped on our (read) side so reads can wait with a precise
-        // millisecond timeout. CreatePipe doesn't support FILE_FLAG_OVERLAPPED, so build the pair
-        // manually with a unique-named pipe.
-        char pipeName[96];
-        static volatile LONG s_pipeCounter = 0;
-        LONG pipeId = InterlockedIncrement(&s_pipeCounter);
-        std::snprintf(pipeName, sizeof(pipeName), "\\\\.\\pipe\\battle_referee_%lu_%ld",
-                      (unsigned long)GetCurrentProcessId(), (long)pipeId);
-        outR = CreateNamedPipeA(pipeName, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED, PIPE_TYPE_BYTE | PIPE_WAIT,
-                                1, 65536, 65536, 0, &sa);
-        if (outR == INVALID_HANDLE_VALUE) {
-            CloseHandle(inR);
-            CloseHandle(inW);
-            return false;
-        }
-        outW = CreateFileA(pipeName, GENERIC_WRITE, 0, &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (outW == INVALID_HANDLE_VALUE) {
-            CloseHandle(inR);
-            CloseHandle(inW);
-            CloseHandle(outR);
-            return false;
-        }
-        SetHandleInformation(inW, HANDLE_FLAG_INHERIT, 0);
-        SetHandleInformation(outR, HANDLE_FLAG_INHERIT, 0);
-        STARTUPINFOA si{};
-        si.cb = sizeof(si);
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = inR;
-        si.hStdOutput = outW;
-        si.hStdError = stderrTarget ? stderrTarget : GetStdHandle(STD_ERROR_HANDLE);
-        PROCESS_INFORMATION pi{};
-        // If the command contains shell metacharacters, run it through cmd /c (with '/'->'\' so cmd
-        // doesn't mistake path separators for option prefixes). Otherwise run it directly via CreateProcess.
-        bool needShell = cmd.find_first_of("&|<>^()") != std::string::npos;
-        std::string full;
-        if (needShell) {
-            std::string c2 = cmd;
-            for (auto& ch : c2)
-                if (ch == '/') ch = '\\';
-            full = "cmd /c \"" + c2 + "\"";
-        } else {
-            full = cmd;
-            for (auto& ch : full)
-                if (ch == '/') ch = '\\';
-        }
-        std::vector<char> cmdline(full.begin(), full.end());
-        cmdline.push_back(0);
-        BOOL ok = CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-        CloseHandle(inR);
-        CloseHandle(outW);
-        if (!ok) {
-            CloseHandle(inW);
-            CloseHandle(outR);
-            return false;
-        }
-        CloseHandle(pi.hThread);
-        hReadEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr);
-        if (!hReadEvent) {
-            CloseHandle(inW);
-            CloseHandle(outR);
-            TerminateProcess(pi.hProcess, 1);
-            CloseHandle(pi.hProcess);
-            return false;
-        }
-        hProcess = pi.hProcess;
-        hStdinW = inW;
-        hStdoutR = outR;
-        alive = true;
-        return true;
-    }
-
-    void writeAll(const std::string& s) {
-        if (!alive) return;
-        size_t off = 0;
-        DWORD wr;
-        while (off < s.size()) {
-            if (!WriteFile(hStdinW, s.data() + off, (DWORD)(s.size() - off), &wr, nullptr) || wr == 0) {
-                alive = false;
-                return;
-            }
-            off += wr;
-        }
-    }
-
-    // Reads more bytes into readBuf. Returns false on timeout, EOF or error.
-    bool fill(std::chrono::steady_clock::time_point deadline) {
-        auto now = std::chrono::steady_clock::now();
-        if (!alive || now >= deadline) return false;
-        DWORD ms = (DWORD)std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-        if (ms < 1) ms = 1;
-        char tmp[4096];
-        // Issue an overlapped read; it either completes synchronously (data already buffered),
-        // returns ERROR_IO_PENDING (we wait on the event), or fails (EOF / broken pipe).
-        OVERLAPPED ov{};
-        ov.hEvent = hReadEvent;
-        ResetEvent(hReadEvent);
-        DWORD rd = 0;
-        BOOL ok = ReadFile(hStdoutR, tmp, (DWORD)sizeof(tmp), &rd, &ov);
-        if (!ok) {
-            DWORD err = GetLastError();
-            if (err != ERROR_IO_PENDING) {
-                alive = false;
-                return false;
-            }
-            DWORD wr = WaitForSingleObject(hReadEvent, ms);
-            if (wr == WAIT_TIMEOUT) {
-                // Bot blew its budget: cancel the pending read, then drain the cancellation result so
-                // the OVERLAPPED is freed. The player is deactivated anyway.
-                CancelIoEx(hStdoutR, &ov);
-                DWORD ignored = 0;
-                GetOverlappedResult(hStdoutR, &ov, &ignored, TRUE);
-                alive = false;
-                return false;
-            }
-            if (wr != WAIT_OBJECT_0 || !GetOverlappedResult(hStdoutR, &ov, &rd, FALSE)) {
-                alive = false;
-                return false;
-            }
-        }
-        if (rd == 0) {
-            alive = false;
-            return false;
-        }
-        readBuf.append(tmp, rd);
-        return true;
-    }
-
-    void kill() {
-        if (hStdinW) CloseHandle(hStdinW);
-        if (hProcess) {
-            TerminateProcess(hProcess, 0);
-            WaitForSingleObject(hProcess, 2000);
-            CloseHandle(hProcess);
-        }
-        if (hStdoutR) CloseHandle(hStdoutR);
-        if (hReadEvent) CloseHandle(hReadEvent);
-        hProcess = nullptr;
-        hStdinW = nullptr;
-        hStdoutR = nullptr;
-        hReadEvent = nullptr;
-        alive = false;
-    }
-#else
-#include <unistd.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <wordexp.h>
-#include <poll.h>
-#include <cerrno>
-
-// ----------------------------------------------------------------------------
-// Child process I/O (POSIX: macOS / Linux)
+// The bots (common/agent.h: Agent#getOutput and AsynchronousWriter are the same in engine 1.20)
 // ----------------------------------------------------------------------------
 struct ChildProc {
-    pid_t pid = -1;
-    int fdStdinW = -1;
-    int fdStdoutR = -1;
-    bool alive = false;
-    std::string readBuf; // bytes read but not consumed yet
-    size_t readPos = 0;
+    cg::Agent agent;
 
-    bool start(const std::string& cmd, const char* stderrPath) {
-        int inPipe[2], outPipe[2];
-        if (pipe(inPipe) != 0) return false;
-        if (pipe(outPipe) != 0) {
-            close(inPipe[0]);
-            close(inPipe[1]);
-            return false;
-        }
-
-        int errFd = open(stderrPath ? stderrPath : "/dev/null", stderrPath ? (O_WRONLY | O_CREAT | O_TRUNC) : O_WRONLY, 0666);
-        if (errFd < 0) {
-            close(inPipe[0]);
-            close(inPipe[1]);
-            close(outPipe[0]);
-            close(outPipe[1]);
-            return false;
-        }
-
-        pid_t c = fork();
-        if (c < 0) {
-            close(errFd);
-            close(inPipe[0]);
-            close(inPipe[1]);
-            close(outPipe[0]);
-            close(outPipe[1]);
-            return false;
-        }
-        if (c == 0) {
-            dup2(inPipe[0], STDIN_FILENO);
-            dup2(outPipe[1], STDOUT_FILENO);
-            dup2(errFd, STDERR_FILENO);
-            close(errFd);
-            close(inPipe[0]);
-            close(inPipe[1]);
-            close(outPipe[0]);
-            close(outPipe[1]);
-
-            bool needShell = cmd.find_first_of("&|<>^()") != std::string::npos;
-            if (needShell) {
-                execl("/bin/sh", "sh", "-c", cmd.c_str(), (char*)nullptr);
-            } else {
-                wordexp_t w{};
-                int we = wordexp(cmd.c_str(), &w, WRDE_NOCMD);
-                if (we != 0 || w.we_wordc == 0) _exit(127);
-                execvp(w.we_wordv[0], w.we_wordv);
-                wordfree(&w);
-                _exit(127);
-            }
-            _exit(127);
-        }
-
-        close(errFd);
-        close(inPipe[0]);
-        close(outPipe[1]);
-        fdStdinW = inPipe[1];
-        fdStdoutR = outPipe[0];
-        pid = c;
-        alive = true;
-        return true;
-    }
-
-    void writeAll(const std::string& s) {
-        if (!alive) return;
-        size_t off = 0;
-        while (off < s.size()) {
-            ssize_t n;
-            do {
-                n = write(fdStdinW, s.data() + off, s.size() - off);
-            } while (n < 0 && errno == EINTR);
-            if (n <= 0) {
-                alive = false;
-                return;
-            }
-            off += (size_t)n;
-        }
-    }
-
-    // Reads more bytes into readBuf. Returns false on timeout, EOF or error.
-    bool fill(std::chrono::steady_clock::time_point deadline) {
-        auto now = std::chrono::steady_clock::now();
-        if (!alive || now >= deadline) return false;
-        int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-        if (ms < 1) ms = 1;
-        struct pollfd pfd;
-        pfd.fd = fdStdoutR;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        int pr;
-        do {
-            pr = poll(&pfd, 1, ms);
-        } while (pr < 0 && errno == EINTR);
-        if (pr <= 0) {
-            alive = false;
-            return false;
-        }
-        char tmp[4096];
-        ssize_t rd;
-        do {
-            rd = read(fdStdoutR, tmp, sizeof(tmp));
-        } while (rd < 0 && errno == EINTR);
-        if (rd <= 0) {
-            alive = false;
-            return false;
-        }
-        readBuf.append(tmp, (size_t)rd);
-        return true;
-    }
-
-    void kill() {
-        if (fdStdinW >= 0) {
-            close(fdStdinW);
-            fdStdinW = -1;
-        }
-        if (fdStdoutR >= 0) {
-            close(fdStdoutR);
-            fdStdoutR = -1;
-        }
-        if (pid > 0) {
-            ::kill(pid, SIGKILL);
-            int st;
-            while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {
-            }
-            pid = -1;
-        }
-        alive = false;
-    }
-#endif
-
-    bool lastCR = false;
-
-    // Agent#getOutput: reads until `nbLine` line terminators ('\n', '\r', "\r\n" counts once) or
-    // AGENT_MAX_BUFFER_SIZE bytes, within `timeoutMs`. Extra bytes are kept for the next turn.
-    // Returns false when the engine would report a timeout (also on EOF and on too long outputs).
-    bool getOutput(int nbLine, int timeoutMs, std::string& out) {
-        out.clear();
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-        int nbOccurences = 0;
-        while (out.size() < C::AGENT_MAX_BUFFER_SIZE && nbOccurences < nbLine) {
-            if (readPos >= readBuf.size()) {
-                readBuf.clear();
-                readPos = 0;
-                if (!fill(deadline)) return false;
-                continue;
-            }
-            char curByte = readBuf[readPos++];
-            if (!(curByte == '\n' && lastCR)) {
-                out += curByte;
-                if (curByte == '\n' || curByte == '\r') ++nbOccurences;
-            }
-            lastCR = curByte == '\r';
-        }
-        return nbOccurences == nbLine;
-    }
+    bool start(const std::string& cmd) { return agent.start(cmd, cg::AgentOptions()); }
+    void kill() { agent.destroy(); }
 
     // AbstractPlayer#execute: sends the input and reads the expected amount of lines.
     // Returns false on timeout, otherwise the lines as received by the referee.
     bool execute(const std::string& input, int nbLines, int timeoutMs, std::vector<std::string>& outputs) {
-        writeAll(input);
+        agent.sendInput(input);
         std::string output;
-        if (!getOutput(nbLines, timeoutMs, output)) return false;
+        if (!agent.getOutput(nbLines, timeoutMs, false, output)) return false;
         for (auto& ch : output)
             if (ch == '\r') ch = '\n';
         outputs = java::split(output, '\n');
@@ -3091,18 +2725,8 @@ static int runGame(const std::string& bot1, const std::string& bot2, i64 seed) {
 
     initialize();
 
-#ifdef _WIN32
-    SECURITY_ATTRIBUTES sa{};
-    sa.nLength = sizeof(sa);
-    sa.bInheritHandle = TRUE;
-    HANDLE devnull = CreateFileA("NUL", GENERIC_WRITE, FILE_SHARE_WRITE | FILE_SHARE_READ, &sa, OPEN_EXISTING, 0, nullptr);
-    if (!procs[0].start(bot1, devnull)) { fprintf(stderr, "failed to start bot1\n"); return 1; }
-    if (!procs[1].start(bot2, devnull)) { fprintf(stderr, "failed to start bot2\n"); return 1; }
-#else
-    signal(SIGPIPE, SIG_IGN);
-    if (!procs[0].start(bot1, nullptr)) { fprintf(stderr, "failed to start bot1\n"); return 1; }
-    if (!procs[1].start(bot2, nullptr)) { fprintf(stderr, "failed to start bot2\n"); return 1; }
-#endif
+    if (!procs[0].start(bot1)) { fprintf(stderr, "failed to start bot1\n"); return 1; }
+    if (!procs[1].start(bot2)) { fprintf(stderr, "failed to start bot2\n"); return 1; }
 
     int rc = 0;
     try {
@@ -3115,9 +2739,6 @@ static int runGame(const std::string& bot1, const std::string& bot2, i64 seed) {
 
     procs[0].kill();
     procs[1].kill();
-#ifdef _WIN32
-    if (devnull != INVALID_HANDLE_VALUE) CloseHandle(devnull);
-#endif
     return rc;
 }
 

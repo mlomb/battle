@@ -7,25 +7,13 @@
 // Prints "<p0score>\n<p1score>\n" to stdout (matches the jar).
 //
 // Build (MSYS2 g++):  g++ -O3 -std=c++17 -march=native -o referee.exe referee.cpp
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <string>
-#include <vector>
-#include <array>
-#include <algorithm>
-#include <cmath>
-#include <climits>
-#include <cstdarg>
-#include <cctype>
-#include <functional>
-#include <chrono>
+#include "common/agent.h"
+#include "common/java.h"
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
+#include <array>
+#include <cctype>
+#include <cstdarg>
+#include <functional>
 
 typedef int32_t i32;
 typedef uint32_t u32;
@@ -34,159 +22,18 @@ typedef uint64_t u64;
 typedef uint8_t u8;
 
 // ----------------------------------------------------------------------------
-// SHA-1 (minimal)
+// Java SecureRandom("SHA1PRNG") (common/java.h), with the names used below
 // ----------------------------------------------------------------------------
-struct SHA1 {
-    static inline u32 rol(u32 v, int b) { return (v << b) | (v >> (32 - b)); }
-    // hash of msg (length n bytes) -> 20-byte digest
-    static void hash(const u8* msg, size_t n, u8 out[20]) {
-        u32 h0 = 0x67452301u, h1 = 0xEFCDAB89u, h2 = 0x98BADCFEu, h3 = 0x10325476u, h4 = 0xC3D2E1F0u;
-        u64 ml = (u64)n * 8;
-        // process in 64-byte blocks; we build a padded buffer
-        size_t total = n + 1;
-        while (total % 64 != 56) total++;
-        total += 8;
-        std::vector<u8> buf(total, 0);
-        memcpy(buf.data(), msg, n);
-        buf[n] = 0x80;
-        for (int i = 0; i < 8; i++) buf[total - 1 - i] = (u8)((ml >> (8 * i)) & 0xff);
-        for (size_t off = 0; off < total; off += 64) {
-            u32 w[80];
-            for (int i = 0; i < 16; i++)
-                w[i] = ((u32)buf[off + i*4] << 24) | ((u32)buf[off + i*4+1] << 16) | ((u32)buf[off + i*4+2] << 8) | (u32)buf[off + i*4+3];
-            for (int i = 16; i < 80; i++) w[i] = rol(w[i-3]^w[i-8]^w[i-14]^w[i-16], 1);
-            u32 a=h0,b=h1,c=h2,d=h3,e=h4;
-            for (int i = 0; i < 80; i++) {
-                u32 f, k;
-                if (i < 20) { f = (b & c) | ((~b) & d); k = 0x5A827999u; }
-                else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1u; }
-                else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDCu; }
-                else { f = b ^ c ^ d; k = 0xCA62C1D6u; }
-                u32 t = rol(a,5) + f + e + k + w[i];
-                e = d; d = c; c = rol(b,30); b = a; a = t;
-            }
-            h0 += a; h1 += b; h2 += c; h3 += d; h4 += e;
-        }
-        u32 hh[5] = {h0,h1,h2,h3,h4};
-        for (int i = 0; i < 5; i++) {
-            out[i*4]   = (u8)(hh[i] >> 24);
-            out[i*4+1] = (u8)(hh[i] >> 16);
-            out[i*4+2] = (u8)(hh[i] >> 8);
-            out[i*4+3] = (u8)(hh[i]);
-        }
-    }
-};
-
-// ----------------------------------------------------------------------------
-// Java SecureRandom("SHA1PRNG") replica
-// ----------------------------------------------------------------------------
-struct SHA1PRNG {
-    static const int DIGEST = 20;
-    u8 state[20];
-    bool haveState = false;
-    u8 remainder[20] = {0};
-    int remCount = 0;
-    std::vector<u8> mdData; // pending digest update bytes
-
-    void mdUpdate(const u8* b, size_t n) { mdData.insert(mdData.end(), b, b + n); }
-    void mdDigest(const u8* extra, size_t extraN, u8 out[20]) {
-        if (extraN) mdData.insert(mdData.end(), extra, extra + extraN);
-        SHA1::hash(mdData.data(), mdData.size(), out);
-        mdData.clear();
-    }
-
+struct SHA1PRNG : java::SHA1PRNG {
+    // unlike SecureRandom.setSeed(long), 0 is not ignored here: -seed 0 plays a fixed game
     void setSeedLong(i64 seed) {
         u8 b[8];
-        for (int i = 0; i < 8; i++) b[i] = (u8)(((u64)seed >> (8*i)) & 0xff);
+        for (int i = 0; i < 8; i++) b[i] = (u8)(((u64)seed >> (8 * i)) & 0xff);
         engineSetSeed(b, 8);
     }
-    void engineSetSeed(const u8* seed, size_t n) {
-        if (haveState) mdUpdate(state, 20);
-        u8 out[20];
-        mdDigest(seed, n, out);
-        memcpy(state, out, 20);
-        haveState = true;
-        remCount = 0;
-    }
-    static void updateState(u8* state, const u8* output) {
-        int last = 1;
-        bool zf = false;
-        for (int i = 0; i < 20; i++) {
-            int si = (int8_t)state[i];
-            int oi = (int8_t)output[i];
-            int v = si + oi + last;
-            u8 t = (u8)v;
-            if (state[i] != t) zf = true;
-            state[i] = t;
-            last = v >> 8; // arithmetic
-        }
-        if (!zf) state[0] = (u8)(state[0] + 1);
-    }
-    void engineNextBytes(u8* result, int n) {
-        int index = 0;
-        if (remCount > 0) {
-            int todo = n - index; if (todo > DIGEST - remCount) todo = DIGEST - remCount;
-            for (int i = 0; i < todo; i++) {
-                result[i] = remainder[remCount];
-                remainder[remCount] = 0;
-                remCount++;
-            }
-            index += todo;
-        }
-        u8 output[20];
-        bool gotOutput = false;
-        while (index < n) {
-            mdUpdate(state, 20);
-            mdDigest(nullptr, 0, output);
-            gotOutput = true;
-            updateState(state, output);
-            int todo = n - index; if (todo > DIGEST) todo = DIGEST;
-            for (int i = 0; i < todo; i++) result[index++] = output[i];
-            remCount += todo;
-        }
-        if (gotOutput) memcpy(remainder, output, 20);
-        // else: remainder unchanged (matches python: output stays = old remainder; remainder = output)
-        else memcpy(remainder, remainder, 20); // no-op; python sets self.remainder = output where output==remainder
-        remCount %= DIGEST;
-    }
-    u32 next(int numBits) {
-        int numBytes = (numBits + 7) / 8;
-        u8 b[4];
-        engineNextBytes(b, numBytes);
-        u32 nxt = 0;
-        for (int i = 0; i < numBytes; i++) nxt = (nxt << 8) + b[i];
-        return nxt >> (numBytes * 8 - numBits);
-    }
-    i32 nextInt() { return (i32)next(32); }
-    i32 nextIntBound(i32 bound) {
-        i32 r = (i32)next(31);
-        i32 m = bound - 1;
-        if ((bound & m) == 0) return (i32)(((i64)bound * (i64)r) >> 31);
-        for (i32 u = r; (i32)(u - (r = u % bound) + m) < 0; ) u = (i32)next(31);
-        return r;
-    }
-    i32 nextIntOriginBound(i32 origin, i32 bound) {
-        i32 r = nextInt();
-        if (origin < bound) {
-            i32 n = bound - origin;
-            i32 m = n - 1;
-            if ((n & m) == 0) {
-                r = (r & m) + origin;
-            } else if (n > 0) {
-                for (u32 u = ((u32)r) >> 1; (i32)(u + (u32)m - (u32)(r = (i32)(u % (u32)n))) < 0; )
-                    u = ((u32)nextInt()) >> 1;
-                r += origin;
-            } else {
-                while (r < origin || r >= bound) r = nextInt();
-            }
-        }
-        return r;
-    }
-    double nextDouble() {
-        i64 hi = (i64)next(26);
-        i64 lo = (i64)next(27);
-        return (double)((hi << 27) + lo) * 0x1.0p-53;
-    }
+    void engineNextBytes(u8* result, int n) { nextBytes(result, n); }
+    i32 nextIntBound(i32 bound) { return nextInt(bound); }
+    i32 nextIntOriginBound(i32 origin, i32 bound) { return nextInt(origin, bound); }
 };
 
 // ----------------------------------------------------------------------------
@@ -668,252 +515,32 @@ static void createMap(Board& b, SHA1PRNG& rng, BirdView& bird) {
 }
 
 // ----------------------------------------------------------------------------
-// Child process I/O (Windows)
+// The bots (common/agent.h), read line by line
 // ----------------------------------------------------------------------------
-#ifdef _WIN32
 struct ChildProc {
-    HANDLE hProcess = nullptr;
-    HANDLE hStdinW = nullptr;   // write to child's stdin
-    HANDLE hStdoutR = nullptr;  // read child's stdout (overlapped)
-    HANDLE hStderrW = nullptr;  // child's stderr (we keep a file or our stderr)
-    HANDLE hReadEvent = nullptr; // manual-reset event for overlapped reads on hStdoutR
+    cg::Agent agent;
     bool alive = false;
-    std::string readBuf; // leftover
+    std::string readBuf; // bytes read but not consumed yet
 
-    bool start(const std::string& cmd, HANDLE stderrTarget) {
-        SECURITY_ATTRIBUTES sa{}; sa.nLength=sizeof(sa); sa.bInheritHandle=TRUE; sa.lpSecurityDescriptor=nullptr;
-        HANDLE inR=nullptr, inW=nullptr, outR=nullptr, outW=nullptr;
-        // stdin is plain synchronous — we only do blocking writes from the referee.
-        if (!CreatePipe(&inR, &inW, &sa, 0)) return false;
-        // stdout must be overlapped on our (read) side so readLine() can wait with a precise
-        // millisecond timeout via WaitForSingleObject and wake immediately when bytes arrive.
-        // CreatePipe doesn't support FILE_FLAG_OVERLAPPED, so build the pair manually with a
-        // unique-named pipe (name only needs to be unique per pipe, never advertised externally).
-        char pipeName[96];
-        static volatile LONG s_pipeCounter = 0;
-        LONG pipeId = InterlockedIncrement(&s_pipeCounter);
-        std::snprintf(pipeName, sizeof(pipeName),
-                      "\\\\.\\pipe\\battle_referee_%lu_%ld",
-                      (unsigned long)GetCurrentProcessId(), (long)pipeId);
-        outR = CreateNamedPipeA(pipeName,
-                                PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
-                                PIPE_TYPE_BYTE | PIPE_WAIT,
-                                1, 65536, 65536, 0, &sa);
-        if (outR == INVALID_HANDLE_VALUE) {
-            CloseHandle(inR); CloseHandle(inW);
-            return false;
+    // stderrPath: a file for the bot's stderr (nullptr: discarded)
+    bool start(const std::string& cmd, const char* stderrPath) {
+        cg::AgentOptions options;
+        if (stderrPath) {
+            options.stderrMode = cg::Stderr::File;
+            options.stderrFile = stderrPath;
         }
-        outW = CreateFileA(pipeName, GENERIC_WRITE, 0, &sa, OPEN_EXISTING,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (outW == INVALID_HANDLE_VALUE) {
-            CloseHandle(inR); CloseHandle(inW); CloseHandle(outR);
-            return false;
-        }
-        SetHandleInformation(inW, HANDLE_FLAG_INHERIT, 0);
-        SetHandleInformation(outR, HANDLE_FLAG_INHERIT, 0);
-        STARTUPINFOA si{}; si.cb=sizeof(si); si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = inR;
-        si.hStdOutput = outW;
-        si.hStdError = stderrTarget ? stderrTarget : GetStdHandle(STD_ERROR_HANDLE);
-        PROCESS_INFORMATION pi{};
-        // If the command contains shell metacharacters, run it through cmd /c (with '/'->'\' so cmd
-        // doesn't mistake path separators for option prefixes). Otherwise run it directly via CreateProcess.
-        bool needShell = cmd.find_first_of("&|<>^()") != std::string::npos;
-        std::string full;
-        if (needShell) {
-            std::string c2 = cmd;
-            for (auto& ch : c2) if (ch=='/') ch='\\';
-            full = "cmd /c \"" + c2 + "\"";
-        } else {
-            full = cmd;
-            for (auto& ch : full) if (ch=='/') ch='\\';
-        }
-        std::vector<char> cmdline(full.begin(), full.end()); cmdline.push_back(0);
-        BOOL ok = CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, TRUE,
-                                 CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-        CloseHandle(inR); CloseHandle(outW);
-        if (!ok) { CloseHandle(inW); CloseHandle(outR); return false; }
-        CloseHandle(pi.hThread);
-        // Manual-reset event for overlapped reads. Manual-reset matches GetOverlappedResult's
-        // expectations and lets us reuse the OVERLAPPED across reads.
-        hReadEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr);
-        if (!hReadEvent) { CloseHandle(inW); CloseHandle(outR); TerminateProcess(pi.hProcess, 1); CloseHandle(pi.hProcess); return false; }
-        hProcess = pi.hProcess; hStdinW = inW; hStdoutR = outR; alive=true;
-        return true;
+        alive = agent.start(cmd, options);
+        return alive;
     }
     void writeAll(const std::string& s) {
-        if (!alive) return;
-        size_t off=0; DWORD wr;
-        while (off < s.size()) {
-            if (!WriteFile(hStdinW, s.data()+off, (DWORD)(s.size()-off), &wr, nullptr) || wr==0) { alive=false; return; }
-            off += wr;
-        }
+        if (alive) agent.sendInput(s);
     }
     // read one line (without trailing \n or \r). Returns false on EOF/error/timeout with no line.
     // On timeout, sets timedOut=true and alive=false (incomplete line does not count).
     bool readLine(std::string& line, int timeoutMs, bool& timedOut) {
-        using clock = std::chrono::steady_clock;
         timedOut = false;
         line.clear();
-        auto deadline = clock::now() + std::chrono::milliseconds(timeoutMs);
-        char tmp[4096];
-        while (true) {
-            size_t nl = readBuf.find('\n');
-            if (nl != std::string::npos) {
-                line = readBuf.substr(0, nl);
-                readBuf.erase(0, nl+1);
-                if (!line.empty() && line.back()=='\r') line.pop_back();
-                return true;
-            }
-            auto now = clock::now();
-            if (now >= deadline) {
-                timedOut = true;
-                alive = false;
-                return false;
-            }
-            DWORD ms = (DWORD)std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-            if (ms < 1) ms = 1;
-            // Issue an overlapped read; it either completes synchronously (data already buffered),
-            // returns ERROR_IO_PENDING (we wait on the event), or fails (EOF / broken pipe).
-            OVERLAPPED ov{}; ov.hEvent = hReadEvent;
-            ResetEvent(hReadEvent);
-            DWORD rd = 0;
-            BOOL ok = ReadFile(hStdoutR, tmp, (DWORD)sizeof(tmp), &rd, &ov);
-            if (!ok) {
-                DWORD err = GetLastError();
-                if (err != ERROR_IO_PENDING) {
-                    alive=false;
-                    if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
-                    return false;
-                }
-                DWORD wr = WaitForSingleObject(hReadEvent, ms);
-                if (wr == WAIT_TIMEOUT) {
-                    // Bot blew its budget: cancel the pending read so it doesn't smear into a
-                    // future turn, then drain the cancellation result so the OVERLAPPED is freed.
-                    CancelIoEx(hStdoutR, &ov);
-                    DWORD ignored = 0;
-                    GetOverlappedResult(hStdoutR, &ov, &ignored, TRUE);
-                    timedOut = true;
-                    alive = false;
-                    return false;
-                }
-                if (wr != WAIT_OBJECT_0) {
-                    alive = false;
-                    if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
-                    return false;
-                }
-                if (!GetOverlappedResult(hStdoutR, &ov, &rd, FALSE)) {
-                    alive=false;
-                    if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
-                    return false;
-                }
-            }
-            if (rd == 0) {
-                alive=false;
-                if (!readBuf.empty()) { line = readBuf; readBuf.clear(); if(!line.empty()&&line.back()=='\r') line.pop_back(); return true; }
-                return false;
-            }
-            readBuf.append(tmp, rd);
-        }
-    }
-    void kill() {
-        if (hStdinW) CloseHandle(hStdinW);
-        if (hProcess) { TerminateProcess(hProcess, 0); WaitForSingleObject(hProcess, 2000); CloseHandle(hProcess); }
-        if (hStdoutR) CloseHandle(hStdoutR);
-        if (hReadEvent) CloseHandle(hReadEvent);
-        hProcess=nullptr; hStdinW=nullptr; hStdoutR=nullptr; hReadEvent=nullptr; alive=false;
-    }
-};
-#else
-#include <unistd.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <wordexp.h>
-#include <poll.h>
-#include <cerrno>
-
-// Child process I/O (POSIX — macOS / Linux)
-struct ChildProc {
-    pid_t pid = -1;
-    int fdStdinW = -1;
-    int fdStdoutR = -1;
-    bool alive = false;
-    std::string readBuf;
-
-    bool start(const std::string& cmd, const char* stderrPath) {
-        int inPipe[2], outPipe[2];
-        if (pipe(inPipe) != 0) return false;
-        if (pipe(outPipe) != 0) { close(inPipe[0]); close(inPipe[1]); return false; }
-
-        int errFd;
-        if (stderrPath) {
-            errFd = open(stderrPath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (errFd < 0) {
-                close(inPipe[0]); close(inPipe[1]); close(outPipe[0]); close(outPipe[1]);
-                return false;
-            }
-        } else {
-            errFd = open("/dev/null", O_WRONLY);
-            if (errFd < 0) {
-                close(inPipe[0]); close(inPipe[1]); close(outPipe[0]); close(outPipe[1]);
-                return false;
-            }
-        }
-
-        pid_t c = fork();
-        if (c < 0) {
-            close(errFd);
-            close(inPipe[0]); close(inPipe[1]); close(outPipe[0]); close(outPipe[1]);
-            return false;
-        }
-        if (c == 0) {
-            dup2(inPipe[0], STDIN_FILENO);
-            dup2(outPipe[1], STDOUT_FILENO);
-            dup2(errFd, STDERR_FILENO);
-            close(errFd);
-            close(inPipe[0]); close(inPipe[1]); close(outPipe[0]); close(outPipe[1]);
-
-            bool needShell = cmd.find_first_of("&|<>^()") != std::string::npos;
-            if (needShell) {
-                execl("/bin/sh", "sh", "-c", cmd.c_str(), (char*)nullptr);
-            } else {
-                wordexp_t w{};
-                int we = wordexp(cmd.c_str(), &w, WRDE_NOCMD);
-                if (we != 0 || w.we_wordc == 0) _exit(127);
-                execvp(w.we_wordv[0], w.we_wordv);
-                wordfree(&w);
-                _exit(127);
-            }
-            _exit(127);
-        }
-
-        close(errFd);
-        close(inPipe[0]);
-        close(outPipe[1]);
-        fdStdinW = inPipe[1];
-        fdStdoutR = outPipe[0];
-        pid = c;
-        alive = true;
-        return true;
-    }
-    void writeAll(const std::string& s) {
-        if (!alive) return;
-        size_t off = 0;
-        while (off < s.size()) {
-            ssize_t n;
-            do {
-                n = write(fdStdinW, s.data() + off, s.size() - off);
-            } while (n < 0 && errno == EINTR);
-            if (n <= 0) { alive = false; return; }
-            off += (size_t)n;
-        }
-    }
-    bool readLine(std::string& line, int timeoutMs, bool& timedOut) {
-        using clock = std::chrono::steady_clock;
-        timedOut = false;
-        line.clear();
-        auto deadline = clock::now() + std::chrono::milliseconds(timeoutMs);
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
         while (true) {
             size_t nl = readBuf.find('\n');
             if (nl != std::string::npos) {
@@ -922,28 +549,18 @@ struct ChildProc {
                 if (!line.empty() && line.back() == '\r') line.pop_back();
                 return true;
             }
-            auto now = clock::now();
-            if (now >= deadline) {
+            if (std::chrono::steady_clock::now() >= deadline) {
                 timedOut = true;
                 alive = false;
                 return false;
             }
-            int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-            if (ms < 1) ms = 1;
-            struct pollfd pfd;
-            pfd.fd = fdStdoutR;
-            pfd.events = POLLIN;
-            pfd.revents = 0;
-            int pr;
-            do {
-                pr = poll(&pfd, 1, ms);
-            } while (pr < 0 && errno == EINTR);
-            if (pr == 0) {
-                timedOut = true;
-                alive = false;
-                return false;
-            }
-            if (pr < 0) {
+            if (!agent.read(readBuf, deadline)) {
+                if (!agent.closed()) {
+                    // the bot blew its budget
+                    timedOut = true;
+                    alive = false;
+                    return false;
+                }
                 alive = false;
                 if (!readBuf.empty()) {
                     line = readBuf;
@@ -953,51 +570,13 @@ struct ChildProc {
                 }
                 return false;
             }
-            if (pfd.revents & (POLLERR | POLLNVAL)) {
-                alive = false;
-                return false;
-            }
-            char tmp[4096];
-            ssize_t rd;
-            do {
-                rd = read(fdStdoutR, tmp, sizeof(tmp));
-            } while (rd < 0 && errno == EINTR);
-            if (rd < 0) {
-                alive = false;
-                if (!readBuf.empty()) {
-                    line = readBuf;
-                    readBuf.clear();
-                    if (!line.empty() && line.back() == '\r') line.pop_back();
-                    return true;
-                }
-                return false;
-            }
-            if (rd == 0) {
-                alive = false;
-                if (!readBuf.empty()) {
-                    line = readBuf;
-                    readBuf.clear();
-                    if (!line.empty() && line.back() == '\r') line.pop_back();
-                    return true;
-                }
-                return false;
-            }
-            readBuf.append(tmp, (size_t)rd);
         }
     }
     void kill() {
-        if (fdStdinW >= 0) { close(fdStdinW); fdStdinW = -1; }
-        if (fdStdoutR >= 0) { close(fdStdoutR); fdStdoutR = -1; }
-        if (pid > 0) {
-            ::kill(pid, SIGKILL);
-            int st;
-            while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {}
-            pid = -1;
-        }
+        agent.destroy();
         alive = false;
     }
 };
-#endif
 
 // ----------------------------------------------------------------------------
 // Input building
@@ -1681,23 +1260,8 @@ int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* tr
     createMap(g.board, rng, g.bird);
 
     ChildProc proc[2];
-#ifdef _WIN32
-    auto mkErr = [&](const char* path)->HANDLE{
-        SECURITY_ATTRIBUTES sa{}; sa.nLength=sizeof(sa); sa.bInheritHandle=TRUE;
-        if (path) {
-            HANDLE h = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-            return h;
-        }
-        HANDLE devnull = CreateFileA("NUL", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ, &sa, OPEN_EXISTING, 0, nullptr);
-        return devnull;
-    };
-    HANDLE e0 = mkErr(err1Path), e1 = mkErr(err2Path);
-    if (!proc[0].start(bot1, e0)) { fprintf(stderr,"failed to start bot1\n"); return 1; }
-    if (!proc[1].start(bot2, e1)) { fprintf(stderr,"failed to start bot2\n"); return 1; }
-#else
     if (!proc[0].start(bot1, err1Path)) { fprintf(stderr,"failed to start bot1\n"); return 1; }
     if (!proc[1].start(bot2, err2Path)) { fprintf(stderr,"failed to start bot2\n"); return 1; }
-#endif
 
     std::string out[2], inbuf;
     inbuf.reserve(8192);
@@ -1743,10 +1307,6 @@ int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* tr
     }
 
     proc[0].kill(); proc[1].kill();
-#ifdef _WIN32
-    if (e0) CloseHandle(e0);
-    if (e1) CloseHandle(e1);
-#endif
     s0 = g.board.score[0]; s1 = g.board.score[1];
     return 0;
 }

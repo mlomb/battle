@@ -26,6 +26,9 @@
 //     protocol. This is emulated with a line queue between "runner" and "GameManager" (refIn): the
 //     referee then misreads the following lines (forged headers included) and usually dies with
 //     "Error in data sent to referee"; the jar then prints "null" as every score and exits 0.
+//   - the game summary and the tooltips: a bad command is repeated in the deactivation tooltip, so
+//     ~10 KB of invalid UTF-8 (U+FFFD, 3 bytes each) overflows the runner's 30000-byte buffer and
+//     the game fails ("null" scores)
 //   - a controlled hero's command line is not parsed at all; a bad command deactivates the player
 //     but the intents of its previous heroes are still played that turn; mana is spent by a
 //     SHIELD/CONTROL on an already shielded target
@@ -49,61 +52,16 @@
 // (SPIDER_HINTS=<file>) to follow the jar's identity hash order in doPush, and SPIDER_FORCE can
 // force an order. The default build has none of this.
 
-// Java never fuses a*b+c, so we must not either (zig c++ -march=native would emit FMAs)
-#pragma STDC FP_CONTRACT OFF
-#if defined(__clang__)
-#pragma clang fp contract(off)
-#elif defined(__GNUC__)
-#pragma GCC optimize("fp-contract=off")
-#endif
+#include "common/engine.h"
 
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <cmath>
-#include <climits>
-#include <string>
-#include <vector>
 #include <deque>
-#include <algorithm>
-#include <chrono>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#endif
-
-typedef int32_t i32;
-typedef uint32_t u32;
-typedef int64_t i64;
-typedef uint64_t u64;
 typedef std::u16string jstring; // a java.lang.String (UTF-16 code units)
 
 // ----------------------------------------------------------------------------
-// Java semantics
+// Java semantics (java.h has the rest)
 // ----------------------------------------------------------------------------
 namespace java {
-
-// (int) cast of a double
-static inline i32 d2i(double d) {
-    if (d != d) return 0;
-    if (d >= 2147483647.0) return INT32_MAX;
-    if (d <= -2147483648.0) return INT32_MIN;
-    return (i32)d;
-}
-
-// (long) cast of a double
-static inline i64 d2l(double d) {
-    if (d != d) return 0;
-    if (d >= 9223372036854775807.0) return INT64_MAX;
-    if (d <= -9223372036854775808.0) return INT64_MIN;
-    return (i64)d;
-}
 
 // Math.min / Math.max for doubles (NaN and -0.0 aware)
 static inline double min(double a, double b) {
@@ -117,148 +75,6 @@ static inline double max(double a, double b) {
     return (a >= b) ? a : b;
 }
 
-// Math.round(double)
-static i64 round(double a) {
-    u64 bits;
-    memcpy(&bits, &a, 8);
-    i64 longBits = (i64)bits;
-    i64 biasedExp = (longBits & 0x7FF0000000000000LL) >> 52;
-    i64 shift = (53 - 2 + 1023) - biasedExp;
-    if ((shift & -64) == 0) {
-        i64 r = ((longBits & 0x000FFFFFFFFFFFFFLL) | (0x000FFFFFFFFFFFFFLL + 1));
-        if (longBits < 0) r = -r;
-        return ((r >> shift) + 1) >> 1;
-    }
-    return d2l(a);
-}
-
-// java.util.Random
-struct Random {
-    u64 seed = 0;
-    void setSeed(i64 s) { seed = ((u64)s ^ 0x5DEECE66DULL) & ((1ULL << 48) - 1); }
-    i32 next(int bits) {
-        seed = (seed * 0x5DEECE66DULL + 0xBULL) & ((1ULL << 48) - 1);
-        return (i32)(u32)(seed >> (48 - bits));
-    }
-    double nextDouble() { return (double)(((i64)next(26) << 27) + next(27)) * 0x1.0p-53; }
-    bool nextBoolean() { return next(1) != 0; }
-    i32 nextInt(i32 bound) {
-        i32 r = next(31);
-        i32 m = bound - 1;
-        if ((bound & m) == 0) {
-            r = (i32)(((i64)bound * (i64)r) >> 31);
-        } else {
-            for (i32 u = r; (i32)((u32)u - (u32)(r = u % bound) + (u32)m) < 0; u = next(31)) {
-            }
-        }
-        return r;
-    }
-};
-
-// new String(bytes, UTF_8): malformed input is replaced by U+FFFD exactly like
-// java.lang.String.decodeUTF8_UTF16 does
-static jstring decodeUtf8(const std::string& bytes) {
-    const int REPL = 0xFFFD;
-    jstring dst;
-    const unsigned char* src = (const unsigned char*)bytes.data();
-    int sp = 0, sl = (int)bytes.size();
-    auto sb = [&](int i) -> int { return (int)(signed char)src[i]; }; // Java byte value
-    auto isNotContinuation = [](int b) { return (b & 0xc0) != 0x80; };
-    auto isMalformed3 = [](int b1, int b2, int b3) {
-        return (b1 == (signed char)0xe0 && (b2 & 0xe0) == 0x80) || (b2 & 0xc0) != 0x80 || (b3 & 0xc0) != 0x80;
-    };
-    auto isMalformed3_2 = [](int b1, int b2) { return (b1 == (signed char)0xe0 && (b2 & 0xe0) == 0x80) || (b2 & 0xc0) != 0x80; };
-    auto isMalformed4 = [](int b2, int b3, int b4) { return (b2 & 0xc0) != 0x80 || (b3 & 0xc0) != 0x80 || (b4 & 0xc0) != 0x80; };
-    auto isMalformed4_2 = [](int b1, int b2) {
-        return (b1 == 0xf0 && (b2 < 0x90 || b2 > 0xbf)) || (b1 == 0xf4 && (b2 & 0xf0) != 0x80) || (b2 & 0xc0) != 0x80;
-    };
-    auto isMalformed4_3 = [](int b3) { return (b3 & 0xc0) != 0x80; };
-    auto malformed3 = [&](int p) {
-        int b1 = sb(p++);
-        int b2 = sb(p);
-        return ((b1 == (signed char)0xe0 && (b2 & 0xe0) == 0x80) || isNotContinuation(b2)) ? 1 : 2;
-    };
-    auto malformed4 = [&](int p) {
-        int b1 = sb(p++) & 0xff;
-        int b2 = sb(p++) & 0xff;
-        if (b1 > 0xf4 || (b1 == 0xf0 && (b2 < 0x90 || b2 > 0xbf)) || (b1 == 0xf4 && (b2 & 0xf0) != 0x80) || isNotContinuation(b2))
-            return 1;
-        if (isNotContinuation(sb(p))) return 2;
-        return 3;
-    };
-    while (sp < sl) {
-        int b1 = sb(sp++);
-        if (b1 >= 0) {
-            dst += (char16_t)b1;
-        } else if ((b1 >> 5) == -2 && (b1 & 0x1e) != 0) {
-            if (sp < sl) {
-                int b2 = sb(sp++);
-                if (isNotContinuation(b2)) {
-                    dst += (char16_t)REPL;
-                    sp--;
-                } else {
-                    dst += (char16_t)(((b1 << 6) ^ b2) ^ (((signed char)0xC0 << 6) ^ ((signed char)0x80 << 0)));
-                }
-                continue;
-            }
-            dst += (char16_t)REPL;
-            break;
-        } else if ((b1 >> 4) == -2) {
-            if (sp + 1 < sl) {
-                int b2 = sb(sp++);
-                int b3 = sb(sp++);
-                if (isMalformed3(b1, b2, b3)) {
-                    dst += (char16_t)REPL;
-                    sp -= 3;
-                    sp += malformed3(sp);
-                } else {
-                    char16_t c = (char16_t)((b1 << 12) ^ (b2 << 6) ^
-                                            (b3 ^ (((signed char)0xE0 << 12) ^ ((signed char)0x80 << 6) ^ ((signed char)0x80 << 0))));
-                    if (c >= 0xD800 && c <= 0xDFFF) dst += (char16_t)REPL;
-                    else dst += c;
-                }
-                continue;
-            }
-            if (sp < sl && isMalformed3_2(b1, sb(sp))) {
-                dst += (char16_t)REPL;
-                continue;
-            }
-            dst += (char16_t)REPL;
-            break;
-        } else if ((b1 >> 3) == -2) {
-            if (sp + 2 < sl) {
-                int b2 = sb(sp++);
-                int b3 = sb(sp++);
-                int b4 = sb(sp++);
-                int uc = ((b1 << 18) ^ (b2 << 12) ^ (b3 << 6) ^
-                          (b4 ^ (((signed char)0xF0 << 18) ^ ((signed char)0x80 << 12) ^ ((signed char)0x80 << 6) ^ ((signed char)0x80 << 0))));
-                if (isMalformed4(b2, b3, b4) || !(uc >= 0x10000 && uc < 0x110000)) {
-                    dst += (char16_t)REPL;
-                    sp -= 4;
-                    sp += malformed4(sp);
-                } else {
-                    dst += (char16_t)((uc >> 10) + (0xD800 - (0x10000 >> 10)));
-                    dst += (char16_t)((uc & 0x3ff) + 0xDC00);
-                }
-                continue;
-            }
-            b1 &= 0xff;
-            if (b1 > 0xf4 || (sp < sl && isMalformed4_2(b1, sb(sp) & 0xff))) {
-                dst += (char16_t)REPL;
-                continue;
-            }
-            sp++;
-            dst += (char16_t)REPL;
-            if (sp < sl && isMalformed4_3(sb(sp))) continue;
-            break;
-        } else {
-            dst += (char16_t)REPL;
-        }
-    }
-    return dst;
-}
-
-// \s of java.util.regex (no UNICODE_CHARACTER_CLASS): [ \t\n\x0B\f\r]
 static inline bool isSpace(char16_t c) { return c == ' ' || c == '\t' || c == '\n' || c == 0x0B || c == '\f' || c == '\r'; }
 static inline bool isDigit(char16_t c) { return c >= '0' && c <= '9'; }
 
@@ -274,28 +90,6 @@ static bool parseInt(const jstring& s, size_t a, size_t b, i32& out) {
     }
     if (!neg && v > 2147483647LL) return false;
     out = (i32)(neg ? -v : v);
-    return true;
-}
-
-// Long.parseLong (ASCII digits only)
-static bool parseLong(const char* s, i64& out) {
-    size_t n = strlen(s), i = 0;
-    if (n == 0) return false;
-    bool neg = false;
-    if (s[0] == '-' || s[0] == '+') {
-        neg = s[0] == '-';
-        i = 1;
-        if (n == 1) return false;
-    }
-    u64 limit = neg ? (u64)1 << 63 : ((u64)1 << 63) - 1;
-    u64 v = 0;
-    for (; i < n; i++) {
-        if (s[i] < '0' || s[i] > '9') return false;
-        u64 d = (u64)(s[i] - '0');
-        if (v > (limit - d) / 10) return false;
-        v = v * 10 + d;
-    }
-    out = neg ? (i64)(0 - v) : (i64)v;
     return true;
 }
 
@@ -340,7 +134,6 @@ static std::vector<int> hashMapOrder(const std::vector<i32>& keys) {
 }
 
 } // namespace java
-
 // ----------------------------------------------------------------------------
 // Configuration.java (defaults: the CLI passes no game parameter but the seed)
 // ----------------------------------------------------------------------------
@@ -377,11 +170,9 @@ const bool ENABLE_CONTROL = true;
 const bool ENABLE_SHIELD = true;
 const bool ENABLE_TIE_BREAK = true;
 
-// Referee.init / engine
+// Referee.init
 const int MAX_TURNS = 220;
 const int TURN_MAX_TIME = 50;
-const int FIRST_TURN_MAX_TIME = 1000;
-const int AGENT_MAX_BUFFER_SIZE = 10000;
 } // namespace C
 
 // ----------------------------------------------------------------------------
@@ -517,24 +308,15 @@ struct Entity {
     }
 };
 
-struct Player {
-    int index = 0;
+struct Player : cg::Player {
     std::vector<Entity*> heroes;
     int mana = C::STARTING_MANA;
     bool manaChanged = true;
     bool baseHealthChanged = true;
     int baseHealth = C::STARTING_BASE_HEALTH;
     int manaGainedOutsideOfBase = 0;
-    // AbstractPlayer / AbstractMultiplayerPlayer
-    bool active = true;
-    int score = 0;
-    bool timeout = false;
-    bool hasBeenExecuted = false;
-    bool hasNeverBeenExecuted = true;
-    std::vector<std::string> inputs;
-    std::vector<jstring> outputs;
 
-    int getExpectedOutputLines() const { return (int)heroes.size(); }
+    int getExpectedOutputLines() const override { return (int)heroes.size(); }
     void gainMana(const int amount[2]) {
         mana += amount[0];
         manaGainedOutsideOfBase += amount[1];
@@ -557,395 +339,9 @@ struct Player {
         manaChanged = false;
         baseHealthChanged = false;
     }
-    void deactivate() { active = false; }
 };
 
-// thrown when the Java referee (GameManager thread) dies: the runner then reports no scores
-struct RefereeCrash {
-    std::string what;
-};
-
-// ----------------------------------------------------------------------------
-// Child process I/O (Windows)
-// ----------------------------------------------------------------------------
-#ifdef _WIN32
-struct ChildProc {
-    HANDLE hProcess = nullptr;
-    HANDLE hStdinW = nullptr;    // write to child's stdin (only from the writer thread)
-    HANDLE hStdoutR = nullptr;   // read child's stdout (overlapped)
-    HANDLE hReadEvent = nullptr; // manual-reset event for overlapped reads on hStdoutR
-    bool readable = false;
-    std::string readBuf; // bytes read but not consumed yet
-    size_t readPos = 0;
-
-    bool start(const std::string& cmd, HANDLE stderrTarget) {
-        SECURITY_ATTRIBUTES sa{};
-        sa.nLength = sizeof(sa);
-        sa.bInheritHandle = TRUE;
-        sa.lpSecurityDescriptor = nullptr;
-        HANDLE inR = nullptr, inW = nullptr, outR = nullptr, outW = nullptr;
-        // stdin is plain synchronous, written by the writer thread only.
-        if (!CreatePipe(&inR, &inW, &sa, 0)) return false;
-        // stdout must be overlapped on our (read) side so reads can wait with a precise
-        // millisecond timeout. CreatePipe doesn't support FILE_FLAG_OVERLAPPED, so build the pair
-        // manually with a unique-named pipe.
-        char pipeName[96];
-        static volatile LONG s_pipeCounter = 0;
-        LONG pipeId = InterlockedIncrement(&s_pipeCounter);
-        std::snprintf(pipeName, sizeof(pipeName), "\\\\.\\pipe\\battle_referee_%lu_%ld", (unsigned long)GetCurrentProcessId(), (long)pipeId);
-        outR = CreateNamedPipeA(pipeName, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED, PIPE_TYPE_BYTE | PIPE_WAIT, 1, 65536, 65536, 0, &sa);
-        if (outR == INVALID_HANDLE_VALUE) {
-            CloseHandle(inR);
-            CloseHandle(inW);
-            return false;
-        }
-        outW = CreateFileA(pipeName, GENERIC_WRITE, 0, &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (outW == INVALID_HANDLE_VALUE) {
-            CloseHandle(inR);
-            CloseHandle(inW);
-            CloseHandle(outR);
-            return false;
-        }
-        SetHandleInformation(inW, HANDLE_FLAG_INHERIT, 0);
-        SetHandleInformation(outR, HANDLE_FLAG_INHERIT, 0);
-        STARTUPINFOA si{};
-        si.cb = sizeof(si);
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = inR;
-        si.hStdOutput = outW;
-        si.hStdError = stderrTarget ? stderrTarget : GetStdHandle(STD_ERROR_HANDLE);
-        PROCESS_INFORMATION pi{};
-        // If the command contains shell metacharacters, run it through cmd /c (with '/'->'\' so cmd
-        // doesn't mistake path separators for option prefixes). Otherwise run it directly via CreateProcess.
-        bool needShell = cmd.find_first_of("&|<>^()") != std::string::npos;
-        std::string full;
-        if (needShell) {
-            std::string c2 = cmd;
-            for (auto& ch : c2)
-                if (ch == '/') ch = '\\';
-            full = "cmd /c \"" + c2 + "\"";
-        } else {
-            full = cmd;
-            for (auto& ch : full)
-                if (ch == '/') ch = '\\';
-        }
-        std::vector<char> cmdline(full.begin(), full.end());
-        cmdline.push_back(0);
-        BOOL ok = CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-        CloseHandle(inR);
-        CloseHandle(outW);
-        if (!ok) {
-            CloseHandle(inW);
-            CloseHandle(outR);
-            return false;
-        }
-        CloseHandle(pi.hThread);
-        hReadEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr);
-        if (!hReadEvent) {
-            CloseHandle(inW);
-            CloseHandle(outR);
-            TerminateProcess(pi.hProcess, 1);
-            CloseHandle(pi.hProcess);
-            return false;
-        }
-        hProcess = pi.hProcess;
-        hStdinW = inW;
-        hStdoutR = outR;
-        readable = true;
-        startWriter();
-        return true;
-    }
-
-    // blocking write, called by the writer thread only. False when the pipe is broken.
-    bool writeRaw(const std::string& s) {
-        size_t off = 0;
-        DWORD wr;
-        while (off < s.size()) {
-            if (!WriteFile(hStdinW, s.data() + off, (DWORD)(s.size() - off), &wr, nullptr) || wr == 0) return false;
-            off += wr;
-        }
-        return true;
-    }
-
-    // Reads more bytes into readBuf. Returns false on timeout, EOF or error.
-    bool fill(std::chrono::steady_clock::time_point deadline) {
-        auto now = std::chrono::steady_clock::now();
-        if (!readable || now >= deadline) return false;
-        DWORD ms = (DWORD)std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-        if (ms < 1) ms = 1;
-        char tmp[4096];
-        // Issue an overlapped read; it either completes synchronously (data already buffered),
-        // returns ERROR_IO_PENDING (we wait on the event), or fails (EOF / broken pipe).
-        OVERLAPPED ov{};
-        ov.hEvent = hReadEvent;
-        ResetEvent(hReadEvent);
-        DWORD rd = 0;
-        BOOL ok = ReadFile(hStdoutR, tmp, (DWORD)sizeof(tmp), &rd, &ov);
-        if (!ok) {
-            DWORD err = GetLastError();
-            if (err != ERROR_IO_PENDING) {
-                readable = false;
-                return false;
-            }
-            DWORD wr = WaitForSingleObject(hReadEvent, ms);
-            if (wr == WAIT_TIMEOUT) {
-                // Bot blew its budget: cancel the pending read, then drain the cancellation result so
-                // the OVERLAPPED is freed. The player is deactivated anyway.
-                CancelIoEx(hStdoutR, &ov);
-                DWORD got = 0;
-                if (GetOverlappedResult(hStdoutR, &ov, &got, TRUE) && got > 0) readBuf.append(tmp, got);
-                return false;
-            }
-            if (wr != WAIT_OBJECT_0 || !GetOverlappedResult(hStdoutR, &ov, &rd, FALSE)) {
-                readable = false;
-                return false;
-            }
-        }
-        if (rd == 0) {
-            readable = false;
-            return false;
-        }
-        readBuf.append(tmp, rd);
-        return true;
-    }
-
-    void killProcess() {
-        if (hProcess) {
-            TerminateProcess(hProcess, 0);
-            WaitForSingleObject(hProcess, 2000);
-        }
-    }
-
-    void closeHandles() {
-        if (hStdinW) CloseHandle(hStdinW);
-        if (hProcess) CloseHandle(hProcess);
-        if (hStdoutR) CloseHandle(hStdoutR);
-        if (hReadEvent) CloseHandle(hReadEvent);
-        hProcess = nullptr;
-        hStdinW = nullptr;
-        hStdoutR = nullptr;
-        hReadEvent = nullptr;
-        readable = false;
-    }
-#else
-#include <unistd.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <wordexp.h>
-#include <poll.h>
-#include <cerrno>
-
-// ----------------------------------------------------------------------------
-// Child process I/O (POSIX: macOS / Linux)
-// ----------------------------------------------------------------------------
-struct ChildProc {
-    pid_t pid = -1;
-    int fdStdinW = -1;
-    int fdStdoutR = -1;
-    bool readable = false;
-    std::string readBuf; // bytes read but not consumed yet
-    size_t readPos = 0;
-
-    bool start(const std::string& cmd, const char* stderrPath) {
-        int inPipe[2], outPipe[2];
-        if (pipe(inPipe) != 0) return false;
-        if (pipe(outPipe) != 0) {
-            close(inPipe[0]);
-            close(inPipe[1]);
-            return false;
-        }
-
-        int errFd = open(stderrPath ? stderrPath : "/dev/null", stderrPath ? (O_WRONLY | O_CREAT | O_TRUNC) : O_WRONLY, 0666);
-        if (errFd < 0) {
-            close(inPipe[0]);
-            close(inPipe[1]);
-            close(outPipe[0]);
-            close(outPipe[1]);
-            return false;
-        }
-
-        pid_t c = fork();
-        if (c < 0) {
-            close(errFd);
-            close(inPipe[0]);
-            close(inPipe[1]);
-            close(outPipe[0]);
-            close(outPipe[1]);
-            return false;
-        }
-        if (c == 0) {
-            dup2(inPipe[0], STDIN_FILENO);
-            dup2(outPipe[1], STDOUT_FILENO);
-            dup2(errFd, STDERR_FILENO);
-            close(errFd);
-            close(inPipe[0]);
-            close(inPipe[1]);
-            close(outPipe[0]);
-            close(outPipe[1]);
-
-            bool needShell = cmd.find_first_of("&|<>^()") != std::string::npos;
-            if (needShell) {
-                execl("/bin/sh", "sh", "-c", cmd.c_str(), (char*)nullptr);
-            } else {
-                wordexp_t w{};
-                int we = wordexp(cmd.c_str(), &w, WRDE_NOCMD);
-                if (we != 0 || w.we_wordc == 0) _exit(127);
-                execvp(w.we_wordv[0], w.we_wordv);
-                wordfree(&w);
-                _exit(127);
-            }
-            _exit(127);
-        }
-
-        close(errFd);
-        close(inPipe[0]);
-        close(outPipe[1]);
-        fdStdinW = inPipe[1];
-        fdStdoutR = outPipe[0];
-        pid = c;
-        readable = true;
-        startWriter();
-        return true;
-    }
-
-    // blocking write, called by the writer thread only. False when the pipe is broken.
-    bool writeRaw(const std::string& s) {
-        size_t off = 0;
-        while (off < s.size()) {
-            ssize_t n;
-            do {
-                n = write(fdStdinW, s.data() + off, s.size() - off);
-            } while (n < 0 && errno == EINTR);
-            if (n <= 0) return false;
-            off += (size_t)n;
-        }
-        return true;
-    }
-
-    // Reads more bytes into readBuf. Returns false on timeout, EOF or error.
-    bool fill(std::chrono::steady_clock::time_point deadline) {
-        auto now = std::chrono::steady_clock::now();
-        if (!readable || now >= deadline) return false;
-        int ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-        if (ms < 1) ms = 1;
-        struct pollfd pfd;
-        pfd.fd = fdStdoutR;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        int pr;
-        do {
-            pr = poll(&pfd, 1, ms);
-        } while (pr < 0 && errno == EINTR);
-        if (pr <= 0) return false;
-        char tmp[4096];
-        ssize_t rd;
-        do {
-            rd = read(fdStdoutR, tmp, sizeof(tmp));
-        } while (rd < 0 && errno == EINTR);
-        if (rd <= 0) {
-            readable = false;
-            return false;
-        }
-        readBuf.append(tmp, (size_t)rd);
-        return true;
-    }
-
-    void killProcess() {
-        if (pid > 0) {
-            ::kill(pid, SIGKILL);
-            int st;
-            while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {
-            }
-            pid = -1;
-        }
-    }
-
-    void closeHandles() {
-        if (fdStdinW >= 0) {
-            close(fdStdinW);
-            fdStdinW = -1;
-        }
-        if (fdStdoutR >= 0) {
-            close(fdStdoutR);
-            fdStdoutR = -1;
-        }
-        readable = false;
-    }
-#endif
-
-    // AsynchronousWriter: the engine queues each input and a separate thread writes it, so a bot
-    // that does not read its stdin never blocks the referee. A write error stops the writer.
-    std::thread writer;
-    std::mutex mtx;
-    std::condition_variable cv;
-    std::deque<std::string> queue;
-    bool stopWriter = false;
-
-    void startWriter() {
-        writer = std::thread([this]() {
-            for (;;) {
-                std::string s;
-                {
-                    std::unique_lock<std::mutex> lk(mtx);
-                    cv.wait(lk, [this]() { return stopWriter || !queue.empty(); });
-                    if (stopWriter) return;
-                    s = std::move(queue.front());
-                    queue.pop_front();
-                }
-                if (!writeRaw(s)) return;
-            }
-        });
-    }
-
-    void sendInput(const std::string& s) {
-        std::lock_guard<std::mutex> lk(mtx);
-        queue.push_back(s);
-        cv.notify_all();
-    }
-
-    void kill() {
-        killProcess(); // also unblocks a writer stuck in a write
-        {
-            std::lock_guard<std::mutex> lk(mtx);
-            stopWriter = true;
-            cv.notify_all();
-        }
-        if (writer.joinable()) writer.join();
-        closeHandles();
-    }
-
-    bool lastCR = false;
-
-    // Agent#getOutput: reads until `nbLine` line terminators ('\n', '\r', "\r\n" counts once) or
-    // AGENT_MAX_BUFFER_SIZE bytes, within `timeoutMs`. Extra bytes are kept for the next turn.
-    // Returns false when the engine would report a timeout (also on EOF and on too long outputs).
-    bool getOutput(int nbLine, int timeoutMs, std::string& out) {
-        out.clear();
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-        int nbOccurences = 0;
-        while ((int)out.size() < C::AGENT_MAX_BUFFER_SIZE && nbOccurences < nbLine) {
-            if (readPos >= readBuf.size()) {
-                readBuf.clear();
-                readPos = 0;
-                if (!fill(deadline)) return false;
-                continue;
-            }
-            char curByte = readBuf[readPos++];
-            if (!(curByte == '\n' && lastCR)) {
-                out += curByte;
-                if (curByte == '\n' || curByte == '\r') ++nbOccurences;
-            }
-            lastCR = curByte == '\r';
-        }
-        return nbOccurences == nbLine;
-    }
-};
-
-// ----------------------------------------------------------------------------
-// Trace (-l): what the referee received, plus the viewer frames (validation only)
-// ----------------------------------------------------------------------------
-static FILE* trace = nullptr;
+using cg::trace;
 
 static std::string jsonString(const jstring& s) {
     std::string r = "\"";
@@ -962,133 +358,7 @@ static std::string jsonString(const jstring& s) {
     return r + "\"";
 }
 
-// ----------------------------------------------------------------------------
-// Engine emulation: GameManager <-> GameRunner protocol
-// ----------------------------------------------------------------------------
-// The referee (GameManager) reads the runner's commands line by line with a java.util.Scanner.
-// refIn holds the lines it has not read yet, split exactly like Scanner.nextLine() splits them.
-static std::deque<jstring> refIn;
-static ChildProc procs[4];
-
-static void runnerSendLine(const jstring& line) {
-    // the runner terminates each line with '\n'; Scanner also ends lines at U+2028, U+2029, U+0085
-    size_t start = 0;
-    for (size_t i = 0; i < line.size(); i++) {
-        char16_t c = line[i];
-        if (c == 0x2028 || c == 0x2029 || c == 0x85) {
-            refIn.push_back(line.substr(start, i - start));
-            start = i + 1;
-        }
-    }
-    refIn.push_back(line.substr(start));
-}
-
-static jstring refereeNextLine() {
-    // nothing left to read: the referee and the runner wait for each other until the runner gives
-    // up (150s) and the game fails
-    if (refIn.empty()) throw RefereeCrash{"deadlock: the referee waits for a line the runner never sends"};
-    jstring l = std::move(refIn.front());
-    refIn.pop_front();
-    return l;
-}
-
-enum InputCmd { CMD_INIT, CMD_GET_GAME_INFO, CMD_SET_PLAYER_OUTPUT, CMD_SET_PLAYER_TIMEOUT };
-
-// com.codingame.gameengine.core.InputCommand.parse:
-//   "\[\[(?<cmd>.+)\] ?(?<lineCount>[0-9]+)\]" (matches), Command.valueOf(cmd), Integer.parseInt
-static InputCmd parseInputCommand(const jstring& line, i32& lineCount) {
-    size_t n = line.size();
-    if (n >= 6 && line[0] == '[' && line[1] == '[' && line[n - 1] == ']') {
-        // greedy cmd: the last ']' (before the final one) followed by " "? [0-9]+ up to the final ']'
-        for (size_t k = n - 2; k >= 3; k--) {
-            if (line[k] != ']') continue;
-            size_t p = k + 1;
-            if (p < n - 1 && line[p] == ' ') p++;
-            if (p >= n - 1) continue;
-            bool digits = true;
-            for (size_t q = p; q < n - 1; q++)
-                if (!java::isDigit(line[q])) digits = false;
-            if (!digits) continue;
-            jstring cmd = line.substr(2, k - 2);
-            InputCmd c;
-            if (cmd == u"INIT") c = CMD_INIT;
-            else if (cmd == u"GET_GAME_INFO") c = CMD_GET_GAME_INFO;
-            else if (cmd == u"SET_PLAYER_OUTPUT") c = CMD_SET_PLAYER_OUTPUT;
-            else if (cmd == u"SET_PLAYER_TIMEOUT") c = CMD_SET_PLAYER_TIMEOUT;
-            else throw RefereeCrash{"java.lang.IllegalArgumentException: No enum constant"};
-            i64 v = 0;
-            for (size_t q = p; q < n - 1; q++) {
-                v = v * 10 + (line[q] - '0');
-                if (v > INT32_MAX) throw RefereeCrash{"java.lang.NumberFormatException"};
-            }
-            lineCount = (i32)v;
-            return c;
-        }
-    }
-    throw RefereeCrash{"java.lang.RuntimeException: Error in data sent to referee"};
-}
-
 static int currentTurn = 0;
-
-// GameRunner: gives the input to the player and sends its output (or a timeout) to the referee,
-// then asks the referee for the next game info.
-static void runnerPlayTurn(int playerIndex, int nbLines, int timeoutMs, const std::string& input) {
-    ChildProc& proc = procs[playerIndex];
-    proc.sendInput(input);
-    std::string raw;
-    bool ok = proc.getOutput(nbLines, timeoutMs, raw);
-    if (ok) {
-        jstring output = java::decodeUtf8(raw);
-        for (auto& c : output)
-            if (c == '\r') c = '\n';
-        // output.split("(\\n|\\r\\n)", -1), first nbLines pieces
-        std::vector<jstring> lines;
-        size_t start = 0;
-        for (size_t i = 0; i < output.size() && (int)lines.size() < nbLines; i++) {
-            if (output[i] == '\n') {
-                lines.push_back(output.substr(start, i - start));
-                start = i + 1;
-            }
-        }
-        if (trace) {
-            std::string t = "T" + std::to_string(currentTurn) + " P" + std::to_string(playerIndex) + " OUT [";
-            for (size_t i = 0; i < lines.size(); i++) t += (i ? "," : "") + jsonString(lines[i]);
-            fprintf(trace, "%s]\n", t.c_str());
-        }
-        runnerSendLine(java::fromAscii("[[SET_PLAYER_OUTPUT] " + std::to_string(lines.size()) + "]"));
-        for (auto& l : lines) runnerSendLine(l);
-    } else {
-        if (trace) fprintf(trace, "T%d P%d TIMEOUT\n", currentTurn, playerIndex);
-        runnerSendLine(u"[[SET_PLAYER_TIMEOUT] 0]");
-    }
-    runnerSendLine(u"[[GET_GAME_INFO] 0]");
-}
-
-// GameManager.execute(player, nbrOutputLines) + AbstractPlayer.execute
-static void execute(Player& player) {
-    int nbrOutputLines = player.getExpectedOutputLines();
-    player.timeout = false;
-    i32 lineCount = 0;
-    if (parseInputCommand(refereeNextLine(), lineCount) != CMD_GET_GAME_INFO)
-        throw RefereeCrash{"java.lang.RuntimeException: Invalid command"};
-    std::string input;
-    for (auto& l : player.inputs) input += l + "\n";
-    runnerPlayTurn(player.index, nbrOutputLines, player.hasNeverBeenExecuted ? C::FIRST_TURN_MAX_TIME : C::TURN_MAX_TIME, input);
-    InputCmd c = parseInputCommand(refereeNextLine(), lineCount);
-    if (c == CMD_SET_PLAYER_OUTPUT) {
-        if (lineCount > 100000000) throw RefereeCrash{"java.lang.OutOfMemoryError"}; // new ArrayList<>(lineCount)
-        std::vector<jstring> output;
-        for (i32 i = 0; i < lineCount; i++) output.push_back(refereeNextLine());
-        player.outputs = std::move(output);
-    } else if (c == CMD_SET_PLAYER_TIMEOUT) {
-        player.timeout = true;
-    } else {
-        throw RefereeCrash{"java.lang.RuntimeException: Invalid command"};
-    }
-    player.inputs.clear();
-    player.hasBeenExecuted = true;
-    player.hasNeverBeenExecuted = false;
-}
 
 // ----------------------------------------------------------------------------
 // Referee.java
@@ -1097,7 +367,6 @@ static std::deque<Entity> entityPool;
 static int ENTITY_COUNT = 0;
 static Player players[4];
 static int playerCount = 2;
-static bool gameEnd = false;
 static java::Random random_; // Referee.random (named random_: POSIX stdlib has a random())
 
 static std::vector<Entity*> allHeroes;
@@ -1307,7 +576,7 @@ static void initPlayers() {
         Vector vector = (i < 2 ? Vector(1, -1) : Vector(1, 1)).normalize();
         if (i % 2 == 1) vector = vector.mult(-1);
         // corners has 2 entries: a third player makes Referee.init throw (caught in init)
-        if (i >= 2) throw RefereeCrash{"java.lang.ArrayIndexOutOfBoundsException"};
+        if (i >= 2) throw java::Exception{"java.lang.ArrayIndexOutOfBoundsException: Index 2 out of bounds for length 2"};
         Vector startPoint = corners[i];
         basePositions[i] = startPoint;
         baseCount = i + 1;
@@ -1324,8 +593,8 @@ static void initPlayers() {
     }
     // sendGlobalInfo
     for (Player* player : getActivePlayers()) {
-        player->inputs.push_back(basePositions[player->index].toIntString());
-        player->inputs.push_back(std::to_string(C::HEROES_PER_PLAYER));
+        player->sendInputLine(basePositions[player->index].toIntString());
+        player->sendInputLine(std::to_string(C::HEROES_PER_PLAYER));
     }
 }
 
@@ -1401,6 +670,15 @@ static void recordSpellUse(Entity* hero) {
     spellUses.push_back(su);
 }
 
+// gameManager.addToGameSummary(hero.owner.getNicknameToken() + " failed a <spell>: " + e.getMessage())
+static void spellFailed(Entity* hero, const char* spell, const std::string& message) {
+    cg::gm.addToGameSummary("$" + std::to_string(hero->owner->index) + " failed a " + spell + ": " + message);
+}
+static std::string notVisible(Entity* hero, Entity* target) {
+    if (canSee(hero->owner, target)) return "Entity " + std::to_string(target->id) + " is not within range of Hero " + std::to_string(hero->id);
+    return "Hero " + std::to_string(hero->id) + " doesn't know where entity " + std::to_string(target->id) + " is";
+}
+
 static Entity* findVisibleEntity(int id) {
     for (Entity* e : allEntities())
         if (insideVisibleMap(e->position) && e->id == id) return e;
@@ -1411,19 +689,25 @@ static void doControl() {
     // Incept next action into victim's mind
     for (Entity* hero : intentMap[A_CONTROL]) {
         const Action& control = hero->intent;
-        if (hero->owner->mana < C::SPELL_CONTROL_COST) continue; // "Not enough mana"
+        if (hero->owner->mana < C::SPELL_CONTROL_COST) {
+            spellFailed(hero, "CONTROL", "Not enough mana");
+            continue;
+        }
         Entity* victim = findVisibleEntity(control.target);
-        if (!victim) continue; // "Could not find entity"
+        if (!victim) {
+            spellFailed(hero, "CONTROL", "Could not find entity " + std::to_string(control.target));
+            continue;
+        }
         if (canSee(hero, victim)) {
             hero->owner->spendMana(C::SPELL_CONTROL_COST);
             recordSpellUse(hero);
             if (!victim->hasActiveShield()) {
                 victim->applyControl(control.destination);
             } else {
-                // ActionException "has a shield up" (game summary only, the mana is spent)
+                spellFailed(hero, "CONTROL", "Entity " + std::to_string(victim->id) + " has a shield up"); // the mana is spent
             }
         } else {
-            // ActionException "is not within range" / "doesn't know where entity is" (summary only)
+            spellFailed(hero, "CONTROL", notVisible(hero, victim));
         }
     }
 }
@@ -1432,19 +716,25 @@ static void doShield() {
     // A protective bubble will appear around target on next turn
     for (Entity* hero : intentMap[A_SHIELD]) {
         const Action& control = hero->intent;
-        if (hero->owner->mana < C::SPELL_PROTECT_COST) continue; // "Not enough mana"
+        if (hero->owner->mana < C::SPELL_PROTECT_COST) {
+            spellFailed(hero, "SHIELD", "Not enough mana");
+            continue;
+        }
         Entity* entity = findVisibleEntity(control.target);
-        if (!entity) continue; // "Could not find entity"
+        if (!entity) {
+            spellFailed(hero, "SHIELD", "Could not find entity " + std::to_string(control.target));
+            continue;
+        }
         if (canSee(hero, entity)) {
             hero->owner->spendMana(C::SPELL_PROTECT_COST);
             recordSpellUse(hero);
             if (!entity->hasActiveShield()) {
                 entity->applyShield();
             } else {
-                // ActionException "already has a shield up" (game summary only, the mana is spent)
+                spellFailed(hero, "SHIELD", "Entity " + std::to_string(entity->id) + " already has a shield up"); // the mana is spent
             }
         } else {
-            // ActionException "is not within range" / "doesn't know where entity is" (summary only)
+            spellFailed(hero, "SHIELD", notVisible(hero, entity));
         }
     }
 }
@@ -1502,7 +792,10 @@ static void doPush(int turn) {
     // HashMap<GameEntity, List<Vector>> directionMap, in insertion order
     std::vector<std::pair<Entity*, std::vector<Vector>>> directionMap;
     for (Entity* hero : intentMap[A_WIND]) {
-        if (hero->owner->mana < C::SPELL_WIND_COST) continue; // "Not enough mana"
+        if (hero->owner->mana < C::SPELL_WIND_COST) {
+            spellFailed(hero, "WIND", "Not enough mana");
+            continue;
+        }
         hero->owner->spendMana(C::SPELL_WIND_COST);
         const Action& push = hero->intent;
         recordSpellUse(hero);
@@ -1682,7 +975,7 @@ static void moveMobs() {
                     removeMob(mob);
                     Player& p = players[idx];
                     p.damageBase();
-                    // tooltip "Base attacked!"
+                    if (p.baseHealth > 0) cg::gm.addTooltip(p.index, "Base attacked!");
                     baseAttacks.push_back({idx, mob->id});
                     continue;
                 } else {
@@ -1767,7 +1060,20 @@ struct Tokenizer {
 
 enum ParseResult { PR_OK, PR_INVALID };
 
-static ParseResult handleLine(Entity* hero, const jstring& line) {
+// Integer.valueOf of each group in turn; on overflow `nfe` gets the group that threw
+static bool parseInts(const jstring&, jstring&) { return true; }
+template <class... Rest>
+static bool parseInts(const jstring& line, jstring& nfe, size_t a, size_t b, i32& out, Rest&... rest) {
+    if (!java::parseInt(line, a, b, out)) {
+        nfe = line.substr(a, b - a);
+        return false;
+    }
+    return parseInts(line, nfe, rest...);
+}
+
+static const char* EXPECTED = "MOVE <x> <y> | SPELL <spell_command> | WAIT";
+
+static ParseResult handleLine(Entity* hero, const jstring& line, jstring& nfe) {
     size_t a1, b1, a2, b2, a3, b3;
     {
         Tokenizer t(line);
@@ -1777,7 +1083,7 @@ static ParseResult handleLine(Entity* hero, const jstring& line) {
         Tokenizer t(line);
         if (t.lit("MOVE") && t.spaces() && t.number(a1, b1) && t.spaces() && t.number(a2, b2) && t.rest()) {
             i32 x, y;
-            if (!java::parseInt(line, a1, b1, x) || !java::parseInt(line, a2, b2, y)) return PR_INVALID;
+            if (!parseInts(line, nfe, a1, b1, x, a2, b2, y)) return PR_INVALID;
             if (hero->position.x != x || hero->position.y != y) {
                 Action intent;
                 intent.type = A_MOVE;
@@ -1795,7 +1101,7 @@ static ParseResult handleLine(Entity* hero, const jstring& line) {
         Tokenizer t(line);
         if (t.lit("SPELL") && t.spaces() && t.lit("WIND") && t.spaces() && t.number(a1, b1) && t.spaces() && t.number(a2, b2) && t.rest()) {
             i32 x, y;
-            if (!java::parseInt(line, a1, b1, x) || !java::parseInt(line, a2, b2, y)) return PR_INVALID;
+            if (!parseInts(line, nfe, a1, b1, x, a2, b2, y)) return PR_INVALID;
             Action intent;
             intent.type = A_WIND;
             intent.hasDestination = true;
@@ -1808,7 +1114,7 @@ static ParseResult handleLine(Entity* hero, const jstring& line) {
         Tokenizer t(line);
         if (t.lit("SPELL") && t.spaces() && t.lit("SHIELD") && t.spaces() && t.number(a1, b1) && t.rest()) {
             i32 entityId;
-            if (!java::parseInt(line, a1, b1, entityId)) return PR_INVALID;
+            if (!parseInts(line, nfe, a1, b1, entityId)) return PR_INVALID;
             Action intent;
             intent.type = A_SHIELD;
             intent.target = entityId;
@@ -1821,8 +1127,7 @@ static ParseResult handleLine(Entity* hero, const jstring& line) {
         if (t.lit("SPELL") && t.spaces() && t.lit("CONTROL") && t.spaces() && t.number(a1, b1) && t.spaces() && t.number(a2, b2) &&
             t.spaces() && t.number(a3, b3) && t.rest()) {
             i32 entityId, x, y;
-            if (!java::parseInt(line, a1, b1, entityId) || !java::parseInt(line, a2, b2, x) || !java::parseInt(line, a3, b3, y))
-                return PR_INVALID;
+            if (!parseInts(line, nfe, a1, b1, entityId, a2, b2, x, a3, b3, y)) return PR_INVALID;
             Action intent;
             intent.type = A_CONTROL;
             intent.target = entityId;
@@ -1840,7 +1145,8 @@ static void handleCommands(Player* player, const std::vector<jstring>& lines) {
     for (const jstring& line : lines) {
         // player.heroes.get(i++) is outside the try: more lines than heroes (only possible through
         // the Scanner desync) kills the referee
-        if (i >= player->heroes.size()) throw RefereeCrash{"java.lang.IndexOutOfBoundsException"};
+        if (i >= player->heroes.size())
+            throw java::Exception{"java.lang.IndexOutOfBoundsException: Index " + std::to_string(i) + " out of bounds for length " + std::to_string(player->heroes.size())};
         Entity* hero = player->heroes[i++];
         if (!hero->activeControls.empty()) {
             Vector computedDestination = computeControlResult(hero, C::HERO_MOVE_SPEED);
@@ -1853,8 +1159,12 @@ static void handleCommands(Player* player, const std::vector<jstring>& lines) {
             recordIntention(hero, intent);
             continue;
         }
-        if (handleLine(hero, line) == PR_INVALID) {
-            player->deactivate(); // "Bad command"
+        jstring nfe;
+        if (handleLine(hero, line, nfe) == PR_INVALID) {
+            // InvalidInputException, or another exception wrapped in one
+            jstring head = nfe.empty() ? jstring(u"Invalid Input") : u"java.lang.NumberFormatException: For input string: \"" + nfe + u"\"";
+            player->deactivate(head + u": Expected " + java::fromAscii(EXPECTED) + u" but got '" + line + u"'");
+            cg::gm.addToGameSummary("Bad command");
             return;
         }
     }
@@ -1863,7 +1173,9 @@ static void handleCommands(Player* player, const std::vector<jstring>& lines) {
 static void handlePlayerCommands() {
     for (Player* player : getActivePlayers()) {
         if (player->timeout) {
-            player->deactivate(); // "Timeout!"
+            player->deactivate("Timeout!");
+            cg::gm.addToGameSummary("$" + std::to_string(player->index) + " has not provided " + std::to_string(player->getExpectedOutputLines()) +
+                                    " lines in time");
             continue;
         }
         handleCommands(player, player->outputs);
@@ -1961,12 +1273,12 @@ static void sendGameStateFor(Player* player) {
                               std::to_string(threat));
     }
     // <health> <mana>
-    player->inputs.push_back(std::to_string(player->baseHealth) + " " + std::to_string(player->mana));
+    player->sendInputLine(std::to_string(player->baseHealth) + " " + std::to_string(player->mana));
     for (int i = 0; i < playerCount; i++)
-        if (&players[i] != player) player->inputs.push_back(std::to_string(players[i].baseHealth) + " " + std::to_string(players[i].mana));
+        if (&players[i] != player) player->sendInputLine(std::to_string(players[i].baseHealth) + " " + std::to_string(players[i].mana));
     // <entityCount>
-    player->inputs.push_back(std::to_string(entityLines.size()));
-    for (auto& line : entityLines) player->inputs.push_back(line);
+    player->sendInputLine(std::to_string(entityLines.size()));
+    for (auto& line : entityLines) player->sendInputLine(line);
 }
 
 // Referee.getCurrentFrameData + ViewModule.serialize, for the trace. Hero messages are left out
@@ -2063,18 +1375,19 @@ static void traceFrame(int turn) {
 }
 
 static void gameTurn(int turn) {
+    currentTurn = turn;
     resetGameTurnData();
     // Give input to players
     for (Player* player : getActivePlayers()) {
         sendGameStateFor(player);
-        execute(*player);
+        player->execute();
     }
     // Get output from players
     handlePlayerCommands();
     performGameUpdate(turn);
     for (int i = 0; i < playerCount; i++)
-        if (players[i].baseHealth == 0) players[i].deactivate(); // "Base destroyed!"
-    if (getActivePlayers().size() < 2) gameEnd = true;
+        if (players[i].baseHealth == 0) players[i].deactivate("Base destroyed!");
+    if (getActivePlayers().size() < 2) cg::gm.endGame();
 }
 
 static void onEnd() {
@@ -2094,124 +1407,50 @@ static void onEnd() {
             // Tie breaker
             a.score = a.manaGainedOutsideOfBase;
             b.score = b.manaGainedOutsideOfBase;
+            if (a.manaGainedOutsideOfBase == b.manaGainedOutsideOfBase) {
+                cg::gm.addToGameSummary("Tie!");
+            } else {
+                Player& winner = a.manaGainedOutsideOfBase > b.manaGainedOutsideOfBase ? a : b;
+                cg::gm.addToGameSummary("$" + std::to_string(winner.index) + " won the game because their heroes gained more mana outside of their base:");
+                cg::gm.addToGameSummary("$" + std::to_string(a.index) + ": " + std::to_string(a.manaGainedOutsideOfBase) + " mana");
+                cg::gm.addToGameSummary("$" + std::to_string(b.index) + ": " + std::to_string(b.manaGainedOutsideOfBase) + " mana");
+            }
         }
     } else {
         for (int i = 0; i < playerCount; i++) players[i].score = players[i].baseHealth;
     }
 }
 
-// GameManager.start (after the init command): returns false when the referee died
-static bool runReferee(i64 seed) {
-    random_.setSeed(seed);
-    startDirections[0] = Vector(1, 1).normalize();
-    startDirections[1] = Vector(-1, -1).normalize();
-    refIn.push_back(u"[[GET_GAME_INFO] 0]");
-    try {
+struct SpiderReferee : cg::Referee {
+    void init() override {
+        random_.setSeed(cg::gm.getSeed());
+        startDirections[0] = Vector(1, 1).normalize();
+        startDirections[1] = Vector(-1, -1).normalize();
         try {
+            playerCount = cg::gm.getPlayerCount();
             initPlayers();
-        } catch (const RefereeCrash&) {
-            // caught by Referee.init: "Referee failed to initialize", abort()
-            gameEnd = true;
+            cg::gm.setFrameDuration(500);
+            cg::gm.setMaxTurns(C::MAX_TURNS);
+            cg::gm.setTurnMaxTime(C::TURN_MAX_TIME);
+        } catch (const java::Exception& e) {
+            // "Referee failed to initialize", abort(): with 3 or 4 players (2 corners only) the game
+            // ends before the first turn, nobody plays and every base keeps its STARTING_BASE_HEALTH
+            fprintf(stderr, "%s\nReferee failed to initialize\n", e.text.c_str());
+            cg::gm.endGame();
         }
         traceFrame(0);
-        for (int turn = 1; turn <= C::MAX_TURNS && !gameEnd && !getActivePlayers().empty(); turn++) {
-            currentTurn = turn;
-            gameTurn(turn);
-            traceFrame(turn);
-            for (int i = 0; i < playerCount; i++) {
-                players[i].outputs.clear();
-                players[i].hasBeenExecuted = false;
-            }
-        }
-        onEnd();
-    } catch (const RefereeCrash& crash) {
-        fprintf(stderr, "%s\n", crash.what.c_str());
-        if (trace) fprintf(trace, "CRASH %s\n", crash.what.c_str());
-        return false;
     }
-    return true;
-}
+    void gameTurn(int turn) override {
+        ::gameTurn(turn);
+        traceFrame(turn);
+    }
+    void onEnd() override { ::onEnd(); }
+};
 
 int main(int argc, char** argv) {
-    std::string bots[4];
-    bool hasBot[4] = {false, false, false, false};
-    i64 seed = (i64)std::chrono::steady_clock::now().time_since_epoch().count();
-    const char* tracePath = nullptr;
-    for (int i = 1; i < argc; i++) {
-        std::string a = argv[i];
-        if (a.size() == 3 && a[0] == '-' && a[1] == 'p' && a[2] >= '1' && a[2] <= '4' && i + 1 < argc) {
-            bots[a[2] - '1'] = argv[++i];
-            hasBot[a[2] - '1'] = true;
-        } else if (a == "-seed" && i + 1 < argc) {
-            const char* s = argv[++i];
-            if (!java::parseLong(s, seed)) {
-                // the CLI dies with a NumberFormatException
-                fprintf(stderr, "java.lang.NumberFormatException: For input string: \"%s\"\n", s);
-                return 1;
-            }
-        } else if (a == "-l" && i + 1 < argc) {
-            tracePath = argv[++i];
-        }
-    }
-    if (!hasBot[0] || !hasBot[1]) {
-        fprintf(stderr, "usage: referee -p1 <cmd> -p2 <cmd> -seed N [-l file]\n");
-        return 0;
-    }
-    std::vector<std::string> cmds;
-    for (int i = 0; i < 4; i++)
-        if (hasBot[i]) cmds.push_back(bots[i]);
-    playerCount = (int)cmds.size();
-    for (int i = 0; i < 4; i++) players[i].index = i;
-    if (tracePath) trace = fopen(tracePath, "w");
 #ifdef SPIDER_HINTS
     loadHints();
 #endif
-
-#ifdef _WIN32
-    SECURITY_ATTRIBUTES sa{};
-    sa.nLength = sizeof(sa);
-    sa.bInheritHandle = TRUE;
-    HANDLE devnull = CreateFileA("NUL", GENERIC_WRITE, FILE_SHARE_WRITE | FILE_SHARE_READ, &sa, OPEN_EXISTING, 0, nullptr);
-#else
-    signal(SIGPIPE, SIG_IGN);
-#endif
-    // GameRunner.initialize launches every agent first (Runtime.exec); a failure kills the CLI
-    for (int i = 0; i < playerCount; i++) {
-#ifdef _WIN32
-        bool started = procs[i].start(cmds[i], devnull);
-#else
-        bool started = procs[i].start(cmds[i], nullptr);
-#endif
-        if (!started) {
-            fprintf(stderr, "java.lang.RuntimeException: Failed to launch %s\n", cmds[i].c_str());
-            for (int j = 0; j < i; j++) procs[j].kill();
-            if (trace) fclose(trace);
-            return 1;
-        }
-    }
-
-    // with 3 or 4 players Referee.init fails (2 corners only): the game ends before the first turn,
-    // nobody plays and every base keeps its STARTING_BASE_HEALTH
-    bool ok = runReferee(seed);
-
-    for (int i = 0; i < playerCount; i++) procs[i].kill();
-#ifdef _WIN32
-    if (devnull != INVALID_HANDLE_VALUE) CloseHandle(devnull);
-#endif
-    if (trace) {
-        if (ok) {
-            fprintf(trace, "SCORES");
-            for (int i = 0; i < playerCount; i++) fprintf(trace, " %d", players[i].score);
-            fprintf(trace, "\n");
-        }
-        fclose(trace);
-    }
-    // CommandLineInterface prints result.scores.get(i) for every player ("null" when the runner got
-    // no scores because the referee died), then the game parameters
-    for (int i = 0; i < playerCount; i++) {
-        if (ok) printf("%d\n", players[i].score);
-        else printf("null\n");
-    }
-    if (ok) printf("seed=%lld\n", (long long)seed);
-    return 0;
+    static SpiderReferee referee;
+    return cg::run(argc, argv, referee, [](int i) -> cg::Player* { return &players[i]; });
 }
