@@ -163,8 +163,6 @@ impl Referee<Arc<Mutex<Executable>>> {
                 if let Some(logs_path) = output_logs {
                     cmd.arg("-l").arg(logs_path);
                 }
-
-                // only passed when set, referees built before `-timeout` existed reject it
                 if let Some(turn_timeout) = self.turn_timeout {
                     cmd.arg("-timeout").arg(turn_timeout.to_string());
                 }
