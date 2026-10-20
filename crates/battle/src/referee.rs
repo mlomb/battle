@@ -40,8 +40,6 @@ pub struct Referee<T = Arc<Target>> {
 
     /// Overrides the per-turn time limit of the agents, in milliseconds.
     /// The first turn keeps the game's own limit if it is longer. `None` keeps the game's limits.
-    ///
-    /// Useful on slow or noisy machines (e.g. CI), where agents may miss the game's limits.
     pub turn_timeout: Option<u64>,
 }
 

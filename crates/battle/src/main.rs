@@ -147,8 +147,7 @@ enum Commands {
         #[arg(long)]
         referee: String,
 
-        /// Override the referee's per-turn time limit of the agents (ms).
-        /// The first turn keeps the game's limit if longer. Useful on slow machines (e.g. CI).
+        /// Override the referee's per-turn time limit
         #[arg(long)]
         turn_timeout: Option<u64>,
 
