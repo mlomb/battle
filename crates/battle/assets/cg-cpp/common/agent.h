@@ -80,6 +80,14 @@ struct AgentOptions {
 // AGENT_MAX_BUFFER_SIZE: the most bytes the runner reads from a bot in one turn
 const int AGENT_MAX_BUFFER_SIZE = 10000;
 
+// The referee's -timeout <ms> (not in the original jars, added by battle's cg-builder CLI): replaces
+// the game's time limit of a turn, except that a first turn keeps the game's limit when it is longer.
+// Meant for slow or noisy machines (CI). 0: the game's limits.
+inline long long turnTimeoutMs(long long gameMs, bool firstTurn, long long overrideMs) {
+    if (overrideMs <= 0) return gameMs;
+    return firstTurn ? std::max(gameMs, overrideMs) : overrideMs;
+}
+
 #ifndef _WIN32
 namespace detail {
 // The POSIX watchdog: a process of its own, outside the referee's process group, that kills the

@@ -12,5 +12,6 @@ docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInt
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2020
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/LegendsOfCodeAndMagic
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v1.java https://github.com/Illedan/BOTG-Refree "team-1 project" cg-botters-of-the-galaxy
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/eulerscheZahl/Troll-Farm . cg-spring-2026-troll-farm
 
 pause
