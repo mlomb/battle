@@ -56,84 +56,8 @@
 
 #include <deque>
 
-typedef std::u16string jstring; // a java.lang.String (UTF-16 code units)
+using jstring = java::String;
 
-// ----------------------------------------------------------------------------
-// Java semantics (java.h has the rest)
-// ----------------------------------------------------------------------------
-namespace java {
-
-// Math.min / Math.max for doubles (NaN and -0.0 aware)
-static inline double min(double a, double b) {
-    if (a != a) return a;
-    if (a == 0.0 && b == 0.0 && std::signbit(b)) return b;
-    return (a <= b) ? a : b;
-}
-static inline double max(double a, double b) {
-    if (a != a) return a;
-    if (a == 0.0 && b == 0.0 && std::signbit(a)) return b;
-    return (a >= b) ? a : b;
-}
-
-static inline bool isSpace(char16_t c) { return c == ' ' || c == '\t' || c == '\n' || c == 0x0B || c == '\f' || c == '\r'; }
-static inline bool isDigit(char16_t c) { return c >= '0' && c <= '9'; }
-
-// Integer.valueOf / Integer.parseInt of a string matching -?[0-9]+ ; false on overflow
-// (NumberFormatException)
-static bool parseInt(const jstring& s, size_t a, size_t b, i32& out) {
-    bool neg = s[a] == '-';
-    if (neg) a++;
-    i64 v = 0;
-    for (size_t i = a; i < b; i++) {
-        v = v * 10 + (s[i] - '0');
-        if (v > 2147483648LL) return false;
-    }
-    if (!neg && v > 2147483647LL) return false;
-    out = (i32)(neg ? -v : v);
-    return true;
-}
-
-static jstring fromAscii(const std::string& s) { return jstring(s.begin(), s.end()); }
-
-static bool startsWith(const jstring& s, size_t pos, const char* lit) {
-    size_t n = strlen(lit);
-    if (pos + n > s.size()) return false;
-    for (size_t i = 0; i < n; i++)
-        if (s[pos + i] != (char16_t)lit[i]) return false;
-    return true;
-}
-
-// Iteration order of a java.util.HashMap<Integer, ?> (default capacity) after putting the given
-// distinct keys in order. Returns the indices of the keys in iteration order.
-static std::vector<int> hashMapOrder(const std::vector<i32>& keys) {
-    auto spread = [](i32 h) { return (u32)h ^ ((u32)h >> 16); };
-    std::vector<u32> hashes;
-    for (i32 k : keys) hashes.push_back(spread(k));
-    size_t cap = 16;
-    std::vector<std::vector<int>> tab(cap);
-    auto resize = [&]() {
-        // splitting a bin preserves the relative order of its nodes
-        std::vector<std::vector<int>> nt(cap * 2);
-        for (auto& bin : tab)
-            for (int k : bin) nt[hashes[k] & (cap * 2 - 1)].push_back(k);
-        tab.swap(nt);
-        cap *= 2;
-    };
-    size_t size = 0;
-    for (int k = 0; k < (int)keys.size(); k++) {
-        auto& bin = tab[hashes[k] & (cap - 1)];
-        bin.push_back(k);
-        // treeifyBin resizes small tables instead (bins are never treeified at these sizes)
-        if (bin.size() >= 9 && cap < 64) resize();
-        if (++size > cap * 3 / 4) resize();
-    }
-    std::vector<int> order;
-    for (auto& bin : tab)
-        for (int k : bin) order.push_back(k);
-    return order;
-}
-
-} // namespace java
 // ----------------------------------------------------------------------------
 // Configuration.java (defaults: the CLI passes no game parameter but the seed)
 // ----------------------------------------------------------------------------
@@ -576,7 +500,7 @@ static void initPlayers() {
         Vector vector = (i < 2 ? Vector(1, -1) : Vector(1, 1)).normalize();
         if (i % 2 == 1) vector = vector.mult(-1);
         // corners has 2 entries: a third player makes Referee.init throw (caught in init)
-        if (i >= 2) throw java::Exception{"java.lang.ArrayIndexOutOfBoundsException: Index 2 out of bounds for length 2"};
+        if (i >= 2) throw java::Exception{java::arrayIndexOutOfBoundsException(2, 2)};
         Vector startPoint = corners[i];
         basePositions[i] = startPoint;
         baseCount = i + 1;
@@ -1033,13 +957,13 @@ struct Tokenizer {
     size_t p = 0;
     explicit Tokenizer(const jstring& line) : s(line) {}
     bool lit(const char* w) {
-        if (!java::startsWith(s, p, w)) return false;
+        if (!java::startsWith(s, w, p)) return false;
         p += strlen(w);
         return true;
     }
     bool spaces() { // \s+
         size_t q = p;
-        while (q < s.size() && java::isSpace(s[q])) q++;
+        while (q < s.size() && java::isRegexSpace(s[q])) q++;
         if (q == p) return false;
         p = q;
         return true;
@@ -1048,14 +972,14 @@ struct Tokenizer {
         size_t q = p;
         if (q < s.size() && s[q] == '-') q++;
         size_t d = q;
-        while (q < s.size() && java::isDigit(s[q])) q++;
+        while (q < s.size() && java::isRegexDigit(s[q])) q++;
         if (q == d) return false;
         a = p;
         b = q;
         p = q;
         return true;
     }
-    bool rest() const { return p == s.size() || java::isSpace(s[p]); }
+    bool rest() const { return p == s.size() || java::isRegexSpace(s[p]); }
 };
 
 enum ParseResult { PR_OK, PR_INVALID };
@@ -1064,7 +988,7 @@ enum ParseResult { PR_OK, PR_INVALID };
 static bool parseInts(const jstring&, jstring&) { return true; }
 template <class... Rest>
 static bool parseInts(const jstring& line, jstring& nfe, size_t a, size_t b, i32& out, Rest&... rest) {
-    if (!java::parseInt(line, a, b, out)) {
+    if (!java::parseInt(line.substr(a, b - a), out)) {
         nfe = line.substr(a, b - a);
         return false;
     }
@@ -1146,7 +1070,7 @@ static void handleCommands(Player* player, const std::vector<jstring>& lines) {
         // player.heroes.get(i++) is outside the try: more lines than heroes (only possible through
         // the Scanner desync) kills the referee
         if (i >= player->heroes.size())
-            throw java::Exception{"java.lang.IndexOutOfBoundsException: Index " + std::to_string(i) + " out of bounds for length " + std::to_string(player->heroes.size())};
+            throw java::Exception{java::indexOutOfBoundsException(i, player->heroes.size())};
         Entity* hero = player->heroes[i++];
         if (!hero->activeControls.empty()) {
             Vector computedDestination = computeControlResult(hero, C::HERO_MOVE_SPEED);
@@ -1162,8 +1086,8 @@ static void handleCommands(Player* player, const std::vector<jstring>& lines) {
         jstring nfe;
         if (handleLine(hero, line, nfe) == PR_INVALID) {
             // InvalidInputException, or another exception wrapped in one
-            jstring head = nfe.empty() ? jstring(u"Invalid Input") : u"java.lang.NumberFormatException: For input string: \"" + nfe + u"\"";
-            player->deactivate(head + u": Expected " + java::fromAscii(EXPECTED) + u" but got '" + line + u"'");
+            jstring head = nfe.empty() ? jstring(u"Invalid Input") : java::numberFormatException(nfe);
+            player->deactivate(head + u": Expected " + java::ascii(EXPECTED) + u" but got '" + line + u"'");
             cg::gm.addToGameSummary("Bad command");
             return;
         }
@@ -1371,7 +1295,7 @@ static std::string frameData() {
 static void traceFrame(int turn) {
     if (!trace) return;
     std::string f = frameData();
-    fprintf(trace, "V%d %s\n", turn, jsonString(java::fromAscii(f)).c_str());
+    fprintf(trace, "V%d %s\n", turn, jsonString(java::ascii(f)).c_str());
 }
 
 static void gameTurn(int turn) {

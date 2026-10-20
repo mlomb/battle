@@ -89,11 +89,6 @@ static int PLAYER_COUNT = 3;          // Game.PLAYER_COUNT
 static const int REGISTER_COUNT = 7;  // Game.REGISTER_COUNT
 static const bool EARLY_RACE_END = true;
 
-static java::Exception indexOutOfBounds(int index, int length) {
-    return {"java.lang.IndexOutOfBoundsException: Index " + std::to_string(index) + " out of bounds for length " +
-            std::to_string(length)};
-}
-
 // MiniGame.fillRegisters
 static std::vector<int> fillRegisters(std::initializer_list<const std::vector<int>*> arrays) {
     std::vector<int> registers(REGISTER_COUNT, 0);
@@ -101,8 +96,7 @@ static std::vector<int> fillRegisters(std::initializer_list<const std::vector<in
     for (const std::vector<int>* array : arrays) {
         for (int integer : *array) {
             if (idx >= REGISTER_COUNT)
-                throw java::Exception{"java.lang.ArrayIndexOutOfBoundsException: Index " + std::to_string(idx) +
-                                      " out of bounds for length " + std::to_string(REGISTER_COUNT)};
+                throw java::Exception{java::arrayIndexOutOfBoundsException(idx, REGISTER_COUNT)};
             registers[idx++] = integer;
         }
     }
@@ -114,17 +108,8 @@ static std::vector<int> fillRegisters(std::initializer_list<const std::vector<in
 static std::vector<int> createRankings(const std::vector<std::pair<int, double>>& scoreByPlayer) {
     std::vector<int> rankings(PLAYER_COUNT, 0);
     std::vector<std::pair<int, double>> sorted = scoreByPlayer;
-    // stream().sorted(comparingDouble(getValue).reversed()): a stable sort (TimSort uses a binary
-    // insertion sort below 32 elements); a plain stable insertion sort gives the same order
-    for (size_t i = 1; i < sorted.size(); i++) {
-        std::pair<int, double> x = sorted[i];
-        size_t j = i;
-        while (j > 0 && java::compareDouble(sorted[j - 1].second, x.second) < 0) { // compare(x, a[j-1]) < 0
-            sorted[j] = sorted[j - 1];
-            j--;
-        }
-        sorted[j] = x;
-    }
+    // stream().sorted(comparingDouble(getValue).reversed())
+    java::sort(sorted, [](const std::pair<int, double>& a, const std::pair<int, double>& b) { return java::compareDouble(b.second, a.second); });
     int rank = 0;
     int lastRank = 0;
     bool hasLastScore = false;
@@ -288,7 +273,7 @@ struct Archery : MiniGame {
     }
 
     std::vector<int>& cursor(int i) {
-        if (i >= (int)cursors.size()) throw indexOutOfBounds(i, (int)cursors.size()); // List.get
+        if (i >= (int)cursors.size()) throw java::Exception{java::indexOutOfBoundsException(i, cursors.size())}; // List.get
         return cursors[i];
     }
 
@@ -673,7 +658,7 @@ static int matchPlayerPattern(const String& line) {
 }
 
 static void handleCommands(Player& player, const std::vector<String>& lines) {
-    if (lines.empty()) throw indexOutOfBounds(0, 0); // lines.get(0)
+    if (lines.empty()) throw java::Exception{java::indexOutOfBoundsException(0, 0)}; // lines.get(0)
     const String& line = lines[0];
     int button = matchPlayerPattern(line);
     if (button != NO_ACTION) {
