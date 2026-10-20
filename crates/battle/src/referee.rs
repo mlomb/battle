@@ -77,6 +77,10 @@ impl Referee<Arc<Target>> {
         let (min_agents, max_agents) = match preset.trim_end_matches("-ref").to_string().as_str() {
             "cg-botters-of-the-galaxy" => (2, 2),
             "cg-fall-2023-fish" => (2, 2),
+            "cg-fall-challenge-2022-keep-off-the-grass" => (2, 2),
+            "cg-spider-attack-spring-2022" => (2, 2),
+            "cg-spring-2021" => (2, 2),
+            "cg-spring-2023-ants" => (2, 2),
             "cg-spring-2024-olympics" => (3, 3),
             "cg-spring-2026-troll-farm" => (2, 2),
             "cg-winter-2024-sprawl" => (2, 2),
