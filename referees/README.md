@@ -7,13 +7,13 @@ Referees are provided for convenience.
 | Platform | Contest | Validated | Reference | Fast |
 |-|-|-|-|-|
 | CodinGame | Botters of the Galaxy | ✅ | `cg-botters-of-the-galaxy-ref` <br/> [cg-botters-of-the-galaxy.jar](cg-jar/cg-botters-of-the-galaxy.jar) | `cg-botters-of-the-galaxy` <br/> [cg-botters-of-the-galaxy.cpp](cg-cpp/cg-botters-of-the-galaxy.cpp) |
-| CodinGame | Spring 2021 - Mad Pod Racing | ❌ | `cg-spring-2021-ref` | |
-| CodinGame | Spring 2022 - Spider Attack | ❌ | `cg-spider-attack-spring-2022-ref` | |
-| CodinGame | Fall Challenge 2022 - Keep Off the Grass | ❌ | `cg-fall-challenge-2022-keep-off-the-grass-ref` | |
-| CodinGame | Spring 2023 - Ants | ❌ | `cg-spring-2023-ants-ref` | |
-| CodinGame | Fall 2023 - Fish | ❌ | `cg-fall-2023-fish-ref` | |
-| CodinGame | Winter 2024 - Sprawl | ❌ | `cg-winter-2024-sprawl-ref` | |
-| CodinGame | Spring 2024 - Olymbits | ✅ | `cg-spring-2024-olymbits-ref` <br/> [cg-spring-2024-olymbits.jar](cg-jar/cg-spring-2024-olympics.jar) | `cg-spring-2024-olymbits` <br/> [cg-spring-2024-olympics.cpp](cg-cpp/cg-spring-2024-olympics.cpp) |
+| CodinGame | Spring 2021 - Photosynthesis | ✅ | `cg-spring-2021-ref` <br/> [cg-spring-2021.jar](cg-jar/cg-spring-2021.jar) | `cg-spring-2021` <br/> [cg-spring-2021.cpp](cg-cpp/cg-spring-2021.cpp) |
+| CodinGame | Spring 2022 - Spider Attack | ✅ | `cg-spider-attack-spring-2022-ref` <br/> [cg-spider-attack-spring-2022.jar](cg-jar/cg-spider-attack-spring-2022.jar) | `cg-spider-attack-spring-2022` <br/> [cg-spider-attack-spring-2022.cpp](cg-cpp/cg-spider-attack-spring-2022.cpp) |
+| CodinGame | Fall Challenge 2022 - Keep Off the Grass | ✅ | `cg-fall-challenge-2022-keep-off-the-grass-ref` <br/> [cg-fall-challenge-2022-keep-off-the-grass.jar](cg-jar/cg-fall-challenge-2022-keep-off-the-grass.jar) | `cg-fall-challenge-2022-keep-off-the-grass` <br/> [cg-fall-challenge-2022-keep-off-the-grass.cpp](cg-cpp/cg-fall-challenge-2022-keep-off-the-grass.cpp) |
+| CodinGame | Spring 2023 - Ants | ✅ | `cg-spring-2023-ants-ref` <br/> [cg-spring-2023-ants.jar](cg-jar/cg-spring-2023-ants.jar) | `cg-spring-2023-ants` <br/> [cg-spring-2023-ants.cpp](cg-cpp/cg-spring-2023-ants.cpp) |
+| CodinGame | Fall 2023 - Fish | ✅ | `cg-fall-2023-fish-ref` <br/> [cg-fall-2023-fish.jar](cg-jar/cg-fall-2023-fish.jar) | `cg-fall-2023-fish` <br/> [cg-fall-2023-fish.cpp](cg-cpp/cg-fall-2023-fish.cpp) |
+| CodinGame | Winter 2024 - Sprawl | ✅ | `cg-winter-2024-sprawl-ref` <br/> [cg-winter-2024-sprawl.jar](cg-jar/cg-winter-2024-sprawl.jar) | `cg-winter-2024-sprawl` <br/> [cg-winter-2024-sprawl.cpp](cg-cpp/cg-winter-2024-sprawl.cpp) |
+| CodinGame | Spring 2024 - Olymbits | ✅ | `cg-spring-2024-olympics-ref` <br/> [cg-spring-2024-olympics.jar](cg-jar/cg-spring-2024-olympics.jar) | `cg-spring-2024-olympics` <br/> [cg-spring-2024-olympics.cpp](cg-cpp/cg-spring-2024-olympics.cpp) |
 | CodinGame | Fall Challenge 2024 - Moon City | ❌ | `cg-fall-challenge-2024-moon-city-ref` | |
 
 ## CodinGame
