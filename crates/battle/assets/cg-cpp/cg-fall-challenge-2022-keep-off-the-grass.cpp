@@ -45,119 +45,7 @@
 
 #include "common/engine.h"
 
-// ----------------------------------------------------------------------------
-// Java semantics (java.h has the rest)
-// ----------------------------------------------------------------------------
-namespace java {
-
-// int arithmetic (wraps around)
-static inline i32 add(i32 a, i32 b) { return (i32)((u32)a + (u32)b); }
-static inline i32 sub(i32 a, i32 b) { return (i32)((u32)a - (u32)b); }
-static inline i32 abs(i32 a) { return a < 0 ? (i32)(0u - (u32)a) : a; } // Math.abs(MIN_VALUE) == MIN_VALUE
-
-// java.lang.String (UTF-16 code units)
-typedef std::u16string jstring;
-
-static jstring J(const char* ascii) {
-    jstring s;
-    for (const char* p = ascii; *p; p++) s += (char16_t)(unsigned char)*p;
-    return s;
-}
-static jstring J(const std::string& ascii) { return J(ascii.c_str()); }
-
-inline std::string toUtf8(const jstring& s) { return encodeUtf8(s); }
-
-// String.split(c) for a single non-regex char: trailing empty strings are removed
-static std::vector<jstring> split(const jstring& s, char16_t c) {
-    std::vector<jstring> r;
-    size_t off = 0, next;
-    while ((next = s.find(c, off)) != jstring::npos) {
-        r.push_back(s.substr(off, next - off));
-        off = next + 1;
-    }
-    if (off == 0) return {s};
-    r.push_back(s.substr(off));
-    while (!r.empty() && r.back().empty()) r.pop_back();
-    return r;
-}
-
-// String.toUpperCase() (default locale en_US) of the first code points of s, enough for startsWith
-// checks of up to `n` chars. Only the non-ASCII chars whose upper case starts with an ASCII letter
-// matter here (table generated with JDK 26).
-static jstring upperPrefix(const jstring& s, size_t n) {
-    static const struct { char16_t c; const char16_t* up; } TABLE[] = {
-        {0x00df, u"SS"}, {0x0131, u"I"}, {0x017f, u"S"}, {0x01f0, u"J̌"}, {0x1e96, u"H̱"},
-        {0x1e97, u"T̈"}, {0x1e98, u"W̊"}, {0x1e99, u"Y̊"}, {0x1e9a, u"Aʾ"},
-        {0xfb00, u"FF"}, {0xfb01, u"FI"}, {0xfb02, u"FL"}, {0xfb03, u"FFI"}, {0xfb04, u"FFL"},
-        {0xfb05, u"ST"}, {0xfb06, u"ST"},
-    };
-    jstring out;
-    for (size_t i = 0; i < s.size() && out.size() < n; i++) {
-        char16_t c = s[i];
-        if (c >= u'a' && c <= u'z') { out += (char16_t)(c - 32); continue; }
-        if (c < 0x80) { out += c; continue; }
-        const char16_t* up = nullptr;
-        for (auto& t : TABLE)
-            if (t.c == c) up = t.up;
-        if (up) out += up;
-        else out += (char16_t)0xffff; // some non-ASCII char: no keyword can match from here
-    }
-    return out;
-}
-
-// Length (in UTF-16 chars, and in UTF-8 bytes) of a string once quoted by Gson 2.8.2's JsonWriter
-// (not HTML-safe), without the quotes
-static void jsonEscapedLength(const jstring& s, i64& chars, i64& bytes) {
-    for (size_t i = 0; i < s.size(); i++) {
-        char16_t c = s[i];
-        int len;
-        if (c < 0x20) len = (c == u'\t' || c == u'\b' || c == u'\n' || c == u'\r' || c == u'\f') ? 2 : 6;
-        else if (c == u'"' || c == u'\\') len = 2;
-        else if (c == 0x2028 || c == 0x2029) len = 6;
-        else len = 1;
-        if (len > 1 || c < 0x80) { chars += len; bytes += len; continue; }
-        chars += 1;
-        if (c < 0x800) bytes += 2;
-        else if (isHighSurrogate(c) && i + 1 < s.size() && isLowSurrogate(s[i + 1])) { bytes += 4; chars += 1; i++; }
-        else if (isHighSurrogate(c) || isLowSurrogate(c)) bytes += 1;
-        else bytes += 3;
-    }
-}
-
-// Gson 2.8.2 JsonWriter.string() escaping (not HTML-safe), without the quotes, as UTF-8
-static std::string gsonEscape(const jstring& s) {
-    std::string out;
-    jstring plain;
-    for (char16_t c : s) {
-        const char* rep = nullptr;
-        char buf[8];
-        if (c == u'"') rep = "\\\"";
-        else if (c == u'\\') rep = "\\\\";
-        else if (c == u'\t') rep = "\\t";
-        else if (c == u'\b') rep = "\\b";
-        else if (c == u'\n') rep = "\\n";
-        else if (c == u'\r') rep = "\\r";
-        else if (c == u'\f') rep = "\\f";
-        else if (c < 0x20 || c == 0x2028 || c == 0x2029) {
-            snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)c);
-            rep = buf;
-        }
-        if (rep) {
-            out += toUtf8(plain);
-            plain.clear();
-            out += rep;
-        } else {
-            plain += c;
-        }
-    }
-    out += toUtf8(plain);
-    return out;
-}
-
-
-} // namespace java
-
-using java::jstring;
+using jstring = java::String;
 
 // ----------------------------------------------------------------------------
 // Constants (Config.java, league level 19, and the engine)
@@ -442,49 +330,16 @@ struct AStar {
     Coord from, target, nearest;
     double centreX, centreY;
     std::vector<PathItem> items;
-    std::vector<int> openList; // java.util.PriorityQueue (binary heap) ordered by totalPrevisionalLength
+    struct ByTotalPrevisionalLength {
+        const std::vector<PathItem>* items;
+        int operator()(int a, int b) const { return java::compareInt((*items)[a].totalPrevisionalLength, (*items)[b].totalPrevisionalLength); }
+    };
+    java::PriorityQueue<int, ByTotalPrevisionalLength> openList{ByTotalPrevisionalLength{&items}};
     std::vector<char> closed;
 
     AStar(const Grid& g, Coord f, Coord t, const std::vector<char>& r) : grid(g), restricted(r), from(f), target(t), nearest(f) {
         centreX = grid.width / 2.0;
         centreY = grid.height / 2.0;
-    }
-
-    int cmp(int a, int b) const {
-        int x = items[a].totalPrevisionalLength, y = items[b].totalPrevisionalLength;
-        return x < y ? -1 : (x == y ? 0 : 1);
-    }
-    void offer(int e) {
-        int k = (int)openList.size();
-        openList.push_back(e);
-        while (k > 0) {
-            int parent = (k - 1) >> 1;
-            int p = openList[parent];
-            if (cmp(e, p) >= 0) break;
-            openList[k] = p;
-            k = parent;
-        }
-        openList[k] = e;
-    }
-    int poll() {
-        int result = openList[0];
-        int n = (int)openList.size() - 1;
-        int x = openList[n];
-        openList.pop_back();
-        if (n > 0) {
-            int k = 0, half = n >> 1;
-            while (k < half) {
-                int child = (k << 1) + 1;
-                int c = openList[child];
-                int right = child + 1;
-                if (right < n && cmp(c, openList[right]) > 0) c = openList[child = right];
-                if (cmp(x, c) <= 0) break;
-                openList[k] = c;
-                k = child;
-            }
-            openList[k] = x;
-        }
-        return result;
     }
 
     int compareByDistanceToCentre(const Coord& a, const Coord& b) const {
@@ -497,9 +352,9 @@ struct AStar {
         closed.assign(grid.width * grid.height, 0);
         items.push_back(PathItem());
         items.back().coord = from;
-        offer(0);
-        while (!openList.empty()) {
-            int visiting = poll();
+        openList.offer(0);
+        while (!openList.isEmpty()) {
+            int visiting = openList.poll();
             Coord visitingCoord = items[visiting].coord;
             if (visitingCoord == target) return visiting;
             if (closed[grid.idx(visitingCoord)]) continue;
@@ -534,7 +389,7 @@ struct AStar {
         pi.totalPrevisionalLength = pi.cumulativeLength + manh;
         pi.precedent = visiting;
         items.push_back(pi);
-        offer((int)items.size() - 1);
+        openList.offer((int)items.size() - 1);
     }
 
     std::vector<Coord> find() {
@@ -577,7 +432,7 @@ struct Player : cg::Player {
     jstring message;
     std::vector<Action> builds, spawns, moves;
 
-    jstring nicknameToken() const { return java::J("$" + std::to_string(index)); }
+    jstring nicknameToken() const { return java::ascii("$" + std::to_string(index)); }
     int getExpectedOutputLines() const override { return 1; }
 
     void setMessage(const jstring& msg) {
@@ -660,9 +515,9 @@ struct FrameView {
         if (hasGraphics) {
             if (!first) s += ",";
             s += "\"graphics\":\"" + graphics[0];
-            if (withMessages && hasMessage[0]) s += java::gsonEscape(messages[0]);
+            if (withMessages && hasMessage[0]) s += java::jsonEscape(messages[0]);
             s += graphics[1];
-            if (withMessages && hasMessage[1]) s += java::gsonEscape(messages[1]);
+            if (withMessages && hasMessage[1]) s += java::jsonEscape(messages[1]);
             s += graphics[2] + "\"";
             first = false;
         }
@@ -676,7 +531,11 @@ struct FrameView {
     // size of the escaped messages in the JSON, in UTF-16 chars and in UTF-8 bytes
     void messageLength(i64& chars, i64& bytes) const {
         for (int i = 0; i < 2; i++)
-            if (hasMessage[i]) java::jsonEscapedLength(messages[i], chars, bytes);
+            if (hasMessage[i]) {
+                java::Size size = java::jsonEscapeSize(messages[i]);
+                chars += size.u16;
+                bytes += size.u8;
+            }
     }
 };
 
@@ -1128,13 +987,12 @@ static void sendInput(Player& player, const std::string& text) {
 // ----------------------------------------------------------------------------
 // Game.getExpected
 static jstring getExpected(const jstring& playerOutput) {
-    jstring attempt = java::upperPrefix(playerOutput, 7);
-    auto starts = [&](const char16_t* k) { return attempt.compare(0, std::char_traits<char16_t>::length(k), k) == 0; };
-    if (starts(u"MOVE")) return u"MOVE <n> <x1> <y1> <x2> <y2>";
-    if (starts(u"SPAWN")) return u"SPAWN <n> <x> <y>";
-    if (starts(u"BUILD")) return u"BUILD <x> <y>";
-    if (starts(u"MESSAGE")) return u"MESSAGE <text>";
-    if (starts(u"WAIT")) return u"WAIT";
+    auto starts = [&](const char* k) { return java::upperCaseStartsWith(playerOutput, k); };
+    if (starts("MOVE")) return u"MOVE <n> <x1> <y1> <x2> <y2>";
+    if (starts("SPAWN")) return u"SPAWN <n> <x> <y>";
+    if (starts("BUILD")) return u"BUILD <x> <y>";
+    if (starts("MESSAGE")) return u"MESSAGE <text>";
+    if (starts("WAIT")) return u"WAIT";
     return u"MOVE | SPAWN | BUILD | MESSAGE | WAIT";
 }
 
@@ -1221,7 +1079,7 @@ static void parseCommands(Player& player, const jstring& line) {
             player.addAction(action, message);
             continue;
         }
-        jstring got = r == 2 ? u"java.lang.NumberFormatException: For input string: \"" + nfe + u"\"" : command;
+        jstring got = r == 2 ? java::numberFormatException(nfe) : command;
         jstring msg = u"Invalid Input: Expected " + getExpected(command) + u" but got '" + got + u"'";
         // deactivatePlayer
         player.deactivate(java::replace(java::replace(msg, u"&lt;", u"<"), u"&gt;", u">"));
@@ -1246,7 +1104,7 @@ static void handlePlayerCommands(const std::vector<int>& active) {
 
 struct KotgReferee : cg::Referee {
     void init() override {
-        if (cg::gm.getPlayerCount() > 2) throw java::Exception{"java.lang.ArrayIndexOutOfBoundsException: Index 2 out of bounds for length 2"};
+        if (cg::gm.getPlayerCount() > 2) throw java::Exception{java::arrayIndexOutOfBoundsException(2, 2)};
         game.init();
         for (int pi : game.getActivePlayers()) sendInput(game.players[pi], game.getGlobalInfoFor());
         cg::gm.setFrameDuration(500);
@@ -1315,7 +1173,7 @@ void Game::performGameUpdate(int) {
         if (errorCount[p] > 1) summary += " + " + std::to_string(errorCount[p] - 1) + " other error" + (errorCount[p] > 2 ? "s" : "");
     }
     summary += "\n";
-    cg::gm.addToGameSummary(java::J(summary));
+    cg::gm.addToGameSummary(java::ascii(summary));
     errorCount[0] = errorCount[1] = 0;
 
     computeEvents();
@@ -1325,12 +1183,12 @@ bool Game::checkGameOver() {
     auto winner = [&]() { return getOwnedCells(1) > getOwnedCells(0) ? 1 : 0; }; // Stream.max keeps the first on ties
     if (earlyFinishCounter <= 0) {
         int w = winner();
-        cg::gm.addTooltip(w, java::J("Field stable for 20 turns. $" + std::to_string(w) + " wins!"));
+        cg::gm.addTooltip(w, java::ascii("Field stable for 20 turns. $" + std::to_string(w) + " wins!"));
         return true;
     }
     for (Player& p : players) {
         if (getOwnedCells(p.index) == 0) {
-            cg::gm.addTooltip(winner(), java::J("$" + std::to_string(p.index) + " has no more cells and is disqualified"));
+            cg::gm.addTooltip(winner(), java::ascii("$" + std::to_string(p.index) + " has no more cells and is disqualified"));
             return true;
         }
     }

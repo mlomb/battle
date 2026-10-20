@@ -45,79 +45,6 @@
 typedef std::u16string ustr; // java.lang.String (UTF-16 code units)
 
 // ----------------------------------------------------------------------------
-// Java semantics (java.h has the rest)
-// ----------------------------------------------------------------------------
-namespace java {
-
-// Integer.compare
-static inline int icmp(int a, int b) { return a < b ? -1 : (a == b ? 0 : 1); }
-
-inline ustr num(i64 v) { return str(v); }
-// UTF-8 encoding of a Java string as a PrintStream writes it (unpaired surrogates become '?')
-inline void appendUtf8(std::string& out, const ustr& s) { out += encodeUtf8(s); }
-inline std::string utf8(const ustr& s) { return encodeUtf8(s); }
-
-// String.split(String) with a single, non special character (fast path, trailing empties removed)
-static std::vector<ustr> split(const ustr& s, char16_t c) {
-    std::vector<ustr> out;
-    size_t off = 0, next;
-    bool found = false;
-    while ((next = s.find(c, off)) != ustr::npos) {
-        found = true;
-        out.push_back(s.substr(off, next - off));
-        off = next + 1;
-    }
-    if (!found) return {s};
-    out.push_back(s.substr(off));
-    size_t n = out.size();
-    while (n > 0 && out[n - 1].empty()) n--;
-    out.resize(n);
-    return out;
-}
-
-static bool startsWith(const ustr& s, const char* prefix) {
-    size_t n = strlen(prefix);
-    if (s.size() < n) return false;
-    for (size_t i = 0; i < n; i++)
-        if (s[i] != (char16_t)(unsigned char)prefix[i]) return false;
-    return true;
-}
-
-// The first `n` UTF-16 units of s.toUpperCase() (locale en_US), enough for startsWith checks
-// against ASCII words. Characters whose upper case contains no ASCII letter become U+FFFF.
-static ustr upperPrefix(const ustr& s, size_t n) {
-    static const struct {
-        char16_t c;
-        const char16_t* up;
-    } special[] = {
-        {0x00DF, u"SS"}, {0x0131, u"I"}, {0x0149, u"ʼN"}, {0x017F, u"S"}, {0x01F0, u"J̌"},
-        {0x1E96, u"H̱"}, {0x1E97, u"T̈"}, {0x1E98, u"W̊"}, {0x1E99, u"Y̊"},
-        {0x1E9A, u"Aʾ"}, {0xFB00, u"FF"}, {0xFB01, u"FI"}, {0xFB02, u"FL"}, {0xFB03, u"FFI"},
-        {0xFB04, u"FFL"}, {0xFB05, u"ST"}, {0xFB06, u"ST"},
-    };
-    ustr out;
-    for (size_t i = 0; i < s.size() && out.size() < n; i++) {
-        char16_t c = s[i];
-        if (c < 0x80) {
-            out.push_back((c >= u'a' && c <= u'z') ? (char16_t)(c - 32) : c);
-            continue;
-        }
-        const char16_t* up = nullptr;
-        for (auto& sp : special)
-            if (sp.c == c) up = sp.up;
-        if (up) {
-            while (*up) out.push_back(*up++);
-        } else {
-            out.push_back(0xFFFF);
-        }
-    }
-    if (out.size() > n) out.resize(n);
-    return out;
-}
-
-} // namespace java
-
-// ----------------------------------------------------------------------------
 // Game logic: Config.java, CubeCoord.java, Cell.java
 // ----------------------------------------------------------------------------
 namespace Config {
@@ -631,48 +558,6 @@ static void generateBoard() {
 // ----------------------------------------------------------------------------
 // Board.java: paths
 // ----------------------------------------------------------------------------
-// java.util.PriorityQueue<Integer> with a comparator (offer/poll exactly as in JDK 26)
-struct PriorityQueueI {
-    std::vector<int> es;
-    int size = 0;
-    bool isEmpty() const { return size == 0; }
-    template <class Cmp>
-    void offer(int x, Cmp& cmp) {
-        int k = size;
-        if (k >= (int)es.size()) es.resize(k + 16);
-        while (k > 0) { // siftUpUsingComparator
-            int parent = (k - 1) >> 1;
-            int e = es[parent];
-            if (cmp(x, e) >= 0) break;
-            es[k] = e;
-            k = parent;
-        }
-        es[k] = x;
-        size++;
-    }
-    template <class Cmp>
-    int poll(Cmp& cmp) {
-        int result = es[0];
-        int n = --size;
-        int x = es[n];
-        if (n > 0) { // siftDownUsingComparator
-            int k = 0;
-            int half = n >> 1;
-            while (k < half) {
-                int child = (k << 1) + 1;
-                int c = es[child];
-                int right = child + 1;
-                if (right < n && cmp(c, es[right]) > 0) c = es[child = right];
-                if (cmp(x, c) <= 0) break;
-                es[k] = c;
-                k = child;
-            }
-            es[k] = x;
-        }
-        return result;
-    }
-};
-
 // findShortestPath(a, b, playerIdx): BFS, neighbours ordered by friendly ants, then beacon
 // strength, then cell id (playerIdx < 0: by cell id). The BFS stops as soon as b is reached,
 // which does not change the parents of the cells reached before, so `prev` from a complete BFS
@@ -726,11 +611,11 @@ static bool getBestPath(int start, int end, int playerIdx, bool interruptedByFig
 
     // valueComparator.reversed().thenComparing(distanceComparator)
     auto cmp = [&](int a, int b) -> int {
-        int r = java::icmp(maxPathValues[b], maxPathValues[a]);
+        int r = java::compareInt(maxPathValues[b], maxPathValues[a]);
         if (r != 0) return r;
-        return java::icmp(distanceFromStart[a] + board.getDistance(a, end), distanceFromStart[b] + board.getDistance(b, end));
+        return java::compareInt(distanceFromStart[a] + board.getDistance(a, end), distanceFromStart[b] + board.getDistance(b, end));
     };
-    PriorityQueueI queue;
+    java::PriorityQueue<int, decltype(cmp)> queue(cmp);
     const Cell& startCell = board.cells[start];
     maxPathValues[start] = startCell.ants[playerIdx];
     distanceFromStart[start] = 0;
@@ -740,10 +625,10 @@ static bool getBestPath(int start, int end, int playerIdx, bool interruptedByFig
         int otherForce = getAttackPower(start, 1 - playerIdx);
         if (otherForce > myForce) startAnts = 0;
     }
-    if (startAnts > 0) queue.offer(start, cmp);
+    if (startAnts > 0) queue.offer(start);
 
     while (!queue.isEmpty() && !visited[end]) {
-        int currentIndex = queue.poll(cmp);
+        int currentIndex = queue.poll();
         visited[currentIndex] = 1;
 
         // Update the max values of the neighbors
@@ -762,7 +647,7 @@ static bool getBestPath(int start, int end, int playerIdx, bool interruptedByFig
                     maxPathValues[neighborIndex] = potentialMaxPathValue;
                     distanceFromStart[neighborIndex] = distanceFromStart[currentIndex] + 1;
                     prev[neighborIndex] = currentIndex;
-                    queue.offer(neighborIndex, cmp);
+                    queue.offer(neighborIndex);
                 }
             }
         }
@@ -1239,11 +1124,10 @@ static void onEnd() {
 // CommandManager.java
 // ----------------------------------------------------------------------------
 static ustr getExpected(const ustr& playerOutput) {
-    ustr attempt = java::upperPrefix(playerOutput, 7);
-    if (java::startsWith(attempt, "BEACON")) return u"BEACON <cell_index> <beacon_strength>";
-    if (java::startsWith(attempt, "LINE")) return u"LINE <from_index> <to_index> <beacon_strength>";
-    if (java::startsWith(attempt, "MESSAGE")) return u"MESSAGE <text>";
-    if (java::startsWith(attempt, "WAIT")) return u"WAIT";
+    if (java::upperCaseStartsWith(playerOutput, "BEACON")) return u"BEACON <cell_index> <beacon_strength>";
+    if (java::upperCaseStartsWith(playerOutput, "LINE")) return u"LINE <from_index> <to_index> <beacon_strength>";
+    if (java::upperCaseStartsWith(playerOutput, "MESSAGE")) return u"MESSAGE <text>";
+    if (java::upperCaseStartsWith(playerOutput, "WAIT")) return u"WAIT";
     return u"BEACON | LINE | MESSAGE | WAIT";
 }
 
@@ -1269,7 +1153,7 @@ static bool parseCommand(Player& player, const ustr& command, ustr& error) {
     ustr g[3];
     auto parse = [&](const ustr& digits, int& out) {
         if (java::parseInt(digits, out)) return true;
-        error = invalidInput(getExpected(command), u"java.lang.NumberFormatException: For input string: \"" + digits + u"\"");
+        error = invalidInput(getExpected(command), java::numberFormatException(digits));
         return false;
     };
     if (matchNumbers(t, "BEACON", 2, g)) {
@@ -1301,13 +1185,13 @@ static void parseCommands(Player& player, const ustr& line) {
     for (auto& command : commands) {
         ustr error;
         if (!parseCommand(player, command, error)) {
-            if (trace) fprintf(trace, "  P%d disqualified: %s\n", player.index, java::utf8(error).c_str());
+            if (trace) fprintf(trace, "  P%d disqualified: %s\n", player.index, java::encodeUtf8(error).c_str());
             // deactivatePlayer(player, e.getMessage())
             ustr reason = java::replace(java::replace(error, u"&lt;", u"<"), u"&gt;", u">");
             deactivate(player, &reason);
             player.score = -1;
             addToGameSummary(error);
-            addToGameSummary(u"¤RED¤$" + java::num(player.index) + u": disqualified!§RED§");
+            addToGameSummary(u"¤RED¤$" + java::str(player.index) + u": disqualified!§RED§");
             return;
         }
     }
@@ -1343,7 +1227,7 @@ static void appendJsonEscaped(std::string& out, const ustr& s) {
             esc += c;
         }
     }
-    java::appendUtf8(out, esc);
+    out += java::encodeUtf8(esc);
 }
 
 // GameDataProvider.getCurrentFrameData() + Serializer.serialize(FrameViewData)
@@ -1411,7 +1295,7 @@ static void handlePlayerCommands() {
         if (player->timeout) {
             static const ustr reason = u"Timeout!";
             deactivate(*player, &reason);
-            addToGameSummary(u"$" + java::num(player->index) + u" has not provided 1 lines in time");
+            addToGameSummary(u"$" + java::str(player->index) + u" has not provided 1 lines in time");
         } else {
             parseCommands(*player, player->outputs[0]);
         }

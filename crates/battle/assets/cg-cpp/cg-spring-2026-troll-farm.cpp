@@ -22,19 +22,15 @@ typedef uint64_t u64;
 typedef uint8_t u8;
 
 // ----------------------------------------------------------------------------
-// Java SecureRandom("SHA1PRNG") (common/java.h), with the names used below
+// The game's SecureRandom("SHA1PRNG") (common/java.h)
 // ----------------------------------------------------------------------------
-struct SHA1PRNG : java::SHA1PRNG {
-    // unlike SecureRandom.setSeed(long), 0 is not ignored here: -seed 0 plays a fixed game
-    void setSeedLong(i64 seed) {
-        u8 b[8];
-        for (int i = 0; i < 8; i++) b[i] = (u8)(((u64)seed >> (8 * i)) & 0xff);
-        engineSetSeed(b, 8);
-    }
-    void engineNextBytes(u8* result, int n) { nextBytes(result, n); }
-    i32 nextIntBound(i32 bound) { return nextInt(bound); }
-    i32 nextIntOriginBound(i32 origin, i32 bound) { return nextInt(origin, bound); }
-};
+// The referee seeds it with setSeed(long), which ignores 0 (the jar then plays a random game); the
+// port seeds 0 like any other seed, so that -seed 0 plays a fixed game
+static void seedRandom(java::SHA1PRNG& rng, i64 seed) {
+    u8 b[8];
+    java::SHA1PRNG::longToByteArray(seed, b);
+    rng.engineSetSeed(b, 8);
+}
 
 // ----------------------------------------------------------------------------
 // Constants
@@ -104,7 +100,7 @@ struct Board {
     bool active[2] = {true,true};
     int unitIdCounter = 0;
     int noTreeCounter = 0;
-    SHA1PRNG* rng = nullptr;
+    java::SHA1PRNG* rng = nullptr;
 
     inline int idx(int x, int y) const { return x*H + y; }
     inline int8_t ttype(int x, int y) const { return type[idx(x,y)]; }
@@ -215,7 +211,7 @@ struct Board {
             if (d >= 0 && d < best) { best = d; closest.clear(); }
             if (d == best) closest.push_back(idx(x,y));
         }
-        int pick = rng->nextIntBound((i32)closest.size());
+        int pick = rng->nextInt((i32)closest.size());
         return closest[pick];
     }
 
@@ -272,8 +268,8 @@ struct BirdView {
             treeDead = (ti < 0) || b.plants[ti].dead();
         }
         if (cellx == treex && celly == treey) {
-            (void)b.rng->nextIntOriginBound(1, 5);
-            (void)b.rng->nextIntOriginBound(1, 3);
+            (void)b.rng->nextInt(1, 5);
+            (void)b.rng->nextInt(1, 3);
             // unit detection: no random
         } else {
             int nxi = b.getNextCell(cellx, celly, treex, treey, 1);
@@ -298,16 +294,16 @@ struct BirdView {
 // BoardView replica (random consumption only)
 // ----------------------------------------------------------------------------
 static void runBoardViewRandom(Board& b, BirdView& bird) {
-    SHA1PRNG& r = *b.rng;
-    (void)r.nextIntBound(1840);
-    (void)r.nextIntOriginBound(120, 1000);
+    java::SHA1PRNG& r = *b.rng;
+    (void)r.nextInt(1840);
+    (void)r.nextInt(120, 1000);
     bool creatorsPlaced[5] = {false,false,false,false,false}; // frog, fish, bird, cat, turtle
     const int creatorsTextsLen[5] = {4,5,4,3,1};
     for (int x = 0; x < b.W; x++) {
         for (int y = 0; y < b.H; y++) {
             int8_t t = b.ttype(x,y);
-            if (t != WATER) (void)r.nextIntBound(8);
-            if (t == ROCK) { (void)r.nextIntBound(5); (void)r.nextIntBound(6); (void)r.nextIntBound(6); }
+            if (t != WATER) (void)r.nextInt(8);
+            if (t == ROCK) { (void)r.nextInt(5); (void)r.nextInt(6); (void)r.nextInt(6); }
             if (t == GRASS) {
                 int pi = b.plantIdx[b.idx(x,y)];
                 bool condBird = !creatorsPlaced[1] && !creatorsPlaced[2] && pi >= 0 && b.plants[pi].size == C::PLANT_MAX_SIZE;
@@ -320,17 +316,17 @@ static void runBoardViewRandom(Board& b, BirdView& bird) {
                         bird.treex = x; bird.treey = y;
                         creatorsPlaced[2] = true; creatorsPlaced[3] = true;
                         // BirdView ctor: nextInt(creatorsTexts[2].length), nextInt(creatorsTexts[3].length)
-                        (void)r.nextIntBound(creatorsTextsLen[2]);
-                        (void)r.nextIntBound(creatorsTextsLen[3]);
+                        (void)r.nextInt(creatorsTextsLen[2]);
+                        (void)r.nextInt(creatorsTextsLen[3]);
                         // then update() once
                         bird.update(b);
                     } else {
                         double d2 = r.nextDouble();
-                        if (d2 < 0.3) { (void)r.nextIntBound(16); (void)r.nextIntBound(56); (void)r.nextIntBound(56); }
+                        if (d2 < 0.3) { (void)r.nextInt(16); (void)r.nextInt(56); (void)r.nextInt(56); }
                     }
                 } else {
                     double d = r.nextDouble();
-                    if (d < 0.3) { (void)r.nextIntBound(16); (void)r.nextIntBound(56); (void)r.nextIntBound(56); }
+                    if (d < 0.3) { (void)r.nextInt(16); (void)r.nextInt(56); (void)r.nextInt(56); }
                 }
             }
             if (t == WATER) {
@@ -340,30 +336,30 @@ static void runBoardViewRandom(Board& b, BirdView& bird) {
                 { int nx,ny; if (b.neighbor(x,y,2,nx,ny) && b.ttype(nx,ny)!=WATER) index += 8; }
                 { int nx,ny; if (b.neighbor(x,y,3,nx,ny) && b.ttype(nx,ny)!=WATER) index += 2; }
                 bool empty = (index == 0);
-                if (index == 0) { int v = r.nextIntBound(5); static const int arr[5]={0,20,21,22,23}; index = arr[v]; }
+                if (index == 0) { int v = r.nextInt(5); static const int arr[5]={0,20,21,22,23}; index = arr[v]; }
                 // 4 conditional decorative sprites: no random
                 if (empty) {
                     double dW = r.nextDouble();
                     if (dW < 0.3) {
                         double dW2 = r.nextDouble();
                         if (dW2 < 0.001) {
-                            int creatorIndex = r.nextIntBound(2);
+                            int creatorIndex = r.nextInt(2);
                             if ((creatorIndex == 1 && creatorsPlaced[2]) || creatorsPlaced[creatorIndex])
                                 creatorIndex = 1 - creatorIndex;
                             if (!creatorsPlaced[creatorIndex] && (creatorIndex == 0 || !creatorsPlaced[2])) {
                                 // no random in the sprite-sheet bits; one nextInt for tooltip text:
-                                (void)r.nextIntBound(creatorsTextsLen[creatorIndex]);
+                                (void)r.nextInt(creatorsTextsLen[creatorIndex]);
                                 creatorsPlaced[creatorIndex] = true;
                             }
                         } else {
-                            (void)r.nextIntBound(4);
+                            (void)r.nextInt(4);
                         }
                     }
                 }
                 if (index == 8 && !creatorsPlaced[4]) {
                     double dT = r.nextDouble();
                     if (dT < 0.0005) {
-                        (void)r.nextIntBound(creatorsTextsLen[4]); // nextInt(1) - still consumes
+                        (void)r.nextInt(creatorsTextsLen[4]); // nextInt(1) - still consumes
                         creatorsPlaced[4] = true;
                     }
                 }
@@ -377,31 +373,31 @@ static void runBoardViewRandom(Board& b, BirdView& bird) {
 // ----------------------------------------------------------------------------
 // Map generation (Board.createMap, league 10)
 // ----------------------------------------------------------------------------
-static void createMap(Board& b, SHA1PRNG& rng, BirdView& bird) {
+static void createMap(Board& b, java::SHA1PRNG& rng, BirdView& bird) {
     b.rng = &rng;
     auto getRandomCell = [&](int& rx, int& ry) {
         while (true) {
-            int x = rng.nextIntBound(b.W);
-            int y = rng.nextIntBound(b.H);
+            int x = rng.nextInt(b.W);
+            int y = rng.nextInt(b.H);
             if (b.ttype(x,y)==GRASS && b.plantIdx[b.idx(x,y)]==-1) { rx=x; ry=y; return; }
         }
     };
     while (true) {
-        int H = rng.nextIntBound(C::MAP_MAX_HEIGHT - C::MAP_MIN_HEIGHT + 1) + C::MAP_MIN_HEIGHT;
+        int H = rng.nextInt(C::MAP_MAX_HEIGHT - C::MAP_MIN_HEIGHT + 1) + C::MAP_MIN_HEIGHT;
         int W = 2*H;
         b.resize(W, H);
 
         // rivers (league > 2)
         {
             int maxTotalRiver = W*H - 2*(C::MAP_MAX_ROCK + C::PLANT_MAX_SIZE*4 + C::MAP_MAX_IRON + 1)*4/5;
-            int riversCount = rng.nextIntBound(C::MAP_MAX_RIVER - C::MAP_MIN_RIVER + 1) + C::MAP_MIN_RIVER;
+            int riversCount = rng.nextInt(C::MAP_MAX_RIVER - C::MAP_MIN_RIVER + 1) + C::MAP_MIN_RIVER;
             for (int i=0;i<riversCount;i++) {
                 int rx,ry; getRandomCell(rx,ry);
                 for (int j=0; j<10 && b.nearEdge(rx,ry); j++) getRandomCell(rx,ry);
                 int cx=rx, cy=ry; bool valid=true;
                 while (valid && maxTotalRiver > 0) {
                     b.setCellTypeMirror(cx,cy,WATER);
-                    int d = rng.nextIntBound(4);
+                    int d = rng.nextInt(4);
                     int nx=cx+DX[d], ny=cy+DY[d];
                     if (b.inB(nx,ny)) { cx=nx; cy=ny; } else valid=false;
                     maxTotalRiver -= 2;
@@ -411,10 +407,10 @@ static void createMap(Board& b, SHA1PRNG& rng, BirdView& bird) {
 
         // inventory (league > 1), iron stays (league >= 3 keeps it)
         int inventory[5];
-        for (int i=0;i<5;i++) inventory[i] = C::MIN_START + rng.nextIntBound(C::MAX_START - C::MIN_START + 1);
+        for (int i=0;i<5;i++) inventory[i] = C::MIN_START + rng.nextInt(C::MAX_START - C::MIN_START + 1);
         // shack
-        int sx = rng.nextIntBound(W/2), sy = rng.nextIntBound(H);
-        while (b.ttype(sx,sy)==WATER) { sx = rng.nextIntBound(W/2); sy = rng.nextIntBound(H); }
+        int sx = rng.nextInt(W/2), sy = rng.nextInt(H);
+        while (b.ttype(sx,sy)==WATER) { sx = rng.nextInt(W/2); sy = rng.nextInt(H); }
         b.setCellTypeMirror(sx,sy,SHACK);
         b.unitIdCounter = 0;
         b.shackX[0]=sx; b.shackY[0]=sy;
@@ -435,7 +431,7 @@ static void createMap(Board& b, SHA1PRNG& rng, BirdView& bird) {
 
         // resources (league > 2)
         auto placeTerrain = [&](int8_t t, int mn, int mx) {
-            int cnt = rng.nextIntBound(mx-mn+1) + mn;
+            int cnt = rng.nextInt(mx-mn+1) + mn;
             for (int i=0;i<cnt;i++){ int x,y; getRandomCell(x,y); b.setCellTypeMirror(x,y,t); }
         };
         placeTerrain(IRON_C, C::MAP_MIN_IRON, C::MAP_MAX_IRON);
@@ -443,12 +439,12 @@ static void createMap(Board& b, SHA1PRNG& rng, BirdView& bird) {
 
         // trees
         auto placeTree = [&](int type, int mn, int mx) -> void {
-            int cnt = rng.nextIntBound(mx-mn+1) + mn;
+            int cnt = rng.nextInt(mx-mn+1) + mn;
             for (int i=0;i<cnt;i++) {
                 int x,y; getRandomCell(x,y);
                 Plant p; p.x=x; p.y=y; p.type=type; p.size=0; p.resources=0; p.cooldown=0;
                 p.health = Board::initialHealth(type);
-                int ticks = rng.nextIntOriginBound(1, b.growthCooldown(x,y,type) * (C::PLANT_MAX_SIZE + C::PLANT_MAX_RESOURCES));
+                int ticks = rng.nextInt(1, b.growthCooldown(x,y,type) * (C::PLANT_MAX_SIZE + C::PLANT_MAX_RESOURCES));
                 for (int t=0;t<ticks;t++) b.tickPlant(p);
                 b.plants.push_back(p);
                 b.plantIdx[b.idx(x,y)] = (int)b.plants.size()-1;
@@ -513,70 +509,6 @@ static void createMap(Board& b, SHA1PRNG& rng, BirdView& bird) {
         // else: loop again (next iteration calls resize anyway)
     }
 }
-
-// ----------------------------------------------------------------------------
-// The bots (common/agent.h), read line by line
-// ----------------------------------------------------------------------------
-struct ChildProc {
-    cg::Agent agent;
-    bool alive = false;
-    std::string readBuf; // bytes read but not consumed yet
-
-    // stderrPath: a file for the bot's stderr (nullptr: discarded)
-    bool start(const std::string& cmd, const char* stderrPath) {
-        cg::AgentOptions options;
-        if (stderrPath) {
-            options.stderrMode = cg::Stderr::File;
-            options.stderrFile = stderrPath;
-        }
-        alive = agent.start(cmd, options);
-        return alive;
-    }
-    void writeAll(const std::string& s) {
-        if (alive) agent.sendInput(s);
-    }
-    // read one line (without trailing \n or \r). Returns false on EOF/error/timeout with no line.
-    // On timeout, sets timedOut=true and alive=false (incomplete line does not count).
-    bool readLine(std::string& line, int timeoutMs, bool& timedOut) {
-        timedOut = false;
-        line.clear();
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-        while (true) {
-            size_t nl = readBuf.find('\n');
-            if (nl != std::string::npos) {
-                line = readBuf.substr(0, nl);
-                readBuf.erase(0, nl + 1);
-                if (!line.empty() && line.back() == '\r') line.pop_back();
-                return true;
-            }
-            if (std::chrono::steady_clock::now() >= deadline) {
-                timedOut = true;
-                alive = false;
-                return false;
-            }
-            if (!agent.read(readBuf, deadline)) {
-                if (!agent.closed()) {
-                    // the bot blew its budget
-                    timedOut = true;
-                    alive = false;
-                    return false;
-                }
-                alive = false;
-                if (!readBuf.empty()) {
-                    line = readBuf;
-                    readBuf.clear();
-                    if (!line.empty() && line.back() == '\r') line.pop_back();
-                    return true;
-                }
-                return false;
-            }
-        }
-    }
-    void kill() {
-        agent.destroy();
-        alive = false;
-    }
-};
 
 // ----------------------------------------------------------------------------
 // Input building
@@ -681,49 +613,47 @@ struct Game {
     }
 
     // ----- parsing helpers -----
-    // Parse a non-negative integer from str; return false if not a valid int that fits in int32.
+    // The Task patterns (CASE_INSENSITIVE) on the UTF-8 bytes of a command: their classes \s \d \w
+    // only match ASCII, and a non-ASCII char never matches a pattern letter.
+    static bool isSpace(char c) { return java::isRegexSpace((unsigned char)c); }
+    // Integer.parseInt
     static bool parseInt(const std::string& s, i64& out) {
-        if (s.empty()) return false;
-        size_t i=0; bool neg=false;
-        if (s[0]=='-'){ neg=true; i=1; if(s.size()==1) return false; }
-        else if (s[0]=='+'){ i=1; if(s.size()==1) return false; }
-        i64 v=0;
-        for (; i<s.size(); i++) { if (s[i]<'0'||s[i]>'9') return false; v = v*10 + (s[i]-'0'); if (v > 5000000000LL) return false; }
-        if (neg) v = -v;
-        if (v > 2147483647LL || v < -2147483648LL) return false;
+        i32 v;
+        if (!java::parseInt(s, v)) return false;
         out = v;
         return true;
     }
-    static std::string upper(std::string s){ for(auto&c:s) c=(char)toupper((unsigned char)c); return s; }
-    static std::string trim(const std::string& s){
+    // the command without its leading and trailing \s
+    static std::string stripSpaces(const std::string& s){
         size_t a=0,b=s.size();
-        while(a<b && isspace((unsigned char)s[a])) a++;
-        while(b>a && isspace((unsigned char)s[b-1])) b--;
+        while(a<b && isSpace(s[a])) a++;
+        while(b>a && isSpace(s[b-1])) b--;
         return s.substr(a,b-a);
     }
-    // tokenize on whitespace
+    // the runs of non-\s
     static std::vector<std::string> tokens(const std::string& s){
         std::vector<std::string> r; size_t i=0;
         while(i<s.size()){
-            while(i<s.size() && isspace((unsigned char)s[i])) i++;
+            while(i<s.size() && isSpace(s[i])) i++;
             if(i>=s.size()) break;
-            size_t j=i; while(j<s.size() && !isspace((unsigned char)s[j])) j++;
+            size_t j=i; while(j<s.size() && !isSpace(s[j])) j++;
             r.push_back(s.substr(i,j-i)); i=j;
         }
         return r;
     }
-    static bool isAllDigits(const std::string& s){ if(s.empty())return false; for(char c:s) if(c<'0'||c>'9') return false; return true; }
+    static bool isAllDigits(const std::string& s){ if(s.empty())return false; for(char c:s) if(!java::isRegexDigit((unsigned char)c)) return false; return true; }
     static bool isIntTok(const std::string& s){ // -?\d+
-        if(s.empty())return false; size_t i=0; if(s[0]=='-'){i=1; if(s.size()==1)return false;} for(;i<s.size();i++) if(s[i]<'0'||s[i]>'9')return false; return true; }
-    static bool isWord(const std::string& s){ if(s.empty())return false; for(char c:s) if(!(isalnum((unsigned char)c)||c=='_'))return false; return true; }
+        if(s.empty())return false; size_t i=0; if(s[0]=='-'){i=1; if(s.size()==1)return false;} for(;i<s.size();i++) if(!java::isRegexDigit((unsigned char)s[i]))return false; return true; }
+    static bool isWord(const std::string& s){ if(s.empty())return false; for(char c:s) if(!java::isRegexWord((unsigned char)c))return false; return true; }
 
     // returns item type for a "type" token (PLANT/PICK): 0..5 ; -1 if word not recognized and not numeric -> caller treats as throw.
     // out param `threw` set true if numeric parse failed (Integer.parseInt throw -> UNKNOWN_COMMAND critical)
     int parseItemType(const std::string& tok, bool& threw){
         threw=false;
-        std::string u = upper(tok);
-        if(u=="PLUM")return 0; if(u=="LEMON")return 1; if(u=="APPLE")return 2; if(u=="BANANA")return 3;
-        if(u=="IRON")return 4; if(u=="WOOD")return 5;
+        // equalsIgnoreCase on a \w+ group (ASCII)
+        auto is = [&](const char* name) { return java::regexMatchesIgnoreCase(tok, name); };
+        if(is("PLUM"))return 0; if(is("LEMON"))return 1; if(is("APPLE"))return 2; if(is("BANANA"))return 3;
+        if(is("IRON"))return 4; if(is("WOOD"))return 5;
         i64 v;
         if(!parseInt(tok, v)){ threw=true; return -999; }
         return (int)v;
@@ -737,15 +667,15 @@ struct Game {
     // `usedUnits` semantics handled by caller.
     int matchTask(int player, const std::string& cmd, Task& t, bool& sawWaitOrEmpty) {
         sawWaitOrEmpty=false;
-        std::string ct = trim(cmd);
-        if (ct.empty()) { sawWaitOrEmpty=true; return 0; } // handled as null (ignored) by caller
-        if (upper(ct)=="WAIT") { sawWaitOrEmpty=true; return 0; }
-        auto tk = tokens(ct);
+        // command.trim().equals("") and command.trim().toUpperCase().equals("WAIT"): null (ignored by the caller)
+        java::String trimmed = java::trim(java::decodeUtf8(cmd));
+        if (trimmed.empty() || java::upperCaseEquals(trimmed, "WAIT")) { sawWaitOrEmpty=true; return 0; }
+        auto tk = tokens(stripSpaces(cmd));
         if (tk.empty()) { sawWaitOrEmpty=true; return 0; }
-        std::string act = upper(tk[0]);
+        auto actIs = [&](const char* action) { return java::regexMatchesIgnoreCase(tk[0], action); };
         // Patterns require exact token counts.
         // MOVE id x y :  ^\s*MOVE\s+\d+\s+-?\d+\s+-?\d+\s*$
-        if (act=="MOVE" && tk.size()==4 && isAllDigits(tk[1]) && isIntTok(tk[2]) && isIntTok(tk[3])) {
+        if (actIs("MOVE") && tk.size()==4 && isAllDigits(tk[1]) && isIntTok(tk[2]) && isIntTok(tk[3])) {
             t = Task{}; t.kind=TK_MOVE; t.player=player;
             i64 id; if(!parseInt(tk[1],id)) return -1; // \d+ but Integer.parseInt may overflow
             t.unitId=(int)id;
@@ -762,7 +692,7 @@ struct Game {
             return 1;
         }
         // HARVEST id : ^\s*HARVEST\s+\d+\s*$
-        if (act=="HARVEST" && tk.size()==2 && isAllDigits(tk[1])) {
+        if (actIs("HARVEST") && tk.size()==2 && isAllDigits(tk[1])) {
             t=Task{}; t.kind=TK_HARVEST; t.player=player;
             i64 id; if(!parseInt(tk[1],id)) return -1; t.unitId=(int)id;
             Unit* u=findUnit((int)id);
@@ -777,7 +707,7 @@ struct Game {
             return 1;
         }
         // PLANT id type : ^\s*PLANT\s+\d+\s+\w+\s*$
-        if (act=="PLANT" && tk.size()==3 && isAllDigits(tk[1]) && isWord(tk[2])) {
+        if (actIs("PLANT") && tk.size()==3 && isAllDigits(tk[1]) && isWord(tk[2])) {
             t=Task{}; t.kind=TK_PLANT; t.player=player;
             i64 id; if(!parseInt(tk[1],id)) return -1; t.unitId=(int)id;
             Unit* u=findUnit((int)id);
@@ -801,7 +731,7 @@ struct Game {
             return 1;
         }
         // CHOP id : ^\s*CHOP\s+\d+\s*$
-        if (act=="CHOP" && tk.size()==2 && isAllDigits(tk[1])) {
+        if (actIs("CHOP") && tk.size()==2 && isAllDigits(tk[1])) {
             t=Task{}; t.kind=TK_CHOP; t.player=player;
             i64 id; if(!parseInt(tk[1],id)) return -1; t.unitId=(int)id;
             Unit* u=findUnit((int)id);
@@ -813,7 +743,7 @@ struct Game {
             return 1;
         }
         // PICK id type : ^\s*PICK\s+\d+\s+\w+\s*$
-        if (act=="PICK" && tk.size()==3 && isAllDigits(tk[1]) && isWord(tk[2])) {
+        if (actIs("PICK") && tk.size()==3 && isAllDigits(tk[1]) && isWord(tk[2])) {
             t=Task{}; t.kind=TK_PICK; t.player=player;
             i64 id; if(!parseInt(tk[1],id)) return -1; t.unitId=(int)id;
             Unit* u=findUnit((int)id);
@@ -835,7 +765,7 @@ struct Game {
             return 1;
         }
         // TRAIN ms cc hp cp : ^\s*TRAIN\s+\d+\s+\d+\s+\d+\s+\d+\s*$
-        if (act=="TRAIN" && tk.size()==5 && isAllDigits(tk[1]) && isAllDigits(tk[2]) && isAllDigits(tk[3]) && isAllDigits(tk[4])) {
+        if (actIs("TRAIN") && tk.size()==5 && isAllDigits(tk[1]) && isAllDigits(tk[2]) && isAllDigits(tk[3]) && isAllDigits(tk[4])) {
             t=Task{}; t.kind=TK_TRAIN; t.player=player; t.unitId=-1;
             i64 ms,cc,hp,cp;
             if(!parseInt(tk[1],ms)||!parseInt(tk[2],cc)||!parseInt(tk[3],hp)||!parseInt(tk[4],cp)) return -1;
@@ -850,7 +780,7 @@ struct Game {
             return 1;
         }
         // DROP id : ^\s*DROP\s+\d+\s*$
-        if (act=="DROP" && tk.size()==2 && isAllDigits(tk[1])) {
+        if (actIs("DROP") && tk.size()==2 && isAllDigits(tk[1])) {
             t=Task{}; t.kind=TK_DROP; t.player=player;
             i64 id; if(!parseInt(tk[1],id)) return -1; t.unitId=(int)id;
             Unit* u=findUnit((int)id);
@@ -862,7 +792,7 @@ struct Game {
             return 1;
         }
         // MINE id : ^\s*MINE\s+\d+\s*$
-        if (act=="MINE" && tk.size()==2 && isAllDigits(tk[1])) {
+        if (actIs("MINE") && tk.size()==2 && isAllDigits(tk[1])) {
             t=Task{}; t.kind=TK_MINE; t.player=player;
             i64 id; if(!parseInt(tk[1],id)) return -1; t.unitId=(int)id;
             Unit* u=findUnit((int)id);
@@ -1211,20 +1141,14 @@ static bool hasStalled(Board& b) {
 // Game runner
 // ----------------------------------------------------------------------------
 static void parsePlayerCommands(Game& g, int player, const std::string& line, std::vector<Task>& outTasks) {
-    // split on ';'
-    std::vector<std::string> segs;
-    {
-        std::string cur;
-        for (char c : line) { if (c==';'){ segs.push_back(cur); cur.clear(); } else cur+=c; }
-        segs.push_back(cur);
-    }
+    // line.split(";")
+    std::vector<std::string> segs = java::split(line, ';');
     // usedUnits
     std::vector<int> usedUnits;
     auto isUsed = [&](int id){ for (int u:usedUnits) if(u==id) return true; return false; };
     for (auto& seg : segs) {
-        // MSG check (untrimmed, toUpper startsWith "MSG ")
-        std::string su = Game::upper(seg);
-        if (su.size()>=4 && su.compare(0,4,"MSG ")==0) {
+        // command.toUpperCase().startsWith("MSG ")
+        if (java::upperCaseStartsWith(java::decodeUtf8(seg), "MSG ")) {
             // setMessage(seg.substring(4).trim()) -- irrelevant for logic
             continue;
         }
@@ -1256,12 +1180,20 @@ static void parsePlayerCommands(Game& g, int player, const std::string& line, st
 int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* trace, int& s0, int& s1,
             const char* err1Path, const char* err2Path) {
     Game g; g.trace = trace;
-    SHA1PRNG rng; rng.setSeedLong(seed);
+    java::SHA1PRNG rng; seedRandom(rng, seed);
     createMap(g.board, rng, g.bird);
 
-    ChildProc proc[2];
-    if (!proc[0].start(bot1, err1Path)) { fprintf(stderr,"failed to start bot1\n"); return 1; }
-    if (!proc[1].start(bot2, err2Path)) { fprintf(stderr,"failed to start bot2\n"); return 1; }
+    // the bots (common/agent.h), read line by line; errNPath: a file for the bot's stderr (nullptr: discarded)
+    cg::Agent agents[2];
+    const char* errPaths[2] = {err1Path, err2Path};
+    for (int p=0;p<2;p++) {
+        cg::AgentOptions options;
+        if (errPaths[p]) {
+            options.stderrMode = cg::Stderr::File;
+            options.stderrFile = errPaths[p];
+        }
+        if (!agents[p].start(p == 0 ? bot1 : bot2, options)) { fprintf(stderr,"failed to start bot%d\n", p+1); return 1; }
+    }
 
     std::string out[2], inbuf;
     inbuf.reserve(8192);
@@ -1273,14 +1205,14 @@ int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* tr
             std::string& in = inbuf; in.clear();
             if (turn==1) buildInitialInput(g.board, p, in);
             buildTurnInput(g.board, p, in);
-            proc[p].writeAll(in);
+            if (!agents[p].closed()) agents[p].sendInput(in);
             std::string line;
-            bool timedOut = false;
             const int responseMs =
                 (turn == 1) ? C::PLAYER_FIRST_RESPONSE_MS : C::PLAYER_RESPONSE_MS;
-            if (!proc[p].readLine(line, responseMs, timedOut)) {
-                line.clear(); // EOF / error / timeout: treat as empty command line
-                if (timedOut) g.killPlayer(p);
+            cg::Agent::Line r = agents[p].readLine(line, responseMs);
+            if (r != cg::Agent::Line::Ok) {
+                line.clear(); // EOF / timeout: treat as empty command line (an incomplete line does not count)
+                if (r == cg::Agent::Line::Timeout) g.killPlayer(p);
             }
             out[p] = line;
             if (trace) fprintf(trace, "T%d P%d IN_HASH=%016llx OUT=%s\n", turn, p,
@@ -1306,7 +1238,7 @@ int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* tr
         if (trace) fprintf(trace, "  scores: %d %d  plants=%zu units=%zu\n", g.board.score[0], g.board.score[1], g.board.plants.size(), g.board.units.size());
     }
 
-    proc[0].kill(); proc[1].kill();
+    agents[0].destroy(); agents[1].destroy();
     s0 = g.board.score[0]; s1 = g.board.score[1];
     return 0;
 }
@@ -1316,26 +1248,26 @@ int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* tr
 // ----------------------------------------------------------------------------
 static int selfTest() {
     {
-        SHA1PRNG r; r.setSeedLong(12345);
+        java::SHA1PRNG r; seedRandom(r, 12345);
         printf("nextInt(100) x10:");
-        for (int i=0;i<10;i++) printf(" %d", r.nextIntBound(100));
+        for (int i=0;i<10;i++) printf(" %d", r.nextInt(100));
         printf("\n");
     }
     {
-        SHA1PRNG r; r.setSeedLong(12345);
+        java::SHA1PRNG r; seedRandom(r, 12345);
         printf("nextInt() x5:");
         for (int i=0;i<5;i++) printf(" %d", r.nextInt());
         printf("\n");
     }
     {
-        SHA1PRNG r; r.setSeedLong(12345);
-        u8 b[20]; r.engineNextBytes(b,20);
+        java::SHA1PRNG r; seedRandom(r, 12345);
+        u8 b[20]; r.nextBytes(b,20);
         printf("nextBytes(20):");
         for (int i=0;i<20;i++) printf(" %d", b[i]);
         printf("\n");
     }
     {
-        Board board; BirdView bird; SHA1PRNG rng; rng.setSeedLong(12345);
+        Board board; BirdView bird; java::SHA1PRNG rng; seedRandom(rng, 12345);
         createMap(board, rng, bird);
         std::string s; buildInitialInput(board, 0, s);
         printf("--- map seed 12345 ---\n%s", s.c_str());
@@ -1364,7 +1296,7 @@ int main(int argc, char** argv) {
     // -scanbird N : print seeds in [1,N] that place a bird (for verification of the rare bird path)
     for (int i=1;i<argc;i++) if (std::string(argv[i])=="-scanbird" && i+1<argc) {
         long N = atol(argv[i+1]);
-        for (long s=1;s<=N;s++) { Board b; BirdView bird; SHA1PRNG r; r.setSeedLong(s); createMap(b,r,bird); if (bird.exists) printf("%ld\n", s); }
+        for (long s=1;s<=N;s++) { Board b; BirdView bird; java::SHA1PRNG r; seedRandom(r, s); createMap(b,r,bird); if (bird.exists) printf("%ld\n", s); }
         return 0;
     }
     if (bot1.empty() || bot2.empty()) { fprintf(stderr,"usage: referee -p1 <cmd> -p2 <cmd> -seed N [-l file] [-err1 f] [-err2 f] [-test]\n"); return 2; }

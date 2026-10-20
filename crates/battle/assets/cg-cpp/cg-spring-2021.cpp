@@ -53,62 +53,6 @@
 #include "common/engine.h"
 
 // ----------------------------------------------------------------------------
-// Java semantics (java.h has the rest)
-// ----------------------------------------------------------------------------
-namespace java {
-
-// Iteration order of a java.util.HashMap (default capacity) after putting distinct keys with the
-// given hashCode()s in order. Returns the indices of the keys in iteration order.
-static std::vector<int> hashMapOrder(const std::vector<i32>& hashCodes) {
-    std::vector<u32> hashes;
-    for (i32 h : hashCodes) hashes.push_back((u32)h ^ ((u32)h >> 16));
-    size_t cap = 16;
-    std::vector<std::vector<int>> tab(cap);
-    auto resize = [&]() {
-        // splitting a bin preserves the relative order of its nodes
-        std::vector<std::vector<int>> nt(cap * 2);
-        for (auto& bin : tab)
-            for (int k : bin) nt[hashes[k] & (cap * 2 - 1)].push_back(k);
-        tab.swap(nt);
-        cap *= 2;
-    };
-    size_t size = 0;
-    for (int k = 0; k < (int)hashCodes.size(); k++) {
-        auto& bin = tab[hashes[k] & (cap - 1)];
-        bin.push_back(k);
-        // treeifyBin resizes small tables instead (bins are never treeified at these sizes)
-        if (bin.size() >= 9 && cap < 64) resize();
-        if (++size > cap * 3 / 4) resize();
-    }
-    std::vector<int> order;
-    for (auto& bin : tab)
-        for (int k : bin) order.push_back(k);
-    return order;
-}
-
-inline std::string toUtf8(const std::u16string& s) { return encodeUtf8(s); }
-
-// String.replace(CharSequence, CharSequence)
-static std::string replace(const std::string& s, const std::string& from, const std::string& to) {
-    std::string out;
-    size_t pos = 0;
-    for (;;) {
-        size_t f = s.find(from, pos);
-        if (f == std::string::npos) break;
-        out.append(s, pos, f - pos);
-        out += to;
-        pos = f + from.size();
-    }
-    out.append(s, pos, std::string::npos);
-    return out;
-}
-
-// '.' does not match line terminators (no DOTALL, no UNIX_LINES)
-static inline bool isLineTerminator(char16_t c) { return c == '\n' || c == '\r' || c == 0x85 || c == 0x2028 || c == 0x2029; }
-
-} // namespace java
-
-// ----------------------------------------------------------------------------
 // Constants.java / Config.java
 // ----------------------------------------------------------------------------
 namespace C {
@@ -781,13 +725,7 @@ static bool messageMatches(const std::u16string& s, size_t pos) {
     if (!java::isRegexSpace(s[pos])) return false;
     while (pos < s.size() && java::isRegexSpace(s[pos])) pos++;
     for (; pos < s.size(); pos++)
-        if (java::isLineTerminator(s[pos])) return false;
-    return true;
-}
-
-static bool startsWith(const std::u16string& s, size_t pos, const char* lit) {
-    for (size_t i = 0; lit[i]; i++)
-        if (pos + i >= s.size() || s[pos + i] != (char16_t)(unsigned char)lit[i]) return false;
+        if (java::isLineSeparator(s[pos])) return false;
     return true;
 }
 
@@ -801,19 +739,12 @@ struct InvalidInput {
     std::string got; // UTF-8
 };
 
-// Integer.parseInt on a run of ASCII digits
+// Integer.parseInt of the group s[a, b); InvalidInputException(Game.getExpected(), e.toString()) when it throws
 static i32 parseInt(const std::u16string& s, size_t a, size_t b) {
-    i64 v = 0;
-    for (size_t i = a; i < b; i++) {
-        v = v * 10 + (s[i] - '0');
-        if (v > INT32_MAX) {
-            std::string str;
-            for (size_t j = a; j < b; j++) str += (char)s[j];
-            // InvalidInputException(Game.getExpected(), e.toString())
-            throw InvalidInput{"java.lang.NumberFormatException: For input string: \"" + str + "\""};
-        }
-    }
-    return (i32)v;
+    std::u16string group = s.substr(a, b - a);
+    i32 v;
+    if (!java::parseInt(group, v)) throw InvalidInput{java::numberFormatException(java::encodeUtf8(group))};
+    return v;
 }
 
 static void parseCommands(Player& player, const std::u16string& command) {
@@ -821,24 +752,24 @@ static void parseCommands(Player& player, const std::u16string& command) {
     try {
         size_t p;
         // ^WAIT(?:\s+(?<message>.*))?
-        if (startsWith(command, 0, "WAIT") && messageMatches(command, 4)) {
+        if (java::startsWith(command, "WAIT") && messageMatches(command, 4)) {
             player.action.type = WAIT;
             return;
         }
         // ^GROW (?<targetId>\d+)(?:\s+(?<message>.*))?
-        if (C::ENABLE_GROW && startsWith(command, 0, "GROW ") && (p = digits(command, 5)) > 5 && messageMatches(command, p)) {
+        if (C::ENABLE_GROW && java::startsWith(command, "GROW ") && (p = digits(command, 5)) > 5 && messageMatches(command, p)) {
             i32 targetId = parseInt(command, 5, p);
             player.action = Action{GROW, 0, targetId};
             return;
         }
         // ^COMPLETE (?<targetId>\d+)(?:\s+(?<message>.*))?
-        if (startsWith(command, 0, "COMPLETE ") && (p = digits(command, 9)) > 9 && messageMatches(command, p)) {
+        if (java::startsWith(command, "COMPLETE ") && (p = digits(command, 9)) > 9 && messageMatches(command, p)) {
             i32 targetId = parseInt(command, 9, p);
             player.action = Action{COMPLETE, 0, targetId};
             return;
         }
         // ^SEED (?<sourceId>\d+) (?<targetId>\d+)(?:\s+(?<message>.*))?
-        if (C::ENABLE_SEED && startsWith(command, 0, "SEED ")) {
+        if (C::ENABLE_SEED && java::startsWith(command, "SEED ")) {
             size_t a = digits(command, 5);
             if (a > 5 && a < command.size() && command[a] == ' ') {
                 size_t b = digits(command, a + 1);
@@ -850,7 +781,7 @@ static void parseCommands(Player& player, const std::u16string& command) {
                 }
             }
         }
-        throw InvalidInput{java::toUtf8(command)};
+        throw InvalidInput{java::encodeUtf8(command)};
     } catch (const InvalidInput& e) {
         deactivatePlayer(player, std::string("Invalid Input: Expected ") + C::EXPECTED + " but got '" + e.got + "'");
         gameSummaryManager.addPlayerBadCommand(player, C::EXPECTED, e.got);

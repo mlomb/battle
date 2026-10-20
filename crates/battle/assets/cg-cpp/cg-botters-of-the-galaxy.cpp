@@ -35,234 +35,6 @@
 #include <system_error>
 
 // ----------------------------------------------------------------------------
-// Java semantics (java.h has the rest)
-// ----------------------------------------------------------------------------
-namespace java {
-
-// Math.min / Math.max for doubles (NaN and -0.0 aware)
-static inline double min(double a, double b) {
-    if (a != a) return a;
-    if (a == 0.0 && b == 0.0 && std::signbit(b)) return b;
-    return (a <= b) ? a : b;
-}
-static inline double max(double a, double b) {
-    if (a != a) return a;
-    if (a == 0.0 && b == 0.0 && std::signbit(a)) return b;
-    return (a >= b) ? a : b;
-}
-
-// String.hashCode (ASCII strings only)
-static i32 stringHash(const std::string& s) {
-    u32 h = 0;
-    for (unsigned char c : s) h = 31 * h + c;
-    return (i32)h;
-}
-
-// Iteration order of a java.util.HashMap<String, ?> (default capacity) after putting the given
-// distinct keys in order. Returns the indices of the keys in iteration order.
-static std::vector<int> hashMapOrder(const std::vector<std::string>& keys) {
-    auto spread = [](i32 h) { return (u32)h ^ ((u32)h >> 16); };
-    std::vector<u32> hashes;
-    for (auto& k : keys) hashes.push_back(spread(stringHash(k)));
-    size_t cap = 16;
-    std::vector<std::vector<int>> tab(cap);
-    auto resize = [&]() {
-        // splitting a bin preserves the relative order of its nodes
-        std::vector<std::vector<int>> nt(cap * 2);
-        for (auto& bin : tab)
-            for (int k : bin) nt[hashes[k] & (cap * 2 - 1)].push_back(k);
-        tab.swap(nt);
-        cap *= 2;
-    };
-    size_t size = 0;
-    for (int k = 0; k < (int)keys.size(); k++) {
-        auto& bin = tab[hashes[k] & (cap - 1)];
-        bin.push_back(k);
-        // treeifyBin resizes small tables instead (bins are never treeified at these sizes)
-        if (bin.size() >= 9 && cap < 64) resize();
-        if (++size > cap * 3 / 4) resize();
-    }
-    std::vector<int> order;
-    for (auto& bin : tab)
-        for (int k : bin) order.push_back(k);
-    return order;
-}
-
-// String.trim
-static std::string trim(const std::string& s) {
-    size_t a = 0, b = s.size();
-    while (a < b && (unsigned char)s[a] <= ' ') a++;
-    while (b > a && (unsigned char)s[b - 1] <= ' ') b--;
-    return s.substr(a, b - a);
-}
-
-// String.split(c) for a single non-regex char: trailing empty strings are removed
-static std::vector<std::string> split(const std::string& s, char c) {
-    std::vector<std::string> r;
-    size_t off = 0, next;
-    while ((next = s.find(c, off)) != std::string::npos) {
-        r.push_back(s.substr(off, next - off));
-        off = next + 1;
-    }
-    if (off == 0) return {s};
-    r.push_back(s.substr(off));
-    while (!r.empty() && r.back().empty()) r.pop_back();
-    return r;
-}
-
-// String.split(c, 2)
-static std::vector<std::string> split2(const std::string& s, char c) {
-    size_t pos = s.find(c);
-    if (pos == std::string::npos) return {s};
-    return {s.substr(0, pos), s.substr(pos + 1)};
-}
-
-static bool isDigit(char c) { return c >= '0' && c <= '9'; }
-static bool isHexDigit(char c) { return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
-
-// Converts a validated decimal/hex literal, mapping out of range results like Java does
-static double parseValidated(const char* first, const char* last, std::chars_format fmt, bool overflow) {
-    double v = 0;
-    auto r = std::from_chars(first, last, v, fmt);
-    if (r.ec == std::errc::result_out_of_range) return overflow ? INFINITY : 0.0;
-    return v;
-}
-
-// Double.parseDouble. Returns false where Java throws a NumberFormatException.
-static bool parseDouble(const std::string& str, double& out) {
-    std::string in = trim(str);
-    size_t len = in.size(), i = 0;
-    if (len == 0) return false;
-    bool neg = false;
-    if (in[i] == '-' || in[i] == '+') { neg = in[i] == '-'; i++; }
-    if (i >= len) return false;
-    char c = in[i];
-    if (c == 'N') {
-        if (len - i == 3 && in.compare(i, 3, "NaN") == 0) { out = NAN; return true; }
-        return false;
-    }
-    if (c == 'I') {
-        if (len - i == 8 && in.compare(i, 8, "Infinity") == 0) { out = neg ? -INFINITY : INFINITY; return true; }
-        return false;
-    }
-    if (c == '0' && i + 1 < len && (in[i + 1] == 'x' || in[i + 1] == 'X')) {
-        // 0x HexDigits [. HexDigits] p [+-] Digits [fFdD]
-        i += 2;
-        size_t mant = i, nDigits = 0, firstSig = std::string::npos, point = std::string::npos;
-        while (i < len && (isHexDigit(in[i]) || (in[i] == '.' && point == std::string::npos))) {
-            if (in[i] == '.') point = i;
-            else { nDigits++; if (firstSig == std::string::npos && in[i] != '0') firstSig = i; }
-            i++;
-        }
-        if (nDigits == 0 || i >= len || (in[i] != 'p' && in[i] != 'P')) return false;
-        size_t mantEnd = i++;
-        size_t expStart = i;
-        if (i < len && (in[i] == '+' || in[i] == '-')) i++;
-        size_t expDigits = i;
-        while (i < len && isDigit(in[i])) i++;
-        if (i == expDigits) return false;
-        size_t numEnd = i;
-        if (i < len && (i != len - 1 || (in[i] != 'f' && in[i] != 'F' && in[i] != 'd' && in[i] != 'D'))) return false;
-        std::string lit = in.substr(mant, mantEnd - mant) + "p" + in.substr(expStart, numEnd - expStart);
-        bool overflow = in[expStart] != '-' && firstSig != std::string::npos;
-        double v = parseValidated(lit.data(), lit.data() + lit.size(), std::chars_format::hex, overflow);
-        out = neg ? -v : v;
-        return true;
-    }
-    // Digits [. Digits] [e [+-] Digits] [fFdD], with at least one digit
-    size_t start = i, nDigits = 0, point = std::string::npos, firstSig = std::string::npos;
-    while (i < len && (isDigit(in[i]) || (in[i] == '.' && point == std::string::npos))) {
-        if (in[i] == '.') point = i;
-        else { nDigits++; if (firstSig == std::string::npos && in[i] != '0') firstSig = i; }
-        i++;
-    }
-    if (nDigits == 0) return false;
-    size_t mantEnd = i;
-    i64 exponent = 0;
-    if (i < len && (in[i] == 'e' || in[i] == 'E')) {
-        i++;
-        bool expNeg = false;
-        if (i < len && (in[i] == '+' || in[i] == '-')) { expNeg = in[i] == '-'; i++; }
-        size_t expDigits = i;
-        while (i < len && isDigit(in[i])) {
-            if (exponent < 1000000000) exponent = exponent * 10 + (in[i] - '0');
-            i++;
-        }
-        if (i == expDigits) return false;
-        if (expNeg) exponent = -exponent;
-    }
-    size_t numEnd = i;
-    if (i < len && (i != len - 1 || (in[i] != 'f' && in[i] != 'F' && in[i] != 'd' && in[i] != 'D'))) return false;
-    // decimal magnitude of the literal, only needed to tell overflow from underflow
-    bool overflow = false;
-    if (firstSig != std::string::npos) {
-        size_t intEnd = point != std::string::npos ? point : mantEnd;
-        i64 mag = firstSig < intEnd ? (i64)(intEnd - firstSig) : -(i64)(firstSig - intEnd - 1);
-        overflow = mag + exponent > 0;
-    }
-    std::string lit = in.substr(start, numEnd - start);
-    double v = parseValidated(lit.data(), lit.data() + lit.size(), std::chars_format::general, overflow);
-    out = neg ? -v : v;
-    return true;
-}
-
-// Integer.parseInt (ASCII digits only, callers only pass strings that already are valid doubles)
-static bool parseInt(const std::string& s, i32& out) {
-    if (s.empty()) return false;
-    size_t i = 0;
-    bool neg = false;
-    if (s[0] == '-' || s[0] == '+') {
-        neg = s[0] == '-';
-        i = 1;
-        if (s.size() == 1) return false;
-    }
-    i64 v = 0;
-    for (; i < s.size(); i++) {
-        if (!isDigit(s[i])) return false;
-        v = v * 10 + (s[i] - '0');
-        if (v > 2147483648LL) return false;
-    }
-    if (neg) v = -v;
-    if (v > INT32_MAX || v < INT32_MIN) return false;
-    out = (i32)v;
-    return true;
-}
-
-static bool startsWith(const std::string& s, const char* prefix) {
-    return s.compare(0, strlen(prefix), prefix) == 0;
-}
-
-// Arrays.sort(a, c) (TimSort) for arrays shorter than MIN_MERGE: binary insertion sort.
-// Works with comparators that violate their contract, exactly like Java does.
-template <class T, class Cmp>
-static void sortSmall(std::vector<T>& a, Cmp c) {
-    int lo = 0, hi = (int)a.size();
-    if (hi - lo < 2) return;
-    // countRunAndMakeAscending
-    int runHi = lo + 1;
-    if (c(a[runHi++], a[lo]) < 0) {
-        while (runHi < hi && c(a[runHi], a[runHi - 1]) < 0) runHi++;
-        std::reverse(a.begin() + lo, a.begin() + runHi);
-    } else {
-        while (runHi < hi && c(a[runHi], a[runHi - 1]) >= 0) runHi++;
-    }
-    // binarySort
-    for (int start = runHi; start < hi; start++) {
-        T pivot = a[start];
-        int left = lo, right = start;
-        while (left < right) {
-            int mid = (left + right) >> 1;
-            if (c(pivot, a[mid]) < 0) right = mid;
-            else left = mid + 1;
-        }
-        for (int k = start; k > left; k--) a[k] = a[k - 1];
-        a[left] = pivot;
-    }
-}
-
-} // namespace java
-
-// ----------------------------------------------------------------------------
 // Constants (Const.java, highest league)
 // ----------------------------------------------------------------------------
 namespace C {
@@ -993,7 +765,7 @@ static void creatureFindAction(Unit* self) {
         std::vector<Unit*> heroes;
         for (Unit* u : G.allUnits)
             if (u->isHero()) heroes.push_back(u);
-        java::sortSmall(heroes, [&](Unit* u1, Unit* u2) { return distance2(*u1, *self) < distance2(*u2, *self) ? -1 : 1; });
+        java::sort(heroes, [&](Unit* u1, Unit* u2) { return distance2(*u1, *self) < distance2(*u2, *self) ? -1 : 1; });
         Unit* target = heroes.at(0);
         if (distance2(*self, self->camp) < C::AGGROUNITRANGE2) {
             attackUnitOrMoveTowards(self, target);
@@ -2033,10 +1805,10 @@ struct StatMap {
 };
 
 static int findCost(const StatMap& stats) {
-    std::vector<std::string> keys;
-    for (auto& e : stats.entries) keys.push_back(C::STAT_NAMES[e.first]);
+    std::vector<i32> keyHashes;
+    for (auto& e : stats.entries) keyHashes.push_back(java::hashCode(java::ascii(C::STAT_NAMES[e.first])));
     double totalCost = 0.0;
-    for (int k : java::hashMapOrder(keys)) {
+    for (int k : java::hashMapOrder(keyHashes)) {
         int val = stats.entries[k].second;
         totalCost += val * C::STAT_PRICE[stats.entries[k].first];
     }
@@ -2120,10 +1892,10 @@ static void generateItems() {
     items.push_back(generatePotion("larger_potion", C::HEALTH, 100));
     items.push_back(generatePotion("xxl_potion", C::HEALTH, 500));
 
-    std::vector<std::string> names;
-    for (Item* item : items) names.push_back(item->name);
+    std::vector<i32> nameHashes;
+    for (Item* item : items) nameHashes.push_back(java::hashCode(java::ascii(item->name)));
     G.items.clear();
-    for (int k : java::hashMapOrder(names)) G.items.push_back(items[k]);
+    for (int k : java::hashMapOrder(nameHashes)) G.items.push_back(items[k]);
 }
 
 static Item* findItem(const std::string& name) {
@@ -2169,7 +1941,7 @@ static void removeItem(Unit* hero, Item* item) {
 // ----------------------------------------------------------------------------
 static void doHeroCommand(Player* player, const std::string& roundOutput, Unit* hero) {
     // every exception thrown in here is caught and only reported in the game summary
-    std::vector<std::string> roundOutputSplitted = java::split2(roundOutput, ';');
+    std::vector<std::string> roundOutputSplitted = java::split(roundOutput, ';', 2);
 
     std::vector<std::string> outputValues = java::split(roundOutputSplitted[0], ' ');
     if (outputValues.empty()) return; // ArrayIndexOutOfBoundsException
@@ -2582,29 +2354,23 @@ static void initialize() {
 // ----------------------------------------------------------------------------
 // The bots (common/agent.h: Agent#getOutput and AsynchronousWriter are the same in engine 1.20)
 // ----------------------------------------------------------------------------
-struct ChildProc {
-    cg::Agent agent;
+static cg::Agent agents[2];
 
-    bool start(const std::string& cmd) { return agent.start(cmd, cg::AgentOptions()); }
-    void kill() { agent.destroy(); }
-
-    // AbstractPlayer#execute: sends the input and reads the expected amount of lines.
-    // Returns false on timeout, otherwise the lines as received by the referee.
-    bool execute(const std::string& input, int nbLines, int timeoutMs, std::vector<std::string>& outputs) {
-        agent.sendInput(input);
-        std::string output;
-        if (!agent.getOutput(nbLines, timeoutMs, false, output)) return false;
-        for (auto& ch : output)
-            if (ch == '\r') ch = '\n';
-        outputs = java::split(output, '\n');
-        return true;
-    }
-};
+// AbstractPlayer#execute: sends the input and reads the expected amount of lines.
+// Returns false on timeout, otherwise the lines as received by the referee.
+static bool execute(cg::Agent& agent, const std::string& input, int nbLines, int timeoutMs, std::vector<std::string>& outputs) {
+    agent.sendInput(input);
+    std::string output;
+    if (!agent.getOutput(nbLines, timeoutMs, false, output)) return false;
+    for (auto& ch : output)
+        if (ch == '\r') ch = '\n';
+    outputs = java::split(output, '\n');
+    return true;
+}
 
 // ----------------------------------------------------------------------------
 // Referee.java
 // ----------------------------------------------------------------------------
-static ChildProc procs[2];
 static bool gameEnd = false;
 static FILE* trace = nullptr;
 
@@ -2683,7 +2449,7 @@ static void gameTurn(int turn) {
     for (Player& player : players) {
         int timeoutMs = player.hasNeverBeenExecuted ? C::FIRST_TURN_MAX_TIME : C::TURN_MAX_TIME;
         std::vector<std::string> outputs;
-        bool ok = procs[player.index].execute(inputs[player.index], player.getExpectedOutputLines(), timeoutMs, outputs);
+        bool ok = execute(agents[player.index], inputs[player.index], player.getExpectedOutputLines(), timeoutMs, outputs);
         player.hasNeverBeenExecuted = false;
 
         if (trace) {
@@ -2725,8 +2491,8 @@ static int runGame(const std::string& bot1, const std::string& bot2, i64 seed) {
 
     initialize();
 
-    if (!procs[0].start(bot1)) { fprintf(stderr, "failed to start bot1\n"); return 1; }
-    if (!procs[1].start(bot2)) { fprintf(stderr, "failed to start bot2\n"); return 1; }
+    if (!agents[0].start(bot1, cg::AgentOptions())) { fprintf(stderr, "failed to start bot1\n"); return 1; }
+    if (!agents[1].start(bot2, cg::AgentOptions())) { fprintf(stderr, "failed to start bot2\n"); return 1; }
 
     int rc = 0;
     try {
@@ -2737,8 +2503,8 @@ static int runGame(const std::string& bot1, const std::string& bot2, i64 seed) {
         rc = 1;
     }
 
-    procs[0].kill();
-    procs[1].kill();
+    agents[0].destroy();
+    agents[1].destroy();
     return rc;
 }
 

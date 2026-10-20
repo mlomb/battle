@@ -20,7 +20,7 @@
 //     random map; we can't reproduce that.)
 //   - java.util.HashMap iteration orders: the order of the growthsByCoord map (filled with compute(),
 //     which inserts at the head of a bin and resizes lazily) decides the ids of the new organs;
-//     organById/dyingIds orders decide the timing of view events. JHashMap models HashMap exactly,
+//     organById/dyingIds orders decide the timing of view events. java::HashMapOrder models HashMap exactly,
 //     including treeifyBin resizes and red-black tree bins.
 //   - java.util.PriorityQueue tie order in the A* used to grow towards far targets.
 //   - The engine 4.5.0 runner and referee are two threads talking through pipes, modelled here as a
@@ -52,589 +52,7 @@
 
 typedef std::u16string ustr;
 
-// ----------------------------------------------------------------------------
-// Java semantics (java.h has the rest)
-// ----------------------------------------------------------------------------
-namespace java {
-
-inline ustr fromAscii(const std::string& s) { return ascii(s); }
-
-// --- java.util.HashMap iteration order model ---
-// Keys are ints with a given hashCode(); values live elsewhere. Mirrors HashMap.putVal (put / HashSet.add),
-// HashMap.compute (inserting a new key), HashMap.remove, resize, treeifyBin and the TreeNode code
-// (red-black bins keep a "next" order that iteration follows). Keys must have distinct hash codes,
-// which holds for Integer and for in-grid Coord keys, so TreeNode tie-breaking never happens.
-struct JHashMap {
-    struct N {
-        i32 hash, key;
-        int next = -1, parent = -1, left = -1, right = -1, prev = -1;
-        bool red = false, tree = false;
-    };
-    std::vector<N> pool;
-    std::vector<int> tab;
-    int size = 0, threshold = 0;
-
-    static i32 spread(i32 h) { return h ^ (i32)((u32)h >> 16); }
-    int newNode(i32 hash, i32 key, int next, bool tree) {
-        N n;
-        n.hash = hash;
-        n.key = key;
-        n.next = next;
-        n.tree = tree;
-        pool.push_back(n);
-        return (int)pool.size() - 1;
-    }
-    N& P(int i) { return pool[i]; }
-
-    void resize() {
-        int oldCap = (int)tab.size();
-        int oldThr = threshold;
-        int newCap, newThr = 0;
-        if (oldCap > 0) {
-            newCap = oldCap << 1;
-            if (oldCap >= 16) newThr = oldThr << 1;
-        } else {
-            newCap = 16;
-            newThr = 12;
-        }
-        // (the maps here use the default initial capacity, so newThr is never 0)
-        threshold = newThr;
-        std::vector<int> oldTab;
-        oldTab.swap(tab);
-        tab.assign(newCap, -1);
-        for (int j = 0; j < oldCap; ++j) {
-            int e = oldTab[j];
-            if (e < 0) continue;
-            if (P(e).next < 0) {
-                tab[P(e).hash & (newCap - 1)] = e;
-            } else if (P(e).tree) {
-                split(e, j, oldCap);
-            } else {
-                int loHead = -1, loTail = -1, hiHead = -1, hiTail = -1, next;
-                do {
-                    next = P(e).next;
-                    if ((P(e).hash & oldCap) == 0) {
-                        if (loTail < 0) loHead = e;
-                        else P(loTail).next = e;
-                        loTail = e;
-                    } else {
-                        if (hiTail < 0) hiHead = e;
-                        else P(hiTail).next = e;
-                        hiTail = e;
-                    }
-                } while ((e = next) >= 0);
-                if (loTail >= 0) {
-                    P(loTail).next = -1;
-                    tab[j] = loHead;
-                }
-                if (hiTail >= 0) {
-                    P(hiTail).next = -1;
-                    tab[j + oldCap] = hiHead;
-                }
-            }
-        }
-    }
-
-    int root(int r) {
-        for (;;) {
-            int p = P(r).parent;
-            if (p < 0) return r;
-            r = p;
-        }
-    }
-    void moveRootToFront(int rt) {
-        int n = (int)tab.size();
-        if (rt < 0 || n == 0) return;
-        int index = (n - 1) & P(rt).hash;
-        int first = tab[index];
-        if (rt != first) {
-            tab[index] = rt;
-            int rp = P(rt).prev;
-            int rn = P(rt).next;
-            if (rn >= 0) P(rn).prev = rp;
-            if (rp >= 0) P(rp).next = rn;
-            if (first >= 0) P(first).prev = rt;
-            P(rt).next = first;
-            P(rt).prev = -1;
-        }
-    }
-    int find(int p, i32 h) {
-        while (p >= 0) {
-            i32 ph = P(p).hash;
-            if (ph > h) p = P(p).left;
-            else if (ph < h) p = P(p).right;
-            else return p;
-        }
-        return -1;
-    }
-    int rotateLeft(int rt, int p) {
-        int r, pp, rl;
-        if (p >= 0 && (r = P(p).right) >= 0) {
-            if ((rl = P(p).right = P(r).left) >= 0) P(rl).parent = p;
-            if ((pp = P(r).parent = P(p).parent) < 0) {
-                rt = r;
-                P(r).red = false;
-            } else if (P(pp).left == p) P(pp).left = r;
-            else P(pp).right = r;
-            P(r).left = p;
-            P(p).parent = r;
-        }
-        return rt;
-    }
-    int rotateRight(int rt, int p) {
-        int l, pp, lr;
-        if (p >= 0 && (l = P(p).left) >= 0) {
-            if ((lr = P(p).left = P(l).right) >= 0) P(lr).parent = p;
-            if ((pp = P(l).parent = P(p).parent) < 0) {
-                rt = l;
-                P(l).red = false;
-            } else if (P(pp).right == p) P(pp).right = l;
-            else P(pp).left = l;
-            P(l).right = p;
-            P(p).parent = l;
-        }
-        return rt;
-    }
-    int balanceInsertion(int rt, int x) {
-        P(x).red = true;
-        for (int xp, xpp, xppl, xppr;;) {
-            if ((xp = P(x).parent) < 0) {
-                P(x).red = false;
-                return x;
-            } else if (!P(xp).red || (xpp = P(xp).parent) < 0)
-                return rt;
-            if (xp == (xppl = P(xpp).left)) {
-                if ((xppr = P(xpp).right) >= 0 && P(xppr).red) {
-                    P(xppr).red = false;
-                    P(xp).red = false;
-                    P(xpp).red = true;
-                    x = xpp;
-                } else {
-                    if (x == P(xp).right) {
-                        rt = rotateLeft(rt, x = xp);
-                        xpp = (xp = P(x).parent) < 0 ? -1 : P(xp).parent;
-                    }
-                    if (xp >= 0) {
-                        P(xp).red = false;
-                        if (xpp >= 0) {
-                            P(xpp).red = true;
-                            rt = rotateRight(rt, xpp);
-                        }
-                    }
-                }
-            } else {
-                if (xppl >= 0 && P(xppl).red) {
-                    P(xppl).red = false;
-                    P(xp).red = false;
-                    P(xpp).red = true;
-                    x = xpp;
-                } else {
-                    if (x == P(xp).left) {
-                        rt = rotateRight(rt, x = xp);
-                        xpp = (xp = P(x).parent) < 0 ? -1 : P(xp).parent;
-                    }
-                    if (xp >= 0) {
-                        P(xp).red = false;
-                        if (xpp >= 0) {
-                            P(xpp).red = true;
-                            rt = rotateLeft(rt, xpp);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    int balanceDeletion(int rt, int x) {
-        for (int xp, xpl, xpr;;) {
-            if (x < 0 || x == rt) return rt;
-            else if ((xp = P(x).parent) < 0) {
-                P(x).red = false;
-                return x;
-            } else if (P(x).red) {
-                P(x).red = false;
-                return rt;
-            } else if ((xpl = P(xp).left) == x) {
-                if ((xpr = P(xp).right) >= 0 && P(xpr).red) {
-                    P(xpr).red = false;
-                    P(xp).red = true;
-                    rt = rotateLeft(rt, xp);
-                    xpr = (xp = P(x).parent) < 0 ? -1 : P(xp).right;
-                }
-                if (xpr < 0) x = xp;
-                else {
-                    int sl = P(xpr).left, sr = P(xpr).right;
-                    if ((sr < 0 || !P(sr).red) && (sl < 0 || !P(sl).red)) {
-                        P(xpr).red = true;
-                        x = xp;
-                    } else {
-                        if (sr < 0 || !P(sr).red) {
-                            if (sl >= 0) P(sl).red = false;
-                            P(xpr).red = true;
-                            rt = rotateRight(rt, xpr);
-                            xpr = (xp = P(x).parent) < 0 ? -1 : P(xp).right;
-                        }
-                        if (xpr >= 0) {
-                            P(xpr).red = (xp < 0) ? false : P(xp).red;
-                            if ((sr = P(xpr).right) >= 0) P(sr).red = false;
-                        }
-                        if (xp >= 0) {
-                            P(xp).red = false;
-                            rt = rotateLeft(rt, xp);
-                        }
-                        x = rt;
-                    }
-                }
-            } else { // symmetric
-                if (xpl >= 0 && P(xpl).red) {
-                    P(xpl).red = false;
-                    P(xp).red = true;
-                    rt = rotateRight(rt, xp);
-                    xpl = (xp = P(x).parent) < 0 ? -1 : P(xp).left;
-                }
-                if (xpl < 0) x = xp;
-                else {
-                    int sl = P(xpl).left, sr = P(xpl).right;
-                    if ((sl < 0 || !P(sl).red) && (sr < 0 || !P(sr).red)) {
-                        P(xpl).red = true;
-                        x = xp;
-                    } else {
-                        if (sl < 0 || !P(sl).red) {
-                            if (sr >= 0) P(sr).red = false;
-                            P(xpl).red = true;
-                            rt = rotateLeft(rt, xpl);
-                            xpl = (xp = P(x).parent) < 0 ? -1 : P(xp).left;
-                        }
-                        if (xpl >= 0) {
-                            P(xpl).red = (xp < 0) ? false : P(xp).red;
-                            if ((sl = P(xpl).left) >= 0) P(sl).red = false;
-                        }
-                        if (xp >= 0) {
-                            P(xp).red = false;
-                            rt = rotateRight(rt, xp);
-                        }
-                        x = rt;
-                    }
-                }
-            }
-        }
-    }
-    void treeify(int head) {
-        int rt = -1;
-        for (int x = head, next; x >= 0; x = next) {
-            next = P(x).next;
-            P(x).left = P(x).right = -1;
-            if (rt < 0) {
-                P(x).parent = -1;
-                P(x).red = false;
-                rt = x;
-            } else {
-                i32 h = P(x).hash;
-                for (int p = rt;;) {
-                    i32 ph = P(p).hash;
-                    int dir = ph > h ? -1 : 1; // hashes are distinct
-                    int xp = p;
-                    if ((p = (dir <= 0) ? P(p).left : P(p).right) < 0) {
-                        P(x).parent = xp;
-                        if (dir <= 0) P(xp).left = x;
-                        else P(xp).right = x;
-                        rt = balanceInsertion(rt, x);
-                        break;
-                    }
-                }
-            }
-        }
-        moveRootToFront(rt);
-    }
-    int untreeify(int head) {
-        for (int q = head; q >= 0; q = P(q).next) {
-            P(q).tree = false;
-            P(q).prev = P(q).parent = P(q).left = P(q).right = -1;
-            P(q).red = false;
-        }
-        return head;
-    }
-    void split(int b, int index, int bit) {
-        int loHead = -1, loTail = -1, hiHead = -1, hiTail = -1;
-        int lc = 0, hc = 0;
-        for (int e = b, next; e >= 0; e = next) {
-            next = P(e).next;
-            P(e).next = -1;
-            if ((P(e).hash & bit) == 0) {
-                if ((P(e).prev = loTail) < 0) loHead = e;
-                else P(loTail).next = e;
-                loTail = e;
-                ++lc;
-            } else {
-                if ((P(e).prev = hiTail) < 0) hiHead = e;
-                else P(hiTail).next = e;
-                hiTail = e;
-                ++hc;
-            }
-        }
-        if (loHead >= 0) {
-            if (lc <= 6) tab[index] = untreeify(loHead);
-            else {
-                tab[index] = loHead;
-                if (hiHead >= 0) treeify(loHead);
-            }
-        }
-        if (hiHead >= 0) {
-            if (hc <= 6) tab[index + bit] = untreeify(hiHead);
-            else {
-                tab[index + bit] = hiHead;
-                if (loHead >= 0) treeify(hiHead);
-            }
-        }
-    }
-    void treeifyBin(i32 hash) {
-        int n = (int)tab.size();
-        if (n < 64) {
-            resize();
-            return;
-        }
-        int index = (n - 1) & hash;
-        std::vector<int> chain;
-        for (int e = tab[index]; e >= 0; e = P(e).next) chain.push_back(e);
-        if (chain.empty()) return;
-        for (size_t k = 0; k < chain.size(); k++) {
-            N& c = P(chain[k]);
-            c.tree = true;
-            c.prev = k ? chain[k - 1] : -1;
-            c.next = k + 1 < chain.size() ? chain[k + 1] : -1;
-        }
-        tab[index] = chain[0];
-        treeify(chain[0]);
-    }
-    // returns the existing node, or -1 after inserting
-    int putTreeVal(int first, i32 h, i32 k) {
-        int rt = P(first).parent >= 0 ? root(first) : first;
-        for (int p = rt;;) {
-            int dir;
-            i32 ph = P(p).hash;
-            if (ph > h) dir = -1;
-            else if (ph < h) dir = 1;
-            else return p;
-            int xp = p;
-            if ((p = (dir <= 0) ? P(p).left : P(p).right) < 0) {
-                int xpn = P(xp).next;
-                int x = newNode(h, k, xpn, true);
-                if (dir <= 0) P(xp).left = x;
-                else P(xp).right = x;
-                P(xp).next = x;
-                P(x).parent = P(x).prev = xp;
-                if (xpn >= 0) P(xpn).prev = x;
-                moveRootToFront(balanceInsertion(rt, x));
-                return -1;
-            }
-        }
-    }
-    void removeTreeNode(int node) {
-        int n = (int)tab.size();
-        int index = (n - 1) & P(node).hash;
-        int first = tab[index], rt = first, rl;
-        int succ = P(node).next, pred = P(node).prev;
-        if (pred < 0) tab[index] = first = succ;
-        else P(pred).next = succ;
-        if (succ >= 0) P(succ).prev = pred;
-        if (first < 0) return;
-        if (P(rt).parent >= 0) rt = root(rt);
-        if (rt < 0 || (P(rt).right < 0 || (rl = P(rt).left) < 0 || P(rl).left < 0)) {
-            tab[index] = untreeify(first); // too small
-            return;
-        }
-        int p = node, pl = P(node).left, pr = P(node).right, replacement;
-        if (pl >= 0 && pr >= 0) {
-            int s = pr, sl;
-            while ((sl = P(s).left) >= 0) s = sl; // find successor
-            bool c = P(s).red;
-            P(s).red = P(p).red;
-            P(p).red = c; // swap colors
-            int sr = P(s).right;
-            int pp = P(p).parent;
-            if (s == pr) { // p was s's direct parent
-                P(p).parent = s;
-                P(s).right = p;
-            } else {
-                int sp = P(s).parent;
-                if ((P(p).parent = sp) >= 0) {
-                    if (s == P(sp).left) P(sp).left = p;
-                    else P(sp).right = p;
-                }
-                if ((P(s).right = pr) >= 0) P(pr).parent = s;
-            }
-            P(p).left = -1;
-            if ((P(p).right = sr) >= 0) P(sr).parent = p;
-            if ((P(s).left = pl) >= 0) P(pl).parent = s;
-            if ((P(s).parent = pp) < 0) rt = s;
-            else if (p == P(pp).left) P(pp).left = s;
-            else P(pp).right = s;
-            if (sr >= 0) replacement = sr;
-            else replacement = p;
-        } else if (pl >= 0) replacement = pl;
-        else if (pr >= 0) replacement = pr;
-        else replacement = p;
-        if (replacement != p) {
-            int pp = P(replacement).parent = P(p).parent;
-            if (pp < 0) {
-                rt = replacement;
-                P(replacement).red = false;
-            } else if (p == P(pp).left) P(pp).left = replacement;
-            else P(pp).right = replacement;
-            P(p).left = P(p).right = P(p).parent = -1;
-        }
-        int r = P(p).red ? rt : balanceDeletion(rt, replacement);
-        if (replacement == p) { // detach
-            int pp = P(p).parent;
-            P(p).parent = -1;
-            if (pp >= 0) {
-                if (p == P(pp).left) P(pp).left = -1;
-                else if (p == P(pp).right) P(pp).right = -1;
-            }
-        }
-        moveRootToFront(r);
-    }
-
-    // HashMap.put / HashSet.add
-    void put(i32 key, i32 keyHash) {
-        i32 hash = spread(keyHash);
-        if (tab.empty()) resize();
-        int n = (int)tab.size();
-        int i = (n - 1) & hash;
-        int p = tab[i];
-        if (p < 0) {
-            tab[i] = newNode(hash, key, -1, false);
-        } else {
-            int e;
-            if (P(p).hash == hash && P(p).key == key) e = p;
-            else if (P(p).tree) e = putTreeVal(p, hash, key);
-            else {
-                for (int binCount = 0;; ++binCount) {
-                    if ((e = P(p).next) < 0) {
-                        P(p).next = newNode(hash, key, -1, false);
-                        if (binCount >= 7) treeifyBin(hash);
-                        break;
-                    }
-                    if (P(e).hash == hash && P(e).key == key) break;
-                    p = e;
-                }
-            }
-            if (e >= 0) return; // existing mapping
-        }
-        if (++size > threshold) resize();
-    }
-    // HashMap.compute(key, f) where f returns a non-null value
-    void compute(i32 key, i32 keyHash) {
-        i32 hash = spread(keyHash);
-        if (size > threshold || tab.empty()) resize();
-        int n = (int)tab.size();
-        int i = (n - 1) & hash;
-        int first = tab[i];
-        int binCount = 0, t = -1, old = -1;
-        if (first >= 0) {
-            if (P(first).tree) {
-                t = first;
-                old = find(P(first).parent >= 0 ? root(first) : first, hash);
-            } else {
-                int e = first;
-                do {
-                    if (P(e).hash == hash && P(e).key == key) {
-                        old = e;
-                        break;
-                    }
-                    ++binCount;
-                } while ((e = P(e).next) >= 0);
-            }
-        }
-        if (old >= 0) return;
-        if (t >= 0) putTreeVal(t, hash, key);
-        else {
-            tab[i] = newNode(hash, key, first, false);
-            if (binCount >= 7) treeifyBin(hash);
-        }
-        ++size;
-    }
-    // HashMap.remove
-    void remove(i32 key, i32 keyHash) {
-        i32 hash = spread(keyHash);
-        int n = (int)tab.size();
-        if (n == 0) return;
-        int index = (n - 1) & hash;
-        int p = tab[index];
-        if (p < 0) return;
-        int node = -1, e;
-        if (P(p).hash == hash && P(p).key == key) node = p;
-        else if ((e = P(p).next) >= 0) {
-            if (P(p).tree) node = find(P(p).parent >= 0 ? root(p) : p, hash);
-            else {
-                do {
-                    if (P(e).hash == hash && P(e).key == key) {
-                        node = e;
-                        break;
-                    }
-                    p = e;
-                } while ((e = P(e).next) >= 0);
-            }
-        }
-        if (node < 0) return;
-        if (P(node).tree) removeTreeNode(node);
-        else if (node == p) tab[index] = P(node).next;
-        else P(p).next = P(node).next;
-        --size;
-    }
-    // keys in iteration order
-    void keys(std::vector<i32>& out) {
-        out.clear();
-        for (int b : tab)
-            for (int e = b; e >= 0; e = P(e).next) out.push_back(P(e).key);
-    }
-};
-
-// --- java.util.PriorityQueue (binary heap, siftUp/siftDown with a comparator) ---
-template <class T, class Less>
-struct PriorityQueue {
-    std::vector<T> es;
-    Less less; // less(a, b) <=> compare(a, b) < 0
-    explicit PriorityQueue(Less l) : less(l) {}
-    int size() const { return (int)es.size(); }
-    void offer(const T& x) {
-        es.push_back(x);
-        int k = (int)es.size() - 1;
-        while (k > 0) {
-            int parent = (k - 1) >> 1;
-            T e = es[parent];
-            if (!less(x, e)) break; // compare(x, e) >= 0
-            es[k] = e;
-            k = parent;
-        }
-        es[k] = x;
-    }
-    T poll() {
-        T result = es[0];
-        int n = (int)es.size() - 1;
-        T x = es[n];
-        es.pop_back();
-        if (n > 0) {
-            int k = 0;
-            int half = n >> 1;
-            while (k < half) {
-                int child = (k << 1) + 1;
-                T c = es[child];
-                int right = child + 1;
-                if (right < n && less(es[right], c)) c = es[child = right]; // compare(c, right) > 0
-                if (!less(c, x)) break;                                     // compare(x, c) <= 0
-                es[k] = c;
-                k = child;
-            }
-            es[k] = x;
-        }
-        return result;
-    }
-};
-
-} // namespace java
-
 using java::str;
-using java::fromAscii;
 
 // ----------------------------------------------------------------------------
 // Grid (grid/Coord.java, Direction.java, Tile.java, Grid.java, Protein.java)
@@ -951,9 +369,10 @@ struct PathItem {
     Coord coord;
 };
 
-struct ItemLess {
+// the openList comparator: by totalPrevisionalLength
+struct ByTotalPrevisionalLength {
     const std::vector<PathItem>* items;
-    bool operator()(int a, int b) const { return (*items)[a].totalPrevisionalLength < (*items)[b].totalPrevisionalLength; }
+    int operator()(int a, int b) const { return java::compareInt((*items)[a].totalPrevisionalLength, (*items)[b].totalPrevisionalLength); }
 };
 
 struct AStar {
@@ -982,7 +401,7 @@ struct AStar {
         return path;
     }
     int getPathItemLinkedList() {
-        java::PriorityQueue<int, ItemLess> openList(ItemLess{&items});
+        java::PriorityQueue<int, ByTotalPrevisionalLength> openList(ByTotalPrevisionalLength{&items});
         closed.assign(grid.width * grid.height, 0);
         PathItem root;
         root.coord = from;
@@ -1015,7 +434,7 @@ struct AStar {
         }
         return -1; // not found !
     }
-    void addToOpenList(java::PriorityQueue<int, ItemLess>& openList, int visiting, const Coord& fromCoord, const Coord& toCoord) {
+    void addToOpenList(java::PriorityQueue<int, ByTotalPrevisionalLength>& openList, int visiting, const Coord& fromCoord, const Coord& toCoord) {
         if (closed[grid.index(toCoord)]) return;
         PathItem pi;
         pi.coord = toCoord;
@@ -1146,7 +565,7 @@ struct Player : cg::Player {
 // ----------------------------------------------------------------------------
 namespace GM {
 static void addToGameSummary(const ustr& summary) { cg::gm.addToGameSummary(summary); }
-static void addToGameSummary(const std::string& summary) { addToGameSummary(fromAscii(summary)); }
+static void addToGameSummary(const std::string& summary) { addToGameSummary(java::ascii(summary)); }
 static ustr formatErrorMessage(const ustr& m) { return cg::GameManager::formatErrorMessage(m); }
 static ustr formatSuccessMessage(const ustr& m) { return cg::GameManager::formatSuccessMessage(m); }
 static void setFrameDuration(int fd) { cg::gm.setFrameDuration(fd); }
@@ -1208,7 +627,7 @@ namespace Game {
 
 static Grid grid;
 static int ENTITY_COUNT = 0; // Organ.ENTITY_COUNT
-static java::JHashMap organByIdMap; // HashMap<Integer, Organ> organById (iteration order)
+static java::HashMapOrder organByIdMap; // HashMap<Integer, Organ> organById (iteration order)
 static std::vector<Organ*> organById; // by id, nullptr when absent
 static Animation animation;
 static int turn = 0;
@@ -1389,7 +808,7 @@ static void resetGameTurnData() {
     for (Player& p : players) p.reset();
 }
 
-static void reportPlayerError(const std::string& message) { GM::addToGameSummary(GM::formatErrorMessage(fromAscii(message))); }
+static void reportPlayerError(const std::string& message) { GM::addToGameSummary(GM::formatErrorMessage(java::ascii(message))); }
 
 static bool canBuy(const Player& player, int organType) {
     return player.storage[0] >= ORGAN_COST[organType][0] && player.storage[1] >= ORGAN_COST[organType][1] &&
@@ -1400,12 +819,10 @@ static void payForOrgan(Player& player, int type) {
     for (int i = 0; i < C::PROTEIN_COUNT; ++i) player.payProtein(i, ORGAN_COST[type][i]);
 }
 
-static int signum(i32 v) { return v > 0 ? 1 : (v < 0 ? -1 : 0); }
-
 static int withinSporerRange(const Coord& origin, int direction, const Coord& target) {
     int dx = DIR_X[direction];
     int dy = DIR_Y[direction];
-    bool inDirection = dx == signum((i32)((u32)target.x - (u32)origin.x)) && dy == signum((i32)((u32)target.y - (u32)origin.y));
+    bool inDirection = dx == java::signum((i32)((u32)target.x - (u32)origin.x)) && dy == java::signum((i32)((u32)target.y - (u32)origin.y));
     // SPORE_OVER_OBSTACLES is false
     if (inDirection) {
         Coord cur = origin;
@@ -1558,7 +975,7 @@ struct Growth {
 };
 
 static void doActions() {
-    java::JHashMap growthsMap; // HashMap<Coord, List<Growth>> growthsByCoord, filled with compute()
+    java::HashMapOrder growthsMap; // HashMap<Coord, List<Growth>> growthsByCoord, filled with compute()
     std::map<i32, std::vector<Growth>> growthsByCoord; // key: Coord.hashCode() (unique for in-grid coords)
 
     for (Player& player : players) {
@@ -1660,7 +1077,7 @@ static void doHarvests() {
 }
 
 static void doAttacks() {
-    java::JHashMap dyingIds; // HashSet<Integer>
+    java::HashMapOrder dyingIds; // HashSet<Integer>
     std::vector<i32> ids;
     organByIdMap.keys(ids);
     for (i32 id : ids) {
@@ -1788,7 +1205,7 @@ static void onEnd() {
     Player* winner = nullptr;
     if (players[0].score > players[1].score) winner = &players[0];
     else if (players[0].score < players[1].score) winner = &players[1];
-    if (winner != nullptr) cg::gm.addTooltip(winner->index, fromAscii(winner->nick() + " wins!"));
+    if (winner != nullptr) cg::gm.addTooltip(winner->index, java::ascii(winner->nick() + " wins!"));
 }
 
 } // namespace Game
@@ -1813,7 +1230,7 @@ static ustr serializeGlobalData() {
             s += "\n" + std::to_string(o->id) + " " + std::to_string(o->pos.x) + " " + std::to_string(o->pos.y) + " " + ORGAN_NAME[o->type] + " " +
                  DIR_ALIAS[o->direction] + " " + std::to_string(o->getParentId());
     }
-    return fromAscii(s);
+    return java::ascii(s);
 }
 
 static std::string serializeEventCoords(const EventData& e) {
@@ -1834,7 +1251,7 @@ static ustr serializeFrameData() {
     ustr s;
     auto line = [&](const std::string& l) {
         if (!s.empty()) s += u"\n";
-        s += fromAscii(l);
+        s += java::ascii(l);
     };
     for (Player& p : players) {
         line(serializeStorage(p));
@@ -1894,19 +1311,13 @@ static std::vector<std::string> serializeFrameInfoFor(const Player& player) {
 // ----------------------------------------------------------------------------
 namespace Commands {
 
-static bool startsWith(const ustr& s, const char16_t* p) {
-    size_t n = std::char_traits<char16_t>::length(p);
-    return s.size() >= n && s.compare(0, n, p) == 0;
-}
-static bool isDigit(char16_t c) { return c >= u'0' && c <= u'9'; }
-static bool isWord(char16_t c) { return isDigit(c) || (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || c == u'_'; }
 
 // -?\d+ at s[i]
 static bool matchInt(const ustr& s, size_t& i, ustr& out) {
     size_t st = i, j = i;
     if (j < s.size() && s[j] == u'-') j++;
     size_t ds = j;
-    while (j < s.size() && isDigit(s[j])) j++;
+    while (j < s.size() && java::isRegexDigit(s[j])) j++;
     if (j == ds) return false;
     out = s.substr(st, j - st);
     i = j;
@@ -1920,21 +1331,19 @@ static bool matchChar(const ustr& s, size_t& i, char16_t c) {
     return false;
 }
 
-static std::string asciiOf(const ustr& s) { return std::string(s.begin(), s.end()); } // for ASCII-only groups
-
 // Matches one ActionType pattern on the trimmed command. Returns 0 when it does not match, 1 when it
 // matches, 2 when the consumer threw (exText = e.toString()).
 static int tryGrowth(const ustr& t, Action& a, std::string& exText) {
     size_t i;
-    if (startsWith(t, u"GROWTH ")) i = 7;
-    else if (startsWith(t, u"GROW ")) i = 5;
+    if (java::startsWith(t, u"GROWTH ")) i = 7;
+    else if (java::startsWith(t, u"GROW ")) i = 5;
     else return 0;
     ustr fromId, tx, ty;
     if (!matchInt(t, i, fromId) || !matchChar(t, i, u' ')) return 0;
     if (!matchInt(t, i, tx) || !matchChar(t, i, u' ')) return 0;
     if (!matchInt(t, i, ty) || !matchChar(t, i, u' ')) return 0;
     size_t ts = i;
-    while (i < t.size() && isWord(t[i])) i++;
+    while (i < t.size() && java::isRegexWord(t[i])) i++;
     if (i == ts) return 0;
     ustr type = t.substr(ts, i - ts);
     ustr rest = t.substr(i);
@@ -1960,21 +1369,21 @@ static int tryGrowth(const ustr& t, Action& a, std::string& exText) {
     a.type = Action::GROWTH;
     i32 v;
     if (!java::parseInt(fromId, v)) {
-        exText = "java.lang.NumberFormatException: For input string: \"" + asciiOf(fromId) + "\"";
+        exText = java::numberFormatException(java::encodeUtf8(fromId));
         return 2;
     }
     a.id = v;
     i32 x, y;
     if (!java::parseInt(tx, x)) {
-        exText = "java.lang.NumberFormatException: For input string: \"" + asciiOf(tx) + "\"";
+        exText = java::numberFormatException(java::encodeUtf8(tx));
         return 2;
     }
     if (!java::parseInt(ty, y)) {
-        exText = "java.lang.NumberFormatException: For input string: \"" + asciiOf(ty) + "\"";
+        exText = java::numberFormatException(java::encodeUtf8(ty));
         return 2;
     }
     a.to = Coord(x, y);
-    std::string typeName = asciiOf(type);
+    std::string typeName = java::encodeUtf8(type);
     int organType = -1;
     for (int k = 0; k < ORGAN_TYPES; k++)
         if (typeName == ORGAN_NAME[k]) organType = k;
@@ -1995,8 +1404,8 @@ static int tryGrowth(const ustr& t, Action& a, std::string& exText) {
 
 static int trySpore(const ustr& t, Action& a, std::string& exText) {
     size_t i;
-    if (startsWith(t, u"SPORE ")) i = 6;
-    else if (startsWith(t, u"SPOR ")) i = 5;
+    if (java::startsWith(t, u"SPORE ")) i = 6;
+    else if (java::startsWith(t, u"SPOR ")) i = 5;
     else return 0;
     ustr fromId, tx, ty;
     if (!matchInt(t, i, fromId) || !matchChar(t, i, u' ')) return 0;
@@ -2013,16 +1422,16 @@ static int trySpore(const ustr& t, Action& a, std::string& exText) {
     a.type = Action::SPORE;
     i32 v, x, y;
     if (!java::parseInt(fromId, v)) {
-        exText = "java.lang.NumberFormatException: For input string: \"" + asciiOf(fromId) + "\"";
+        exText = java::numberFormatException(java::encodeUtf8(fromId));
         return 2;
     }
     a.id = v;
     if (!java::parseInt(tx, x)) {
-        exText = "java.lang.NumberFormatException: For input string: \"" + asciiOf(tx) + "\"";
+        exText = java::numberFormatException(java::encodeUtf8(tx));
         return 2;
     }
     if (!java::parseInt(ty, y)) {
-        exText = "java.lang.NumberFormatException: For input string: \"" + asciiOf(ty) + "\"";
+        exText = java::numberFormatException(java::encodeUtf8(ty));
         return 2;
     }
     a.to = Coord(x, y);
@@ -2039,7 +1448,7 @@ static int tryWait(const ustr& t, Action& a) {
         a.type = Action::WAIT;
         return 1;
     }
-    if (startsWith(t, u"WAIT ")) {
+    if (java::startsWith(t, u"WAIT ")) {
         a = Action();
         a.type = Action::WAIT;
         a.hasMessage = true;
@@ -2049,35 +1458,12 @@ static int tryWait(const ustr& t, Action& a) {
     return 0;
 }
 
-// Game.getExpected: command.toLowerCase().startsWith(...); only ASCII letters lower-case to these
+// Game.getExpected: command.toLowerCase().startsWith(...)
 static ustr getExpected(const ustr& command) {
-    auto ci = [&](const char* p) {
-        size_t n = strlen(p);
-        if (command.size() < n) return false;
-        for (size_t k = 0; k < n; k++) {
-            char16_t c = command[k];
-            if (c >= u'A' && c <= u'Z') c = (char16_t)(c + 32);
-            if (c != (char16_t)p[k]) return false;
-        }
-        return true;
-    };
+    auto ci = [&](const char* p) { return java::lowerCaseStartsWith(command, p); };
     if (ci("grow")) return u"GROW <id> <x> <y> <type> (<dir>)";
     if (ci("spore")) return u"SPORE <id> <x> <y>";
     return u"GROW | SPORE | WAIT";
-}
-
-static ustr replaceAll(const ustr& s, const ustr& from, const ustr& to) {
-    ustr r;
-    size_t i = 0;
-    while (true) {
-        size_t j = s.find(from, i);
-        if (j == ustr::npos) break;
-        r += s.substr(i, j - i);
-        r += to;
-        i = j + from.size();
-    }
-    r += s.substr(i);
-    return r;
 }
 
 static void handleCommands(Player& player, const std::vector<ustr>& lines) {
@@ -2093,12 +1479,12 @@ static void handleCommands(Player& player, const std::vector<ustr>& lines) {
             continue;
         }
         // InvalidInputException
-        ustr got = r == 2 ? fromAscii(exText) : command;
+        ustr got = r == 2 ? java::ascii(exText) : command;
         ustr message = u"Invalid Input: Expected " + getExpected(command) + u" but got '" + got + u"'";
-        ustr escaped = replaceAll(replaceAll(message, u"&lt;", u"<"), u"&gt;", u">");
+        ustr escaped = java::replace(java::replace(message, u"&lt;", u"<"), u"&gt;", u">");
         GM::deactivate(player, &escaped);
         GM::addToGameSummary(message);
-        GM::addToGameSummary(GM::formatErrorMessage(fromAscii(player.nick() + ": disqualified!")));
+        GM::addToGameSummary(GM::formatErrorMessage(java::ascii(player.nick() + ": disqualified!")));
     }
 }
 

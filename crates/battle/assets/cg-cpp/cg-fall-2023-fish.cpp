@@ -44,48 +44,6 @@
 
 typedef std::u16string ustr; // a java.lang.String (UTF-16 code units)
 
-// ----------------------------------------------------------------------------
-// Java semantics (java.h has the rest)
-// ----------------------------------------------------------------------------
-namespace java {
-
-// java.util.regex \s (no UNICODE_CHARACTER_CLASS)
-static inline bool isSpace(char16_t c) { return c == u' ' || c == u'\t' || c == u'\n' || c == 0x0B || c == u'\f' || c == u'\r'; }
-// java.util.regex \d
-static inline bool isDigit(char16_t c) { return c >= u'0' && c <= u'9'; }
-// CASE_INSENSITIVE without UNICODE_CASE: only ASCII letters fold
-static inline bool eqIgnoreCaseAscii(char16_t c, char upper) {
-    return c == (char16_t)upper || c == (char16_t)(upper + 32);
-}
-
-// command.toUpperCase().startsWith(prefix) for an upper case ASCII prefix (default locale en_US).
-// Only these non-ASCII characters have an upper case form containing one of the letters of
-// "MOVE" or "WAIT" (checked against the JDK on every code point).
-static bool upperStartsWith(const ustr& s, const char* prefix) {
-    ustr up;
-    size_t plen = strlen(prefix);
-    for (size_t i = 0; i < s.size() && up.size() < plen; i++) {
-        char16_t c = s[i];
-        if (c >= u'a' && c <= u'z') up += (char16_t)(c - 32);
-        else if (c < 0x80) up += c;
-        else if (c == 0x0131) up += u"I";
-        else if (c == 0x1E97) up += u"T\u0308";
-        else if (c == 0x1E98) up += u"W\u030A";
-        else if (c == 0x1E9A) up += u"A\u02BE";
-        else if (c == 0xFB01) up += u"FI";
-        else if (c == 0xFB03) up += u"FFI";
-        else if (c == 0xFB05 || c == 0xFB06) up += u"ST";
-        else up += (char16_t)0xFFFF; // upper case form without any letter of the prefixes
-    }
-    if (up.size() < plen) return false;
-    for (size_t i = 0; i < plen; i++)
-        if (up[i] != (char16_t)prefix[i]) return false;
-    return true;
-}
-
-
-} // namespace java
-
 using java::String;
 
 // ----------------------------------------------------------------------------
@@ -1116,16 +1074,14 @@ struct InvalidInput {
 
 // Game.getExpected
 static ustr getExpected(const ustr& playerOutput) {
-    if (java::upperStartsWith(playerOutput, "MOVE")) return u"MOVE <x> <y> <light (1|0)>";
-    if (java::upperStartsWith(playerOutput, "WAIT")) return u"WAIT <light (1|0)>";
+    if (java::upperCaseStartsWith(playerOutput, "MOVE")) return u"MOVE <x> <y> <light (1|0)>";
+    if (java::upperCaseStartsWith(playerOutput, "WAIT")) return u"WAIT <light (1|0)>";
     return u"MOVE | WAIT";
 }
 
 static InvalidInput invalidInput(const ustr& expected, const ustr& got) {
     return {u"Invalid Input: Expected " + expected + u" but got '" + got + u"'"};
 }
-
-static ustr numberFormatException(const ustr& s) { return u"java.lang.NumberFormatException: For input string: \"" + s + u"\""; }
 
 struct Matched {
     int kind = 0; // 0: none, 1: MOVE, 2: WAIT
@@ -1138,9 +1094,9 @@ struct Matched {
 // (?:\s+(?<message>.+))?$ after the light switch; the line never contains a line terminator
 static bool matchMessageTail(const ustr& s, size_t i, Matched& m) {
     if (i == s.size()) return true;
-    if (!java::isSpace(s[i])) return false;
+    if (!java::isRegexSpace(s[i])) return false;
     size_t j = i;
-    while (j < s.size() && java::isSpace(s[j])) j++;
+    while (j < s.size() && java::isRegexSpace(s[j])) j++;
     if (j == s.size()) return false; // .+ needs a character (impossible after trim)
     m.hasMessage = true;
     m.message = s.substr(j);
@@ -1152,7 +1108,7 @@ static bool matchLiteral(const ustr& s, size_t& i, const char* lit) {
         if (i >= s.size()) return false;
         if (*p == ' ') {
             if (s[i] != u' ') return false;
-        } else if (!java::eqIgnoreCaseAscii(s[i], *p)) {
+        } else if (!java::regexCharMatchesIgnoreCase(s[i], *p)) {
             return false;
         }
     }
@@ -1164,7 +1120,7 @@ static bool matchNumber(const ustr& s, size_t& i, ustr& out) {
     size_t a = i;
     if (i < s.size() && s[i] == u'-') i++;
     size_t d = i;
-    while (i < s.size() && java::isDigit(s[i])) i++;
+    while (i < s.size() && java::isRegexDigit(s[i])) i++;
     if (i == d) return false;
     out = s.substr(a, i - a);
     return true;
@@ -1214,14 +1170,13 @@ static void parseCommands(Player* player, const std::vector<ustr>& lines) {
             if (m.kind == 0) throw invalidInput(getExpected(command), command);
             auto getDrone = [&]() -> Drone* {
                 if (droneIdx >= player->drones.size())
-                    throw invalidInput(getExpected(command), java::ascii("java.lang.IndexOutOfBoundsException: Index " + std::to_string(droneIdx) +
-                                                                         " out of bounds for length " + std::to_string(player->drones.size())));
+                    throw invalidInput(getExpected(command), java::ascii(java::indexOutOfBoundsException(droneIdx, player->drones.size())));
                 return player->drones[droneIdx];
             };
             if (m.kind == 1) {
                 i32 x, y;
-                if (!java::parseInt(m.x, x)) throw invalidInput(getExpected(command), numberFormatException(m.x));
-                if (!java::parseInt(m.y, y)) throw invalidInput(getExpected(command), numberFormatException(m.y));
+                if (!java::parseInt(m.x, x)) throw invalidInput(getExpected(command), java::numberFormatException(m.x));
+                if (!java::parseInt(m.y, y)) throw invalidInput(getExpected(command), java::numberFormatException(m.y));
                 Drone* drone = getDrone();
                 drone->hasMove = true;
                 drone->move = {(double)x, (double)y};

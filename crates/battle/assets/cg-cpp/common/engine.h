@@ -913,8 +913,7 @@ inline int run(int argc, char** argv, Referee& referee, const std::function<Play
     for (const std::string& u : r.uinput) out += u + "\n";
     fwrite(out.data(), 1, out.size(), stdout);
     fflush(stdout);
-    // the writer threads may still be blocked on a pipe: leave without destructors
-    _Exit(0);
+    return 0;
 }
 
 } // namespace cg
