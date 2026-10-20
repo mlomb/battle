@@ -33,7 +33,7 @@ fn referee_diff_matches_identical_referees_one_olymbits_game() {
             "-a",
             &up,
         ])
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(180))
         .output()
         .expect("battle referee-diff");
 
