@@ -26,6 +26,8 @@ fn referee_diff_matches_identical_referees_one_olymbits_game() {
             olympics,
             "--max-games",
             "1",
+            "--turn-timeout",
+            "1000",
             "-a",
             &random,
             "-a",
@@ -39,6 +41,9 @@ fn referee_diff_matches_identical_referees_one_olymbits_game() {
 
     assert!(
         output.status.success(),
-        "2x reference olymbits referee-diff failed"
+        "2x reference olymbits referee-diff failed\n--- status: {}\n--- stdout:\n{}\n--- stderr:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }

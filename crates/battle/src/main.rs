@@ -84,6 +84,10 @@ enum Commands {
         #[arg(long, default_value_t = 1)]
         seed: u64,
 
+        /// Override the referee's per-turn time limit
+        #[arg(long)]
+        turn_timeout: Option<u64>,
+
         #[clap(flatten)]
         network_args: NetworkArgs,
     },
@@ -117,6 +121,10 @@ enum Commands {
         #[arg(long, default_value_t = 10)]
         max_games: usize,
 
+        /// Override the referee's per-turn time limit
+        #[arg(long)]
+        turn_timeout: Option<u64>,
+
         #[clap(flatten)]
         network_args: NetworkArgs,
     },
@@ -138,6 +146,11 @@ enum Commands {
         /// The referee to use throughout this MCP session
         #[arg(long)]
         referee: String,
+
+        /// Override the referee's per-turn time limit of the agents (ms).
+        /// The first turn keeps the game's limit if longer. Useful on slow machines (e.g. CI).
+        #[arg(long)]
+        turn_timeout: Option<u64>,
 
         #[clap(flatten)]
         network_args: NetworkArgs,
@@ -196,9 +209,10 @@ async fn main() -> ExitCode {
             agent: agents,
             n,
             seed,
+            turn_timeout,
             network_args,
         } => {
-            let referee = Referee::from_string(&referee);
+            let referee = Referee::from_string(&referee).with_turn_timeout(turn_timeout);
             let agents = agents
                 .iter()
                 .map(|path| {
@@ -217,10 +231,11 @@ async fn main() -> ExitCode {
             agent,
             seed,
             max_games,
+            turn_timeout,
             network_args,
         } => {
-            let reference = Referee::from_string(&reference);
-            let candidate = Referee::from_string(&candidate);
+            let reference = Referee::from_string(&reference).with_turn_timeout(turn_timeout);
+            let candidate = Referee::from_string(&candidate).with_turn_timeout(turn_timeout);
 
             let mut game_channel = GameChannel::new(network_args);
 
@@ -457,9 +472,10 @@ async fn main() -> ExitCode {
 
         Commands::MCP {
             referee,
+            turn_timeout,
             network_args,
         } => {
-            let referee = Referee::from_string(&referee);
+            let referee = Referee::from_string(&referee).with_turn_timeout(turn_timeout);
             if let Err(e) = mcp::mcp_main(referee, network_args).await {
                 eprintln!("MCP server error: {e}");
                 return ExitCode::FAILURE;
