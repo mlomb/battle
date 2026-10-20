@@ -38,7 +38,7 @@
 #include "common/engine.h"
 
 #include <array>
-#include <cfloat>
+#include <limits>
 
 using java::String;
 
@@ -357,7 +357,7 @@ struct Archery : MiniGame {
             std::vector<int>& c = cursors[i];
             // Math.pow(int, 2) is exact for these small values
             double distance = (double)c[0] * (double)c[0] + (double)c[1] * (double)c[1];
-            if (dead[i]) pointsByPlayer.push_back({i, -DBL_MAX});
+            if (dead[i]) pointsByPlayer.push_back({i, -std::numeric_limits<double>::max()}); // -Double.MAX_VALUE
             else pointsByPlayer.push_back({i, -distance});
         }
         return createRankings(pointsByPlayer);
