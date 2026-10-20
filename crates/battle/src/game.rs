@@ -136,6 +136,7 @@ impl GameSetup<Arc<Target>> {
                 target: self.referee.target.id,
                 min_agents: self.referee.min_agents,
                 max_agents: self.referee.max_agents,
+                turn_timeout: self.referee.turn_timeout,
             },
             agents: self.agents.iter().map(|a| a.id).collect(),
             seed: self.seed,
@@ -159,6 +160,7 @@ impl GameSetup<TargetId> {
                     .clone(),
                 min_agents: self.referee.min_agents,
                 max_agents: self.referee.max_agents,
+                turn_timeout: self.referee.turn_timeout,
             },
             agents: self
                 .agents

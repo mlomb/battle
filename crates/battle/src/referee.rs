@@ -37,6 +37,10 @@ pub struct Referee<T = Arc<Target>> {
 
     /// The maximum number of agents accepted by the referee
     pub max_agents: usize,
+
+    /// Overrides the per-turn time limit of the agents, in milliseconds.
+    /// The first turn keeps the game's own limit if it is longer. `None` keeps the game's limits.
+    pub turn_timeout: Option<u64>,
 }
 
 impl Referee<Arc<Target>> {
@@ -101,6 +105,7 @@ impl Referee<Arc<Target>> {
             target: Arc::new(target),
             min_agents,
             max_agents,
+            turn_timeout: None,
         })
     }
 
@@ -110,7 +115,14 @@ impl Referee<Arc<Target>> {
             target: Arc::new(target),
             min_agents: 1,
             max_agents: 4,
+            turn_timeout: None,
         }
+    }
+
+    /// Sets [`Referee::turn_timeout`].
+    pub fn with_turn_timeout(mut self, turn_timeout: Option<u64>) -> Self {
+        self.turn_timeout = turn_timeout;
+        self
     }
 
     // TODO: return Result
@@ -150,6 +162,9 @@ impl Referee<Arc<Mutex<Executable>>> {
 
                 if let Some(logs_path) = output_logs {
                     cmd.arg("-l").arg(logs_path);
+                }
+                if let Some(turn_timeout) = self.turn_timeout {
+                    cmd.arg("-timeout").arg(turn_timeout.to_string());
                 }
             }
         }

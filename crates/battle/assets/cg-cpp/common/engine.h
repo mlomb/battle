@@ -30,7 +30,7 @@
 //   }
 //
 // Usage of the referee (CommandLineInterface of the jars):
-//   referee -p1 "<bot1 cmd>" -p2 "<bot2 cmd>" [-p3 <cmd> -p4 <cmd>] [-seed <N>] [-l <file>]
+//   referee -p1 "<bot1 cmd>" -p2 "<bot2 cmd>" [-p3 <cmd> -p4 <cmd>] [-seed <N>] [-l <file>] [-timeout <ms>]
 // Prints one score per player ("null" when the game failed) and the game parameters ("seed=N"),
 // exit code 0; exit code 1 when the command line is wrong or a bot can't be launched.
 // -l writes a trace (the jar writes its JSON game log there):
@@ -75,6 +75,9 @@ using java::String;
 
 // The -l trace (nullptr without -l). Ports may write their own lines to it.
 inline FILE* trace = nullptr;
+
+// The -timeout override in ms (0 without -timeout), see turnTimeoutMs in agent.h
+inline i64 turnTimeout = 0;
 
 // ----------------------------------------------------------------------------
 // View data
@@ -237,6 +240,7 @@ struct Runner {
         std::string raw;
         bool first = nbLines > 0 && !executedOnce[nextPlayer];
         if (nbLines > 0) executedOnce[nextPlayer] = true;
+        timeout = turnTimeoutMs(timeout, first, turnTimeout);
         bool ok = agent.getOutput(nbLines, timeout, first, raw);
         agent.readError();
         if (!ok) {
@@ -805,27 +809,29 @@ inline void GameManager::start(Referee& referee) {
 // ----------------------------------------------------------------------------
 inline const char* CLI_HELP =
     "usage: -p1 <player1 command line> -p2 <player2 command line> [-p3 <cmd>\n"
-    "           -p4 <cmd> -l <log file> -seed <seed>]\n"
-    " -h            Print the help\n"
-    " -l <arg>      File output for logs\n"
-    " -p1 <arg>     Required. Player 1 command line\n"
-    " -p2 <arg>     Required. Player 2 command line\n"
-    " -p3 <arg>     Player 3 command line (if applies)\n"
-    " -p4 <arg>     Player 4 command line (if applies)\n"
-    " -seed <arg>   Referee seed\n";
+    "           -p4 <cmd> -l <log file> -seed <seed> -timeout <ms>]\n"
+    " -h               Print the help\n"
+    " -l <arg>         File output for logs\n"
+    " -p1 <arg>        Required. Player 1 command line\n"
+    " -p2 <arg>        Required. Player 2 command line\n"
+    " -p3 <arg>        Player 3 command line (if applies)\n"
+    " -p4 <arg>        Player 4 command line (if applies)\n"
+    " -seed <arg>      Referee seed\n"
+    " -timeout <arg>   Turn time limit in ms, replacing the game's (first turn:\n"
+    "                  the longest of both)\n";
 
 // Plays one game like the jar's CommandLineInterface: returns the exit code. `player(i)` gives the
 // port's player object of index i (0 to 3).
 inline int run(int argc, char** argv, Referee& referee, const std::function<Player*(int)>& player, const Options& options = Options()) {
-    // org.apache.commons.cli DefaultParser: -h, -p1..-p4, -l, -seed
-    const char* names[7] = {"p1", "p2", "p3", "p4", "l", "seed", "h"};
-    std::string values[7];
-    bool has[7] = {false, false, false, false, false, false, false};
+    // org.apache.commons.cli DefaultParser: -h, -p1..-p4, -l, -seed, -timeout
+    const char* names[8] = {"p1", "p2", "p3", "p4", "l", "seed", "h", "timeout"};
+    std::string values[8];
+    bool has[8] = {false, false, false, false, false, false, false, false};
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
         if (a.size() < 2 || a[0] != '-') continue; // a plain argument: ignored
         int opt = -1;
-        for (int k = 0; k < 7; k++)
+        for (int k = 0; k < 8; k++)
             if (a.substr(1) == names[k]) opt = k;
         if (opt < 0) {
             fprintf(stderr, "org.apache.commons.cli.UnrecognizedOptionException: Unrecognized option: %s\n", a.c_str());
@@ -855,6 +861,12 @@ inline int run(int argc, char** argv, Referee& referee, const std::function<Play
         }
     } else {
         seed = (i64)java::entropy(); // System.nanoTime() + new Object().hashCode()
+    }
+    if (has[7]) {
+        if (!java::parseLong(java::decodeUtf8(values[7]), turnTimeout)) {
+            fprintf(stderr, "java.lang.NumberFormatException: For input string: \"%s\"\n", values[7].c_str());
+            return 1;
+        }
     }
     std::vector<std::string> cmds;
     for (int k = 0; k < 4; k++)

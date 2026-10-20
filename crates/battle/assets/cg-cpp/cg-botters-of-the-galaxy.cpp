@@ -2373,6 +2373,7 @@ static bool execute(cg::Agent& agent, const std::string& input, int nbLines, int
 // ----------------------------------------------------------------------------
 static bool gameEnd = false;
 static FILE* trace = nullptr;
+static i64 turnTimeout = 0; // -timeout, see cg::turnTimeoutMs
 
 static void deactivate(Player* player) {
     player->score = C::LOST_SCORE;
@@ -2448,6 +2449,7 @@ static void gameTurn(int turn) {
 
     for (Player& player : players) {
         int timeoutMs = player.hasNeverBeenExecuted ? C::FIRST_TURN_MAX_TIME : C::TURN_MAX_TIME;
+        timeoutMs = (int)cg::turnTimeoutMs(timeoutMs, player.hasNeverBeenExecuted, turnTimeout);
         std::vector<std::string> outputs;
         bool ok = execute(agents[player.index], inputs[player.index], player.getExpectedOutputLines(), timeoutMs, outputs);
         player.hasNeverBeenExecuted = false;
@@ -2521,9 +2523,14 @@ int main(int argc, char** argv) {
             auto r = std::from_chars(s, s + strlen(s), seed);
             if (r.ec != std::errc() || *r.ptr != 0) { fprintf(stderr, "invalid seed: %s\n", s); return 1; }
         } else if (a == "-l" && i + 1 < argc) tracePath = argv[++i];
+        else if (a == "-timeout" && i + 1 < argc) {
+            const char* s = argv[++i];
+            auto r = std::from_chars(s, s + strlen(s), turnTimeout);
+            if (r.ec != std::errc() || *r.ptr != 0) { fprintf(stderr, "invalid timeout: %s\n", s); return 1; }
+        }
     }
     if (bot1.empty() || bot2.empty()) {
-        fprintf(stderr, "usage: referee -p1 <cmd> -p2 <cmd> -seed N [-l file]\n");
+        fprintf(stderr, "usage: referee -p1 <cmd> -p2 <cmd> -seed N [-l file] [-timeout ms]\n");
         return 2;
     }
     if (tracePath) trace = fopen(tracePath, "w");

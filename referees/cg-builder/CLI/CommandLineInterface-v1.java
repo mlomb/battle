@@ -38,13 +38,14 @@ public class CommandLineInterface {
                     .addOption("p3", true, "Player 3 command line (if applies)")
                     .addOption("p4", true, "Player 4 command line (if applies)")
                     .addOption("l", true, "File output for logs")
-                    .addOption("seed", true, "Referee seed");
+                    .addOption("seed", true, "Referee seed")
+                    .addOption("timeout", true, "Turn time limit in ms, replacing the game's (first turn: the longest of both)");
 
             CommandLine cmd = new DefaultParser().parse(options, args);
 
             if (cmd.hasOption("h") || !cmd.hasOption("p1") || !cmd.hasOption("p2")) {
                 new HelpFormatter().printHelp(
-                        "-p1 <player1 command line> -p2 <player2 command line> [-p3 <cmd> -p4 <cmd> -l <log file> -seed <seed>]",
+                        "-p1 <player1 command line> -p2 <player2 command line> [-p3 <cmd> -p4 <cmd> -l <log file> -seed <seed> -timeout <ms>]",
                         options);
                 System.exit(0);
             }
@@ -63,11 +64,22 @@ public class CommandLineInterface {
 
             gameRunner = new GameRunner(properties);
 
+            Long turnTimeout = cmd.hasOption("timeout") ? Long.parseLong(cmd.getOptionValue("timeout")) : null;
+
+            // the private GameRunner#addAgent(Agent, nickname, avatar) the public ones use
+            Method addAgent = GameRunner.class.getDeclaredMethod("addAgent", Agent.class, String.class, String.class);
+            addAgent.setAccessible(true);
+
             int playerCount = 0;
 
             for (int i = 1; i <= 4; ++i) {
                 if (cmd.hasOption("p" + i)) {
-                    gameRunner.addAgent(cmd.getOptionValue("p" + i));
+                    String commandLine = cmd.getOptionValue("p" + i);
+                    if (turnTimeout != null) {
+                        addAgent.invoke(gameRunner, new TimeoutOverridePlayerAgent(commandLine, turnTimeout), null, null);
+                    } else {
+                        gameRunner.addAgent(commandLine);
+                    }
                     playerCount += 1;
                 }
             }
@@ -108,6 +120,29 @@ public class CommandLineInterface {
 
         // the engine leaves non-daemon threads behind, make sure we exit
         System.exit(exitCode);
+    }
+
+    /**
+     * A command line player whose turn time limit is replaced by the -timeout one, except that a first turn
+     * keeps the game's limit when it is longer. Same rule as turnTimeoutMs in the C++ referees.
+     */
+    static class TimeoutOverridePlayerAgent extends CommandLinePlayerAgent {
+        private final long turnTimeout;
+        private boolean executedOnce = false;
+
+        TimeoutOverridePlayerAgent(String commandLine, long turnTimeout) {
+            super(commandLine);
+            this.turnTimeout = turnTimeout;
+        }
+
+        @Override
+        public String getOutput(int nbLine, long timeout) {
+            boolean firstTurn = nbLine > 0 && !executedOnce;
+            if (nbLine > 0) {
+                executedOnce = true;
+            }
+            return super.getOutput(nbLine, firstTurn ? Math.max(timeout, turnTimeout) : turnTimeout);
+        }
     }
 
     private static void destroyPlayerProcesses(GameRunner gameRunner) {

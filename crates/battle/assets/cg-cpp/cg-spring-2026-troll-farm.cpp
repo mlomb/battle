@@ -1177,6 +1177,8 @@ static void parsePlayerCommands(Game& g, int player, const std::string& line, st
     }
 }
 
+static i64 turnTimeout = 0; // -timeout, see cg::turnTimeoutMs
+
 int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* trace, int& s0, int& s1,
             const char* err1Path, const char* err2Path) {
     Game g; g.trace = trace;
@@ -1207,8 +1209,8 @@ int runGame(const std::string& bot1, const std::string& bot2, i64 seed, FILE* tr
             buildTurnInput(g.board, p, in);
             if (!agents[p].closed()) agents[p].sendInput(in);
             std::string line;
-            const int responseMs =
-                (turn == 1) ? C::PLAYER_FIRST_RESPONSE_MS : C::PLAYER_RESPONSE_MS;
+            const int responseMs = (int)cg::turnTimeoutMs(
+                (turn == 1) ? C::PLAYER_FIRST_RESPONSE_MS : C::PLAYER_RESPONSE_MS, turn == 1, turnTimeout);
             cg::Agent::Line r = agents[p].readLine(line, responseMs);
             if (r != cg::Agent::Line::Ok) {
                 line.clear(); // EOF / timeout: treat as empty command line (an incomplete line does not count)
@@ -1288,6 +1290,7 @@ int main(int argc, char** argv) {
         else if (a=="-p2" && i+1<argc) bot2 = argv[++i];
         else if (a=="-seed" && i+1<argc) seed = atoll(argv[++i]);
         else if (a=="-l" && i+1<argc) tracePath = argv[++i];
+        else if (a=="-timeout" && i+1<argc) turnTimeout = atoll(argv[++i]);
         else if (a=="-err1" && i+1<argc) err1 = argv[++i];
         else if (a=="-err2" && i+1<argc) err2 = argv[++i];
         else if (a=="-test") test=true;
@@ -1299,7 +1302,7 @@ int main(int argc, char** argv) {
         for (long s=1;s<=N;s++) { Board b; BirdView bird; java::SHA1PRNG r; seedRandom(r, s); createMap(b,r,bird); if (bird.exists) printf("%ld\n", s); }
         return 0;
     }
-    if (bot1.empty() || bot2.empty()) { fprintf(stderr,"usage: referee -p1 <cmd> -p2 <cmd> -seed N [-l file] [-err1 f] [-err2 f] [-test]\n"); return 2; }
+    if (bot1.empty() || bot2.empty()) { fprintf(stderr,"usage: referee -p1 <cmd> -p2 <cmd> -seed N [-l file] [-timeout ms] [-err1 f] [-err2 f] [-test]\n"); return 2; }
     FILE* trace = nullptr;
     if (tracePath) trace = fopen(tracePath, "w");
     int s0=0,s1=0;
