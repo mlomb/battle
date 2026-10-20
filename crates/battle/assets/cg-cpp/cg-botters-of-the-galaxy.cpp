@@ -29,9 +29,9 @@
 #include "common/agent.h"
 #include "common/java.h"
 
-#include <cfloat>
 #include <charconv>
 #include <deque>
+#include <limits>
 #include <system_error>
 
 // ----------------------------------------------------------------------------
@@ -70,7 +70,7 @@ namespace C {
     const int MINIMUM_STAT_COST = 30;
     const int NB_ITEMS_PER_LEVEL = 5;
     const int MAX_INT = INT32_MAX;
-    const double MAX_DOUBLE = DBL_MAX;
+    const double MAX_DOUBLE = std::numeric_limits<double>::max(); // not DBL_MAX: undefined when zig builds on macOS
     const int LOST_SCORE = -100000000;
 
     // GameManager defaults (engine 1.20)
