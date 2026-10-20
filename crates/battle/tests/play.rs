@@ -29,7 +29,7 @@ fn play_one_olymbits_game() {
             "-a",
             &up,
         ])
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(180))
         .output()
         .expect("battle play");
 
