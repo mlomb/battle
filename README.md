@@ -33,92 +33,68 @@ To update, install the crate again or pull the latest changes and run the comman
 
 ## Usage / Cheatsheet
 
-<table>
-  <tr>
-    <td colspan="2"><code>battle bundle</code><br><br>
-A tool to bundle C++ and Rust projects into a single source unit for submission.</td>
-  </tr>
-  <tr>
-    <td><code>battle bundle</code></td>
-    <td>It will look for a C++ or Rust project (see <a href="https://github.com/mlomb/battle/tree/main/crates/bundler/README.md#what-is-a-project">What is a project?</a>) and print a single file to stdout.</td>
-  </tr>
-  <tr>
-    <td><code>battle build v5.cpp</code></td>
-    <td>Specify entrypoint manually</td>
-  </tr>
-  <tr>
-    <td><code>battle build main.cpp --output submission.cpp</code></td>
-    <td>Output to a file instead of stdout.</td>
-  </tr>
-  <tr>
-    <td colspan="2"><code>battle build</code><br><br>
-A tool to bundle and build your bot and check compilation issues.</td>
-  </tr>
-  <tr>
-    <td><code>battle build</code></td>
-    <td>Same as <code>bundle</code>, it will try to find an entrypoint automaticaly.</td>
-  </tr>
-  <tr>
-    <td colspan="2"><code>battle cgsync</code><br><br>
-Watches your project, bundles on every change, and pushes the result to the CodinGame browser IDE through the <a href="https://github.com/jmerle/cg-local-ext">CG Local extension</a>. See <a href="https://github.com/mlomb/battle/tree/main/crates/cgsync">cgsync</a>.</td>
-  </tr>
-  <tr>
-    <td><code>battle cgsync</code></td>
-    <td>Auto-detects the project in the current folder. Click the browser extension to attach after starting.</td>
-  </tr>
-  <tr>
-    <td><code>battle cgsync src/main.cpp</code></td>
-    <td>Specify the entrypoint manually (file or folder).</td>
-  </tr>
-  <tr>
-    <td colspan="2"><code>battle worker</code><br><br>
-Starts a worker node that the distributed runner uses to play games.</td>
-  </tr>
-  <tr>
-    <td><code>battle worker</code></td>
-    <td>Listens on the default port using <em>physical CPUs − 2</em> threads.</td>
-  </tr>
-  <tr>
-    <td><code>battle worker --threads 32 --port 8080</code></td>
-    <td>Override the thread count and listening port.</td>
-  </tr>
-  <tr>
-    <td colspan="2"><code>battle play</code><br><br>
-Plays one or more games between bots through the worker pool, streaming results as they finish.</td>
-  </tr>
-  <tr>
-    <td><code>battle play -r cg-fall-2023-fish -a v1.cpp -a v2.cpp</code></td>
-    <td>Play a single game with the given referee and agents (repeat <code>-a</code> per agent).</td>
-  </tr>
-  <tr>
-    <td><code>battle play -r ... -a v1.cpp -a v2.cpp -n 100</code></td>
-    <td>Play <code>-n</code> games in total.</td>
-  </tr>
-  <tr>
-    <td colspan="2"><code>battle referee-diff</code><br><br>
-Runs the same game on a reference and a candidate referee and stops at the first score / status mismatch. Useful when porting or optimizing a referee while preserving outcomes.</td>
-  </tr>
-  <tr>
-    <td><code>battle referee-diff --reference ref-impl --candidate cand-impl -a main.cpp</code></td>
-    <td>Compare both referees using the given agent(s). Use a non-trivial, non-deterministic agent for meaningful comparisons.</td>
-  </tr>
-  <tr>
-    <td><code>battle referee-diff ... --max-games 50</code></td>
-    <td>Run up to <code>--max-games</code> identical games before declaring success (default <code>10</code>).</td>
-  </tr>
-  <tr>
-    <td colspan="2"><code>battle wrap</code><br><br>
-Records and later plays back a command's stdin / stdout / stderr. See <a href="https://github.com/mlomb/battle/tree/main/crates/wrapcmd">wrapcmd</a>.</td>
-  </tr>
-  <tr>
-    <td><code>battle wrap capture out.txt -- ./bot</code></td>
-    <td>Run <code>./bot</code> transparently while writing a transcript to <code>out.txt</code>.</td>
-  </tr>
-  <tr>
-    <td><code>battle wrap playback out.txt</code></td>
-    <td>Plays back the transcript: writes the recorded stdout/stderr and validates that stdin matches.</td>
-  </tr>
-</table>
+### `battle bundle`
+
+A tool to bundle C++ and Rust projects into a single source unit for submission.
+
+| Example | Note |
+| --- | --- |
+| `battle bundle` | It will look for a C++ or Rust project (see [What is a project?](https://github.com/mlomb/battle/tree/main/crates/bundler/README.md#what-is-a-project)) and print a single file to stdout. |
+| `battle build v5.cpp` | Specify entrypoint manually |
+| `battle build main.cpp --output submission.cpp` | Output to a file instead of stdout. |
+
+### `battle build`
+
+A tool to bundle and build your bot and check compilation issues.
+
+| Example | Note |
+| --- | --- |
+| `battle build` | Same as `bundle`, it will try to find an entrypoint automaticaly. |
+
+### `battle cgsync`
+
+Watches your project, bundles on every change, and pushes the result to the CodinGame browser IDE through the [CG Local extension](https://github.com/jmerle/cg-local-ext). See [cgsync](https://github.com/mlomb/battle/tree/main/crates/cgsync).
+
+| Example | Note |
+| --- | --- |
+| `battle cgsync` | Auto-detects the project in the current folder. Click the browser extension to attach after starting. |
+| `battle cgsync src/main.cpp` | Specify the entrypoint manually (file or folder). |
+
+### `battle worker`
+
+Starts a worker node that the distributed runner uses to play games.
+
+| Example | Note |
+| --- | --- |
+| `battle worker` | Listens on the default port using *physical CPUs − 2* threads. |
+| `battle worker --threads 32 --port 8080` | Override the thread count and listening port. |
+
+### `battle play`
+
+Plays one or more games between bots through the worker pool, streaming results as they finish.
+
+| Example | Note |
+| --- | --- |
+| `battle play -r cg-fall-2023-fish -a v1.cpp -a v2.cpp` | Play a single game with the given referee and agents (repeat `-a` per agent). |
+| `battle play -r ... -a v1.cpp -a v2.cpp -n 100` | Play `-n` games in total. |
+
+### `battle referee-diff`
+
+Runs the same game on a reference and a candidate referee and stops at the first score / status mismatch. Useful when porting or optimizing a referee while preserving outcomes.
+
+| Example | Note |
+| --- | --- |
+| `battle referee-diff --reference ref-impl --candidate cand-impl -a main.cpp` | Compare both referees using the given agent(s). Use a non-trivial, non-deterministic agent for meaningful comparisons. |
+| `battle referee-diff ... --max-games 50` | Run up to `--max-games` identical games before declaring success (default `10`). |
+
+### `battle wrap`
+
+Records and later plays back a command's stdin / stdout / stderr. See [wrapcmd](https://github.com/mlomb/battle/tree/main/crates/wrapcmd).
+
+| Example | Note |
+| --- | --- |
+| `battle wrap capture out.txt -- ./bot` | Run `./bot` transparently while writing a transcript to `out.txt`. |
+| `battle wrap playback out.txt` | Plays back the transcript: writes the recorded stdout/stderr and validates that stdin matches. |
 
 
 ## Tips
