@@ -40,7 +40,7 @@ To update, install the crate again or pull the latest changes and run the comman
     <th>Note</th>
   </tr>
   <tr>
-    <td align="center" rowspan="3"><code>battle bundle</code></br></br>
+    <td align="center" rowspan="3"><b><code>battle bundle</code></b></br></br>
 A tool to bundle C++ and Rust projects into a single source unit for submission.</td>
     <td><code>battle bundle</code></td>
     <td>It will look for a C++ or Rust project (see <a href="https://github.com/mlomb/battle/tree/main/crates/bundler/README.md#what-is-a-project">What is a project?</a>) and print a single file to stdout.</td>
@@ -54,12 +54,12 @@ A tool to bundle C++ and Rust projects into a single source unit for submission.
     <td>Output to a file instead of stdout.</td>
   </tr>
   <tr>
-    <td align="center"><code>battle build</code></br></br>A tool to bundle and build your bot and check compilation issues.</td>
+    <td align="center"><b><code>battle build</code></b></br></br>A tool to bundle and build your bot and check compilation issues.</td>
     <td><code>battle build</code></td>
     <td>Same as <code>bundle</code>, it will try to find an entrypoint automaticaly.</td>
   </tr>
   <tr>
-    <td align="center" rowspan="2"><code>battle cgsync</code></br></br>
+    <td align="center" rowspan="2"><b><code>battle cgsync</code></b></br></br>
 Watches your project, bundles on every change, and pushes the result to the CodinGame browser IDE through the <a href="https://github.com/jmerle/cg-local-ext">CG Local extension</a>. See <a href="https://github.com/mlomb/battle/tree/main/crates/cgsync">cgsync</a>.</td>
     <td><code>battle cgsync</code></td>
     <td>Auto-detects the project in the current folder. Click the browser extension to attach after starting.</td>
@@ -69,7 +69,7 @@ Watches your project, bundles on every change, and pushes the result to the Codi
     <td>Specify the entrypoint manually (file or folder).</td>
   </tr>
   <tr>
-    <td align="center" rowspan="2"><code>battle worker</code></br></br>
+    <td align="center" rowspan="2"><b><code>battle worker</code></b></br></br>
 Starts a worker node that the distributed runner uses to play games.</td>
     <td><code>battle worker</code></td>
     <td>Listens on the default port using <em>physical CPUs − 2</em> threads.</td>
@@ -79,7 +79,7 @@ Starts a worker node that the distributed runner uses to play games.</td>
     <td>Override the thread count and listening port.</td>
   </tr>
   <tr>
-    <td align="center" rowspan="2"><code>battle play</code></br></br>
+    <td align="center" rowspan="2"><b><code>battle play</code></b></br></br>
 Plays one or more games between bots through the worker pool, streaming results as they finish.</td>
     <td><code>battle play -r cg-fall-2023-fish -a v1.cpp -a v2.cpp</code></td>
     <td>Play a single game with the given referee and agents (repeat <code>-a</code> per agent).</td>
@@ -89,7 +89,7 @@ Plays one or more games between bots through the worker pool, streaming results 
     <td>Play <code>-n</code> games in total.</td>
   </tr>
   <tr>
-    <td align="center" rowspan="2"><code>battle referee-diff</code></br></br>
+    <td align="center" rowspan="2"><b><code>battle referee-diff</code></b></br></br>
 Runs the same game on a reference and a candidate referee and stops at the first score / status mismatch. Useful when porting or optimizing a referee while preserving outcomes.</td>
     <td><code>battle referee-diff --reference ref-impl --candidate cand-impl -a main.cpp</code></td>
     <td>Compare both referees using the given agent(s). Use a non-trivial, non-deterministic agent for meaningful comparisons.</td>
@@ -99,7 +99,7 @@ Runs the same game on a reference and a candidate referee and stops at the first
     <td>Run up to <code>--max-games</code> identical games before declaring success (default <code>10</code>).</td>
   </tr>
   <tr>
-    <td align="center" rowspan="2"><code>battle wrap</code></br></br>
+    <td align="center" rowspan="2"><b><code>battle wrap</code></b></br></br>
 Records and later plays back a command's stdin / stdout / stderr. See <a href="https://github.com/mlomb/battle/tree/main/crates/wrapcmd">wrapcmd</a>.</td>
     <td><code>battle wrap capture out.txt -- ./bot</code></td>
     <td>Run <code>./bot</code> transparently while writing a transcript to <code>out.txt</code>.</td>
