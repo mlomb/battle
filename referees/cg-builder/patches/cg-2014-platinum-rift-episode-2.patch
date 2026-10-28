@@ -1,0 +1,29 @@
+Platinum Rift - Episode 2: the map heights of the game CodinGame runs today, on "Referees/Platinum Rift2/Referee.java" of
+https://github.com/SpiritusSancti5/codinGame (c0cc6fe). Applied by legacy/build.sh for the output name
+cg-2014-platinum-rift-episode-2; the file as published is built as cg-2014-platinum-rift-episode-2-original.
+
+The only change: MAX_HEIGHT 12 (the file: 18), i.e. a random map has 5 to 11 rows (random.nextInt(MAX_HEIGHT - MIN_HEIGHT)
++ MIN_HEIGHT; the file: 5 to 17), and 32/18 as many columns (8 to 19, 20 when symmetric). Inferred from CodinGame's public
+replays (gameResult/findByGameId: 625 games of the top 1000 players; the game has a single division): their configuration
+(the referee's getConfiguration()) shows a height of 5 to 11 in all 308 random maps, each equal to nextInt(7) + 5 drawn
+where the file draws nextInt(13) + 5 from java.util.Random(seed); procedural, distribution and the fixed map are always
+what the seed draws. The jar built with this patch reproduces all 625 replays frame for frame (views but for the order of
+the visible zones, an identity hash order; infos, tooltips, scores) from the seed and the init property "symmetric"; the
+file as published reproduces 340 of them (its other heights give other maps).
+
+Not changed here: CodinGame passes "symmetric" itself (true in 271 of the 625 games, independent of the seed: it matches
+the seed's own draw in about half of them), which the jar's CLI cannot pass (it passes only the seed): the referee then
+draws it from the seed (true in half of the games).
+
+diff --git a/Referees/Platinum Rift2/Referee.java b/Referees/Platinum Rift2/Referee.java
+--- a/Referees/Platinum Rift2/Referee.java
++++ b/Referees/Platinum Rift2/Referee.java
+@@ -38,7 +38,7 @@
+ 	public static final double MAX_PLATINUM = 6;
+ 	private static final int MAX_MESSAGE_LENGTH = 30;
+ 	private static final int MIN_HEIGHT = 5;
+-	private static final int MAX_HEIGHT = 18;
++	private static final int MAX_HEIGHT = 12;
+ 	private static final float MAP_RATIO = 32f / 18f;
+ 	private static final int HEIGHT_LOWEST = 1;
+ 	private static final int HEIGHT_HIGHEST = 40;

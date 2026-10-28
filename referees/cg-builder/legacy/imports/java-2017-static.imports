@@ -1,0 +1,5 @@
+// Static imports for the game classes published without their import block that call these methods unqualified
+// (Wondev Woman: `of(...)` = java.util.stream.Stream.of, `joining(...)` = java.util.stream.Collectors.joining), given
+// after imports/java-2017.imports (legacy/build.sh prepends the *.imports files in the order given).
+import static java.util.stream.Collectors.joining;
+import static java.util.stream.Stream.of;

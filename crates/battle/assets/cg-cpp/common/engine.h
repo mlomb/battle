@@ -1,6 +1,11 @@
 // The CodinGame game engine 4.x (com.codingame.gameengine core + runner, 4.0.2 to 4.5.0, which only
-// differ by getRandom()), and the command line interface of the jars in referees/cg-jar, for C++
-// ports of CodinGame multiplayer referees. A port only writes the game: its Referee and Player.
+// differ by getRandom(), 4.6.0 with cg::Options::engine46 and 4.7.0 to 4.7.8 with
+// cg::Options::engine47; also 3.15.x, 3.13.0 with cg::Options::engine313, 2.15 with
+// cg::Options::engine2 and 2.5 with cg::Options::engine25), and the command line
+// interface of the jars in referees/cg-jar, for C++ ports of CodinGame multiplayer referees. A port
+// only writes the game: its Referee and Player. (The pre-SDK referees use the runner side and the
+// command line interface of this header, cg::detail::Runner and cg::runCli, with the old referee
+// base of common/legacy.h instead of the GameManager.)
 //
 //   #include "common/engine.h"
 //
@@ -53,8 +58,31 @@
 //     platform line separator), the 30 s total turn time, OutputData#toString trimming the inputs
 //   - GameRunner: Agent#getOutput (see agent.h), checkOutput, the '\r' -> '\n' replacement and the
 //     split of the output in lines, Agent#readError, AsynchronousWriter
+//   - engine 4.7 (Options::engine47): the referee asks for the execution times (MONITORING), the
+//     runner measures each execution and sends its time (ms) before the bot's lines, the bots get
+//     the game's time limit + 50 ms, and a bot over the game's limit in 3 executions times out
+//     (AbstractPlayer#execute's soft time limit). The times are measured here like the runner
+//     measures them, so slow bots get the same soft time outs (on the wall clock, see below).
+//   - engine 4.6.0 (Options::engine46): the execution time monitoring of 4.7 (a referee may read
+//     getLastExectionTimeMs), without the + 50 ms and the soft time limit
+//   - engine 3.13.0 (Options::engine313; its core is 3.15.0's): the runner sends the referee every
+//     piece of output.split("(\\n|\\r\\n)") instead of the first nbLines of split(..., -1): the
+//     trailing empty lines go, so a bot answering an empty line gives the referee no line at all
+//     (getOutputs() is then empty), and the frame of no execution gets one empty line
+//   - engine 2.15 (Options::engine2): the runner of engine 3.13 (its runner is 3.4.5's), and a turn
+//     in which the referee executed no player makes no frame at all (3.4.5's GameManager added the
+//     execution of the first player for 0 lines): that turn's view data, game summary and tooltips
+//     are dropped by the next turn (or replaced by the last frame's)
+//   - engine 2.5 (Options::engine25): engine 2.15's, without the game summary quotas (800 chars per
+//     turn, 512 KB in total) and the 30 s total turn time, setTurnMaxTime only rejecting <= 0, 400
+//     turns by default; and its runner has no FAIL command: when the referee throws, the runner
+//     waits 150 s for its next command, then throws out of GameRunner#simulate like on its own
+//     failures (a referee command over its buffer), so the CLI prints nothing and exits with code 1
+//     (here at once)
 //   - when the Java referee throws, or the runner gives up, the game ends without scores: the CLI
-//     then prints "null" for every player, like the jar
+//     then prints "null" for every player, like the jar (engine 2.5: nothing, exit code 1)
+//   - the game parameters the CLI prints after the scores: "seed=N", or the port's own lines
+//     (GameManager::setGameParameters, e.g. a referee adding its own seeds to the properties)
 // Not reproduced: the wall clock of the jar (it reads bot output one byte at a time, slowly, and
 // sleeps for the turn time after a timeout), the game log, metadata contents (only their size).
 #pragma once
@@ -161,6 +189,17 @@ struct Options {
     // More players than this on the command line: exit code 1 before anything is launched (the jars
     // accept up to 4 and leave the game to fail as it does)
     int maxPlayers = 4;
+    // Engine 4.7.0-4.7.8 instead of 4.0.2-4.5.0: execution time monitoring and soft time limits
+    bool engine47 = false;
+    // Engine 4.6.0 instead of 4.0.2-4.5.0: execution time monitoring only
+    bool engine46 = false;
+    // Engine 3.13.0 instead of 4.0.2-4.5.0: the runner's older split of the bots' outputs
+    bool engine313 = false;
+    // Engine 2.15 instead of 4.0.2-4.5.0: engine313's runner, and no frame for a turn without execution
+    bool engine2 = false;
+    // Engine 2.5 instead of 4.0.2-4.5.0: engine2, no game summary or turn time quotas, and a failed
+    // game exits with code 1 without printing anything (implies engine2)
+    bool engine25 = false;
 };
 
 struct RunnerStopped {}; // the runner gave up: the Java referee thread is abandoned
@@ -170,11 +209,36 @@ struct RunnerStopped {}; // the runner gave up: the Java referee thread is aband
 // ----------------------------------------------------------------------------
 namespace detail {
 
-enum Key { VIEW, INFOS, NEXT_PLAYER_INPUT, NEXT_PLAYER_INFO, SCORES, UINPUT, TOOLTIP, SUMMARY, METADATA, FAIL, NKEYS };
-inline const char* KEY_NAME[NKEYS] = {"VIEW", "INFOS", "NEXT_PLAYER_INPUT", "NEXT_PLAYER_INFO", "SCORES", "UINPUT", "TOOLTIP", "SUMMARY", "METADATA", "FAIL"};
+enum Key { VIEW, INFOS, NEXT_PLAYER_INPUT, NEXT_PLAYER_INFO, SCORES, UINPUT, TOOLTIP, SUMMARY, METADATA, FAIL, MONITORING, NKEYS };
+inline const char* KEY_NAME[NKEYS] = {"VIEW", "INFOS", "NEXT_PLAYER_INPUT", "NEXT_PLAYER_INFO", "SCORES", "UINPUT", "TOOLTIP", "SUMMARY", "METADATA", "FAIL", "MONITORING"};
 
 const int REFEREE_MAX_BUFFER_SIZE_EXTRA = 100000;
 const int REFEREE_MAX_BUFFER_SIZE = 30000;
+
+// The header of a command, "\[\[(?<cmd>.+)\] ?(?<lineCount>[0-9]+)\]" (Matcher#matches), as the
+// referee (InputCommand) and the runner (GameRunner#readCommand) match it: the name and the digits
+inline bool matchCommandHeader(const String& line, String& name, String& digits) {
+    size_t n = line.size();
+    if (n >= 6 && line[0] == u'[' && line[1] == u'[' && line[n - 1] == u']') {
+        for (size_t k = n - 2; k >= 3; k--) { // greedy .+: the longest name first
+            if (line[k] != u']') continue;
+            size_t a = k + 1, b = n - 1;
+            if (a < b && line[a] == u' ') a++;
+            if (a >= b) continue;
+            bool allDigits = true;
+            for (size_t i = a; i < b; i++)
+                if (!java::isRegexDigit(line[i])) allDigits = false;
+            bool dotOk = true; // '.' does not match line terminators
+            for (size_t i = 2; i < k; i++)
+                if (java::isLineSeparator(line[i])) dotOk = false;
+            if (!allDigits || !dotOk) continue;
+            name = line.substr(2, k - 2);
+            digits = line.substr(a, b - a);
+            return true;
+        }
+    }
+    return false;
+}
 
 // A command the referee printed, as the runner reads it: `bytes` is what its content takes in the
 // runner's buffer, `text` the content (lines ended by '\n', '\r' replaced by '\n'), when needed
@@ -191,11 +255,14 @@ struct Runner {
     int round = 0;
     bool done = false;            // the runner left its loop
     std::string failCause;        // gameResult.failCause
+    bool crashed = false;         // an exception left GameRunner#simulate: the CLI prints it, exit code 1
     OutCmd turnInfo[NKEYS];
     bool has[NKEYS] = {};
     std::map<int, i64> scores;    // gameResult.scores
     std::vector<std::string> uinput;
     std::vector<bool> executedOnce;
+    bool monitoring = false;      // the referee asked for the execution times (engine 4.6+)
+    bool splitAll = false;        // engine 3.13: every line of the output, trailing empty ones removed
     int traceTurn = 0;
 
     // Command#toString sent to the referee: java.util.Scanner splits it in lines
@@ -225,6 +292,12 @@ struct Runner {
         done = true;
     }
 
+    // the runner itself threw (e.g. on a malformed command of an old referee, see legacy.h)
+    void crash(const std::string& cause) {
+        failCause = cause;
+        crashed = done = true;
+    }
+
     // GameRunner#getNextPlayerOutput + sendPlayerOutput / sendTimeOut
     void runPlayer() {
         std::vector<i64> info;
@@ -241,7 +314,10 @@ struct Runner {
         bool first = nbLines > 0 && !executedOnce[nextPlayer];
         if (nbLines > 0) executedOnce[nextPlayer] = true;
         timeout = turnTimeoutMs(timeout, first, turnTimeout);
+        auto start = std::chrono::steady_clock::now();
         bool ok = agent.getOutput(nbLines, timeout, first, raw);
+        // lastExecutionTimeMs = (end - start) / 1_000_000 (System.nanoTime)
+        i64 executionTimeMs = (i64)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         agent.readError();
         if (!ok) {
             if (trace) fprintf(trace, "T%d P%d TIMEOUT\n", traceTurn, nextPlayer);
@@ -253,18 +329,26 @@ struct Runner {
             if (c == u'\r') c = u'\n';
         // output.split("(\\n|\\r\\n)", -1), the first nbLines pieces
         std::vector<String> pieces;
-        size_t off = 0, p;
-        while ((int)pieces.size() < nbLines && (p = output.find(u'\n', off)) != String::npos) {
-            pieces.push_back(output.substr(off, p - off));
-            off = p + 1;
+        if (splitAll) {
+            // engine 3.13: output.split("(\\n|\\r\\n)"), where an empty output for one line is "\n"
+            if (output.empty() && nbLines == 1) output = u"\n";
+            pieces = java::split(output, u'\n');
+        } else {
+            size_t off = 0, p;
+            while ((int)pieces.size() < nbLines && (p = output.find(u'\n', off)) != String::npos) {
+                pieces.push_back(output.substr(off, p - off));
+                off = p + 1;
+            }
         }
         if (trace) {
             // the frame GameManager creates when no player was executed reads 0 lines: the jar's game
-            // log records an empty output for it, traced as [""]
-            fprintf(trace, "T%d P%d OUT [%s", traceTurn, nextPlayer, nbLines == 0 ? "\"\"" : "");
+            // log records an empty output for it, traced as [""] (engine 3.13 sends that empty line)
+            fprintf(trace, "T%d P%d OUT [%s", traceTurn, nextPlayer, nbLines == 0 && !splitAll ? "\"\"" : "");
             for (size_t i = 0; i < pieces.size(); i++) fprintf(trace, "%s%s", i ? "," : "", java::traceJson(pieces[i]).c_str());
             fprintf(trace, "]\n");
         }
+        // engine 4.6+: the execution time goes first
+        if (monitoring) pieces.insert(pieces.begin(), java::str(executionTimeMs));
         send("SET_PLAYER_OUTPUT", pieces);
     }
 
@@ -298,6 +382,7 @@ struct Runner {
         bool normalTurn = has[NEXT_PLAYER_INPUT] && has[VIEW] && has[NEXT_PLAYER_INFO] && has[INFOS];
         bool endTurn = has[SCORES] && has[VIEW] && has[INFOS];
         if (!normalTurn && !endTurn) return; // keeps reading
+        if (has[MONITORING]) monitoring = true;
         if (!has[SCORES]) runPlayer();
         if (has[UINPUT]) uinput.push_back(turnInfo[UINPUT].text);
         if (has[SCORES]) {
@@ -405,6 +490,7 @@ class GameManager {
     static const int GAME_DURATION_HARD_QUOTA = 30000;
     static const int MAX_TURN_TIME = 25000;
     static const int MIN_TURN_TIME = 50;
+    static const int SOFT_TIMELIMIT_EXTRA = 50; // engine 4.7
 #ifdef _WIN32
     static const int LINE_SEPARATOR_LENGTH = 2; // System.lineSeparator(), written by println
 #else
@@ -437,7 +523,8 @@ class GameManager {
     }
     int getMaxTurns() const { return maxTurns; }
     void setTurnMaxTime(int t) {
-        checkTurnTime(t);
+        if (engine25 && t <= 0) throw java::Exception{"java.lang.IllegalArgumentException: Invalid turn max time"};
+        if (!engine25) checkTurnTime(t);
         turnMaxTime = t;
     }
     void setFirstTurnMaxTime(int t) {
@@ -456,6 +543,10 @@ class GameManager {
     int getFrameDuration() const { return frameDuration; }
 
     void addToGameSummary(const String& summary) {
+        if (engine25) { // no quotas
+            currentGameSummary.push_back(summary);
+            return;
+        }
         i64 total = 0;
         for (const String& s : currentGameSummary) total += (i64)s.size();
         if (total < GAME_SUMMARY_PER_TURN_HARD_QUOTA && total + totalGameSummaryBytes < GAME_SUMMARY_TOTAL_HARD_QUOTA) {
@@ -467,6 +558,9 @@ class GameManager {
     void addTooltip(int player, const String& message) { currentTooltips.push_back({player, message}); }
     void addTooltip(int player, const std::string& utf8) { addTooltip(player, java::decodeUtf8(utf8)); }
     void putMetadata(const std::string& key, const std::string& value) { metadata[key] = value; }
+    // the lines of the game parameters (MultiplayerGameManager#getGameParameters, in the order the
+    // jar prints them) when the referee adds its own: "seed=N" otherwise
+    void setGameParameters(const std::vector<std::string>& lines) { gameParameters = lines; }
 
     // ViewModule & co: setViewData(moduleName, data) / setViewGlobalData(moduleName, data)
     void setViewData(const std::string& module, const Json& data) { currentViewData.set(module, data); }
@@ -484,15 +578,27 @@ class GameManager {
     // --- the engine ---
     // GameManager#start, after the runner sent INIT. Ends when the game is over or the runner gave up.
     void start(Referee& referee);
-    void setup(i64 s, const std::vector<Player*>& ps) {
+    void setup(i64 s, const std::vector<Player*>& ps, bool engine47_ = false, bool engine46_ = false, bool engine2_ = false, bool engine25_ = false) {
         seed = s;
         players = ps;
         random = java::SHA1PRNG();
         random.setSeed(s);
+        engine47 = engine47_;
+        monitoringEngine = engine47_ || engine46_;
+        idleFrame = !(engine2_ || engine25_);
+        engine25 = engine25_;
+        if (engine25) maxTurns = 400;
     }
+    bool isEngine47() const { return engine47; }
 
   private:
     i64 seed = 0;
+    bool engine47 = false;            // Options::engine47
+    bool monitoringEngine = false;    // engine 4.6+ (Options::engine46 or engine47)
+    bool monitoringRequested = false; // engine 4.6+: the MONITORING command was printed
+    bool idleFrame = true;            // a turn without execution makes a frame (all but Options::engine2)
+    bool engine25 = false;            // Options::engine25: no summary and turn time quotas
+    std::vector<std::string> gameParameters; // setGameParameters (empty: "seed=N")
     java::SHA1PRNG random;
     int maxTurns = 200;
     int turnMaxTime = 50;
@@ -550,28 +656,8 @@ class GameManager {
     // Integer.parseInt
     static InCmd parseCommand(const String& line, int& lineCount) {
         static const char* NAMES[4] = {"INIT", "GET_GAME_INFO", "SET_PLAYER_OUTPUT", "SET_PLAYER_TIMEOUT"};
-        size_t n = line.size();
-        bool matched = false;
         String name, digits;
-        if (n >= 6 && line[0] == u'[' && line[1] == u'[' && line[n - 1] == u']') {
-            for (size_t k = n - 2; k >= 3 && !matched; k--) { // greedy .+: the longest name first
-                if (line[k] != u']') continue;
-                size_t a = k + 1, b = n - 1;
-                if (a < b && line[a] == u' ') a++;
-                if (a >= b) continue;
-                bool allDigits = true;
-                for (size_t i = a; i < b; i++)
-                    if (!java::isRegexDigit(line[i])) allDigits = false;
-                bool dotOk = true; // '.' does not match line terminators
-                for (size_t i = 2; i < k; i++)
-                    if (java::isLineSeparator(line[i])) dotOk = false;
-                if (!allDigits || !dotOk) continue;
-                matched = true;
-                name = line.substr(2, k - 2);
-                digits = line.substr(a, b - a);
-            }
-        }
-        if (!matched) throw java::Exception{"java.lang.RuntimeException: Error in data sent to referee"};
+        if (!detail::matchCommandHeader(line, name, digits)) throw java::Exception{"java.lang.RuntimeException: Error in data sent to referee"};
         int found = -1;
         for (int i = 0; i < 4; i++)
             if (name == java::ascii(NAMES[i])) found = i;
@@ -585,6 +671,12 @@ class GameManager {
     static const char* inCmdName(InCmd c) {
         static const char* NAMES[4] = {"INIT", "GET_GAME_INFO", "SET_PLAYER_OUTPUT", "SET_PLAYER_TIMEOUT"};
         return NAMES[c];
+    }
+
+    // engine 4.6+: asks the runner for the execution times
+    void requestMonitoring() {
+        print(detail::MONITORING, std::vector<std::string>{}, false);
+        monitoringRequested = true;
     }
 
     void dumpFail(const java::Exception& e) {
@@ -665,10 +757,17 @@ class GameManager {
     }
 
     void dumpEnd() {
-        // dumpGameProperties: "[[UINPUT] 1]" then "seed=N", printed as is
+        // dumpGameProperties: "[[UINPUT] n]" then the n lines "key=value" (just "seed=N" unless the
+        // port set others), printed as is
         std::string params = "seed=" + std::to_string(seed);
+        int paramLines = 1;
+        if (!gameParameters.empty()) {
+            params.clear();
+            for (size_t i = 0; i < gameParameters.size(); i++) params += (i ? "\n" : "") + gameParameters[i];
+            paramLines = (int)gameParameters.size();
+        }
         detail::OutCmd u{detail::UINPUT, 0, ""};
-        u.bytes = detail::readAsRunner(params, 1, &u.text);
+        u.bytes = detail::readAsRunner(params, paramLines, &u.text);
         detail::runner.receive(u);
         // dumpMetadata: the JSON of a HashMap<String, String> (only its size matters)
         std::string json = "{";
@@ -698,6 +797,12 @@ struct Player {
     bool timeout = false;            // its last execution timed out (getOutputs throws TimeoutException)
     bool hasBeenExecuted = false;
     bool hasNeverBeenExecuted = true;
+    // engine 4.6+ (lastExecutionTimeMs) and 4.7 (the rest)
+    int timelimit = 0;            // the game's time limit of its last execution
+    i64 lastExecutionTimeMs = -1; // as measured by the runner, at its last execution with an output
+    int timelimitsExceeded = 0;
+    bool timelimitExceededLastTurn = false;
+    static const int MAX_SOFT_TIMELIMIT_EXCEEDS = 2;
 
     virtual ~Player() {}
     virtual int getExpectedOutputLines() const = 0;
@@ -712,7 +817,13 @@ struct Player {
         gm.execute(*this, getExpectedOutputLines());
         hasBeenExecuted = true;
         hasNeverBeenExecuted = false;
+        if (gm.isEngine47()) { // the soft time limit (no time bank: setTimebank is not modelled)
+            timelimitExceededLastTurn = lastExecutionTimeMs > timelimit;
+            if (timelimitExceededLastTurn) timelimitsExceeded++;
+            if (timelimitsExceeded > MAX_SOFT_TIMELIMIT_EXCEEDS) timeout = true;
+        }
     }
+    i64 getLastExectionTimeMs() const { return lastExecutionTimeMs; } // sic (AbstractPlayer)
     void deactivate() { active = false; }
     void deactivate(const String& reason) {
         active = false;
@@ -744,19 +855,27 @@ inline void GameManager::execute(Player& player, int nbrOutputLines) {
         InCmd cmd = parseCommand(nextLine(), lineCount);
         if (cmd != GET_GAME_INFO) throw java::Exception{std::string("java.lang.RuntimeException: Invalid command: ") + inCmdName(cmd)};
         dumpView();
+        if (monitoringEngine && !monitoringRequested) requestMonitoring();
         dumpInfos();
         print(detail::NEXT_PLAYER_INPUT, player.inputs, true);
-        if (nbrOutputLines > 0) {
+        if (nbrOutputLines > 0 && !engine25) {
             totalTurnTime += turnMaxTime;
             if (totalTurnTime > GAME_DURATION_HARD_QUOTA) throw java::Exception{"java.lang.RuntimeException: Total game duration too long (>30000ms)"};
         }
         int timeout = player.hasNeverBeenExecuted ? firstTurnMaxTime : turnMaxTime;
+        player.timelimit = timeout;
+        if (engine47) timeout += SOFT_TIMELIMIT_EXTRA;
         print(detail::NEXT_PLAYER_INFO, std::vector<std::string>{std::to_string(player.index), std::to_string(nbrOutputLines), std::to_string(timeout)}, true);
 
         // READ PLAYER OUTPUTS
         cmd = parseCommand(nextLine(), lineCount);
         if (cmd == SET_PLAYER_OUTPUT) {
             std::vector<String> output;
+            if (monitoringRequested) { // Long.valueOf(the execution time)
+                String time = nextLine();
+                if (!java::parseLong(time, player.lastExecutionTimeMs)) throw java::Exception{java::encodeUtf8(java::numberFormatException(time))};
+                lineCount--;
+            }
             for (int i = 0; i < lineCount; i++) output.push_back(nextLine());
             player.outputs = output;
         } else if (cmd == SET_PLAYER_TIMEOUT) {
@@ -776,16 +895,17 @@ inline void GameManager::start(Referee& referee) {
     try {
         referee.init();
         referee.onGameInit();
+        monitoringRequested = false;
         initDone = true;
         for (turn = 1; (detail::runner.traceTurn = turn) <= maxTurns && !gameEnd && !getActivePlayers().empty(); turn++) {
             swapInfoAndViewData();
             newTurn = true;
             referee.gameTurn(turn);
             referee.onAfterGameTurn();
-            // a frame is created if no player has been executed
+            // a frame is created if no player has been executed (not in engine 2.15)
             bool executed = false;
             for (Player* p : players) executed = executed || p->hasBeenExecuted;
-            if (!players.empty() && !executed) execute(*players[0], 0);
+            if (idleFrame && !players.empty() && !executed) execute(*players[0], 0);
             for (Player* p : players) {
                 p->outputs.clear();
                 p->hasBeenExecuted = false;
@@ -820,9 +940,11 @@ inline const char* CLI_HELP =
     " -timeout <arg>   Turn time limit in ms, replacing the game's (first turn:\n"
     "                  the longest of both)\n";
 
-// Plays one game like the jar's CommandLineInterface: returns the exit code. `player(i)` gives the
-// port's player object of index i (0 to 3).
-inline int run(int argc, char** argv, Referee& referee, const std::function<Player*(int)>& player, const Options& options = Options()) {
+// The jar's CommandLineInterface around GameRunner#runGame, whatever the referee side: parses the
+// command line, launches the bots, sets the runner up and calls `play(seed, playerCount)`, which runs
+// the referee side (run() below: the GameManager of the port's Referee; legacy.h: the old
+// AbstractReferee), then prints the result. Returns the exit code.
+inline int runCli(int argc, char** argv, const Options& options, const std::function<void(i64 seed, int playerCount)>& play) {
     // org.apache.commons.cli DefaultParser: -h, -p1..-p4, -l, -seed, -timeout
     const char* names[8] = {"p1", "p2", "p3", "p4", "l", "seed", "h", "timeout"};
     std::string values[8];
@@ -888,33 +1010,28 @@ inline int run(int argc, char** argv, Referee& referee, const std::function<Play
             return 1;
         }
     }
-    std::vector<Player*> players;
-    for (int i = 0; i < n; i++) {
-        Player* p = player(i);
-        p->index = i;
-        players.push_back(p);
-    }
     detail::Runner& r = detail::runner;
     for (Agent& a : agents) r.agents.push_back(&a);
     r.executedOnce.assign(n, false);
-    gm.setup(seed, players);
+    r.splitAll = options.engine313 || options.engine2 || options.engine25;
 
-    // runAgents: the bots' stderr is read once after their launch, the referee gets INIT then
-    // GET_GAME_INFO
+    // runAgents: the bots' stderr is read once after their launch, then the referee side plays
     for (Agent& a : agents) a.readError();
-    r.startRound();
-    try {
-        gm.start(referee);
-    } catch (const RunnerStopped&) {
-    }
+    play(seed, n);
     while (r.step()) {
     }
     if (!r.done) r.fail("java.lang.RuntimeException: Invalid Referee command: ");
 
     for (Agent& a : agents) a.destroy();
     if (trace) {
-        fprintf(trace, "END %s\n", r.scores.empty() ? r.failCause.c_str() : "OK");
+        fprintf(trace, "END %s\n", r.scores.empty() || r.crashed ? r.failCause.c_str() : "OK");
         fclose(trace);
+    }
+    // the runner threw out of simulate() (engine 2.5: on any failure): the CLI prints the exception to
+    // stderr only
+    if (r.crashed || (options.engine25 && r.scores.empty())) {
+        fprintf(stderr, "%s\n", r.failCause.c_str());
+        return 1;
     }
     // result.scores.get(i), then the game parameters
     std::string out;
@@ -926,6 +1043,27 @@ inline int run(int argc, char** argv, Referee& referee, const std::function<Play
     fwrite(out.data(), 1, out.size(), stdout);
     fflush(stdout);
     return 0;
+}
+
+// Plays one game like the jar's CommandLineInterface: returns the exit code. `player(i)` gives the
+// port's player object of index i (0 to 3).
+inline int run(int argc, char** argv, Referee& referee, const std::function<Player*(int)>& player, const Options& options = Options()) {
+    return runCli(argc, argv, options, [&](i64 seed, int n) {
+        std::vector<Player*> players;
+        for (int i = 0; i < n; i++) {
+            Player* p = player(i);
+            p->index = i;
+            players.push_back(p);
+        }
+        gm.setup(seed, players, options.engine47, options.engine46, options.engine2, options.engine25);
+        // the referee gets INIT (not modelled: the GameManager has nothing to read in it), then
+        // GET_GAME_INFO
+        detail::runner.startRound();
+        try {
+            gm.start(referee);
+        } catch (const RunnerStopped&) {
+        }
+    });
 }
 
 } // namespace cg

@@ -1,0 +1,11 @@
+// An import block for the game classes published without one: legacy/build.sh prepends a *.imports file given after
+// the output name to the copied Referee.java (e.g. the CodinGame/* repositories of Code4Life and Wondev Woman start at
+// `class Referee extends MultiReferee`). The packages these referees use: java.util (collections, functions, regex,
+// streams) and java.io; java.awt only for its Point class (a whole java.awt.* would clash with java.util.List; a
+// game's own nested Point class shadows this import).
+import java.awt.Point;
+import java.io.*;
+import java.util.*;
+import java.util.function.*;
+import java.util.regex.*;
+import java.util.stream.*;

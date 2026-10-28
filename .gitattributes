@@ -1,3 +1,4 @@
 # Ignore C++ referees (mostly AI-generated)
 crates/battle/assets/cg-cpp/** linguist-generated
+referees/cg-builder/** linguist-generated
 *.jar filter=lfs diff=lfs merge=lfs -text

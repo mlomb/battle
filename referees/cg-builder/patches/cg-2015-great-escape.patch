@@ -1,0 +1,33 @@
+The Great Escape: the start positions drawn from the seed. "Referees/The Great Escape/Referee.java" of
+https://github.com/SpiritusSancti5/codinGame (c0cc6fe) draws the players' start positions in initReferee with an
+unseeded `new Random()` (four draws, nextInt(width) twice and nextInt(height) twice, used unless the init property
+"positions" is given; more draws for a short list or a value out of range). The jar's CLI (referees/cg-builder/legacy)
+passes only the init property "seed=N", so the jar built from the file as published plays other start positions on
+every run: its games cannot be repeated, compared or replayed.
+
+This patch seeds that Random with the init property "seed" (`new Random(Long.parseLong(seed))`); without a "seed"
+property the referee draws unseeded, as published. Nothing else changes: the same draws in the same order, the same
+use of "positions", "symmetric", "width" and "height", the same rules. Applied by legacy/build.sh for the output name
+cg-2015-great-escape; there is no build of the file as published (it cannot be validated).
+
+Why no other mapping: CodinGame's matches do not show a seed. Their replays (gameResult/findByGameId, 368 games of the
+top league's players, 2 and 3 players) give the referee's getConfiguration() as the referee input: width=9, height=9,
+positions (four values 0..8) and symmetric (true in 32 games), never a seed; each start configuration is played once
+per seat permutation. So nothing ties CodinGame's positions to a seed: the seed here only makes the jar (and the C++
+port, which draws the same positions from the same seed) deterministic. CodinGame's "symmetric=true" matches (player
+1 on player 0's row, mirrored) are not played by the CLI (the referee's default is false).
+
+diff --git a/Referees/The Great Escape/Referee.java b/Referees/The Great Escape/Referee.java
+index 92ca77b..cf82e2d 100644
+--- a/Referees/The Great Escape/Referee.java	
++++ b/Referees/The Great Escape/Referee.java	
+@@ -352,7 +352,8 @@ class Referee extends MultiReferee {
+ 		width = Math.min(50, Math.max(0, width));
+ 		height = Math.min(50, Math.max(0, height));
+ 		
+-		Random r=new Random();
++		String seed=prop.getProperty("seed");
++		Random r=seed==null ? new Random() : new Random(Long.parseLong(seed));
+ 		String[] positions=prop.getProperty("positions", r.nextInt(width)+" "+r.nextInt(width)+" "+r.nextInt(height)+" "+r.nextInt(height)).split(" ");
+ 		if(positions.length<playerCount) {
+ 			//throw new InvalidFormatException(playerCount+" positions required");

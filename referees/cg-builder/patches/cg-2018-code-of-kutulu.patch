@@ -1,0 +1,47 @@
+diff --git a/codeOfKutulu/src/main/java/codeofkutulu/mazes/BigPacMan.java b/codeOfKutulu/src/main/java/codeofkutulu/mazes/BigPacMan.java
+new file mode 100644
+index 0000000..c620e11
+--- /dev/null
++++ b/codeOfKutulu/src/main/java/codeofkutulu/mazes/BigPacMan.java
+@@ -0,0 +1,41 @@
++package codeofkutulu.mazes;
++
++/**
++ * Doubles up the Pac
++ * @author johnny
++ *
++ */
++public class BigPacMan extends Maze {
++  final static String[] map = { 
++      ".....###....ww....###.....",
++      ".###.....###..###.....###.",
++      ".#...#.#...#..#...#.#...#.",
++      ".#.#.#.#.#.#..#.#.#.#.#.#.",
++      "....S................S....",
++      "#.####.####.##.####.####.#",
++      "..........................",
++      ".#.#.#.#.#.#..#.#.#.#.#.#.",
++      ".#...#.#...#..#...#.#...#.",
++      ".###.....###..###.....###.",
++      ".....###..........###.....",
++      ".....###..........###.....",
++      ".###.....###..###.....###.",
++      ".#...#.#...#..#...#.#...#.",
++      ".#.#.#.#.#.#..#.#.#.#.#.#.",
++      "..........................",
++      "#.####.####.##.####.####.#",
++      "....S................S....",
++      ".#.#.#.#.#.#..#.#.#.#.#.#.",
++      ".#...#.#...#..#...#.#...#.",
++      ".###.....###..###.....###.",
++      ".....###....ww....###....."
++  };  
++  
++  @Override
++  public String[] getMap() 		{ 	return map; }
++  
++  public BigPacMan() {
++	  super("Big pac-man");
++  }
++
++}

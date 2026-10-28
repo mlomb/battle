@@ -81,7 +81,7 @@ Starts a worker node that the distributed runner uses to play games.</td>
   <tr>
     <td align="center" rowspan="2"><b><code>battle play</code></b></br></br>
 Plays one or more games between bots through the worker pool, streaming results as they finish.</td>
-    <td><code>battle play -r cg-fall-2023-fish -a v1.cpp -a v2.cpp</code></td>
+    <td><code>battle play -r cg-2023-fall-fish -a v1.cpp -a v2.cpp</code></td>
     <td>Play a single game with the given referee and agents (repeat <code>-a</code> per agent).</td>
   </tr>
   <tr>
