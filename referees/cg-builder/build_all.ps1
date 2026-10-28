@@ -1,17 +1,47 @@
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CGjupoulton/WinterChallenge2024-Cellularena
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2023-SeabedSecurity
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2024-SeleniaCity
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SummerChallenge2024Olymbits
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2022
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2024-SeleniaCity . cg-2024-fall-moon-city
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SummerChallenge2024Olymbits . cg-2024-summer-olympics
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2022 . cg-2022-spring-spider-attack
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2023
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2022-KeepOffTheGrass
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2021
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/game-ultimate-tictactoe
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2020
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2022-KeepOffTheGrass . cg-2022-fall-keep-off-the-grass
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2021 . cg-2021-spring-photosynthesis
+docker run --rm -it -e LEAGUE_LEVEL=2 -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v2.java https://github.com/CodinGame/game-ultimate-tictactoe . cg-2018-ultimate-tic-tac-toe
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q --build-arg MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-8-focal .) CommandLineInterface-v4.java https://github.com/CodinGame/FallChallenge2020 . cg-2020-fall-witches-brew
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/a-code-of-ice-and-fire
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SpringChallenge2020
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/LegendsOfCodeAndMagic
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v1.java https://github.com/Illedan/BOTG-Refree "team-1 project" cg-botters-of-the-galaxy
-docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/eulerscheZahl/Troll-Farm . cg-spring-2026-troll-farm
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v3.java https://github.com/CodinGame/SpringChallenge2020 . cg-2020-spring-pac-man
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v2.java https://github.com/CodinGame/LegendsOfCodeAndMagic . cg-2018-legends-of-code-and-magic cardlist.txt
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v1.java https://github.com/Illedan/BOTG-Refree "team-1 project" cg-2018-botters-of-the-galaxy
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/eulerscheZahl/Troll-Farm . cg-2026-spring-troll-farm
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CGjupoulton/SummerChallenge2026 . cg-2026-summer-back-track-king
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/WinterChallenge2026-Exotec . cg-2026-winter-snakebyte
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SummerChallenge2025-SoakOverflow . cg-2025-summer-soak-overflow
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v3.java https://github.com/CodinGameCommunity/ocean-of-code . cg-2020-ocean-of-code
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v3.java https://github.com/CodinGameCommunity/UnleashTheGeek . cg-2019-crystal-rush
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v3.java https://github.com/csj/code-a-la-mode . cg-2019-code-a-la-mode
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v2.java https://github.com/CodinGameCommunity/XmasRush . cg-2018-xmas-rush
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v2.java https://github.com/JohnnyGuye/code-of-kutulu codeOfKutulu cg-2018-code-of-kutulu
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q --build-arg MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-8-focal .) CommandLineInterface-v1.java https://github.com/csj/code-royale . cg-2018-code-royale
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Hyper Sonic/Referee.java" cg-2016-hypersonic
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/CodinGame/coders-of-the-caribbean 0478489c0a3a18163b87a773d53902847bd98a81 Referee.java cg-2017-coders-of-the-caribbean bases/base-2017-cotc.java
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/CodinGame/ghost-in-the-cell a0a2cec5123e6c3b3233eaa8c4cd1c7e50f94c59 Referee.java cg-2017-ghost-in-the-cell bases/base-2017-cotc.java
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/CodinGame/Code4Life d8abcf507e998ca36e8e79724b51c83a9e330011 Referee.java cg-2017-code4life imports/java-2017.imports bases/base-2017-code4life.java
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/CodinGame/WondevWoman 7b2ac8756d2872bb30d3f337c4fc1bb38308f1f9 Referee.java cg-2017-wondev-woman imports/java-2017.imports imports/java-2017-static.imports bases/base-2017-wondev-woman.java GAME_VERSION=3
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/CodinGame/MeanMax ca1a77b5bffd3a0ea73e774ab8937d1c9984e2e5 Referee.java cg-2017-mean-max bases/base-2017-mean-max.java
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Fantastic Bits/RefereePuzzle.java" cg-2016-fantastic-bits
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Fantastic Bits/Referee.java" cg-2016-fantastic-bits-contest
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Code Busters/puzzle/Referee.java" cg-2016-codebusters
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Code Busters/challenge/Referee.java" cg-2016-codebusters-contest
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/SmashTheCode/Referee.java" cg-2016-smash-the-code
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Coders Strike Back/Referee.java" cg-2016-coders-strike-back
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Coders Strike Back/Referee.java" cg-2016-coders-strike-back-original
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Back to the Code/Referee.java" cg-2015-back-to-the-code
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/The Great Escape/Referee.java" cg-2015-great-escape
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Platinum Rift/Referee.java" cg-2014-platinum-rift-episode-1
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Platinum Rift2/Referee.java" cg-2014-platinum-rift-episode-2
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Platinum Rift2/Referee.java" cg-2014-platinum-rift-episode-2-original
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Poker Chip Race/Referee.java" cg-2014-poker-chip-race
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Game of Drones/Referee.java" cg-2014-game-of-drones
+docker run --rm -it -v ${PWD}/target:/target --entrypoint /legacy/build.sh $(docker build -q .) https://github.com/SpiritusSancti5/codinGame c0cc6fe342cbf43755165a114f21e63cc9aee48d "Referees/Game of Drones/Referee.java" cg-2014-game-of-drones-original
 
 pause

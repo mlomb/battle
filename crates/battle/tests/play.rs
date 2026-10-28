@@ -19,7 +19,7 @@ fn play_one_olymbits_game() {
         .args([
             "play",
             "--referee",
-            "cg-spring-2024-olympics",
+            "cg-2024-summer-olympics",
             "-n",
             "1",
             "--turn-timeout",

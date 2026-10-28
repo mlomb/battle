@@ -1,0 +1,64 @@
+Game of Drones: the game CodinGame runs today, drawn from the seed. "Referees/Game of Drones/Referee.java" of
+https://github.com/SpiritusSancti5/codinGame (c0cc6fe) is CodinGame's referee without a base class (its main runs
+`new Referee().start(System.in)`); this patch makes two changes, nothing else:
+
+1. The seed. With no init line the referee draws its game from `new Random(System.currentTimeMillis())` (the drone count
+   3 + 2 * nextInt(5), then the zones and the drones; nbZones = 2 x the players); with init lines it expects exactly
+   three, "nbZones=", "nbDrones=" and "gameSeed=" (its UINPUT, to replay a game). The jar's CLI (referees/cg-builder/
+   legacy) passes the single init line "seed=N": the file takes it for the three-line form and fails at once (an
+   ArrayIndexOutOfBoundsException caught as an invalid input: no game, every score 0). Here one "seed=N" line is the
+   first path seeded with N (`new Random(N)` instead of the clock); no line and the three-line form are unchanged. The
+   UINPUT (the jar's game parameters) is then "nbZones=<2 x players>", "nbDrones=<3..11>", "gameSeed=N".
+   CodinGame's games are this path: in 587 replays of its top two leagues (gameResult/findByGameId: 114 games of 2
+   players, 186 of 3, 287 of 4) the referee input is "nbZones=<2 x players>", "nbDrones=<3 + 2 x Random(gameSeed).
+   nextInt(5)>", "gameSeed=<a clock time in ms>": the seed decides the whole game, and "-seed <gameSeed>" replays it.
+
+2. The zones (the rule of CodinGame's live referee, inferred from its replays). The file draws each zone (x in
+   [100, 3550), y in [350, 1700)) until it is at least 700 from every zone before it; with 8 zones (4 players) this may
+   take very long or never end (the zones already placed can leave no room: the jar then loops forever and the game
+   fails). CodinGame's zones are the file's in 584 of the 587 replays; the other three (4 players) are the zones of
+   this rule: after 501 failed draws in a row for one zone, the zones are drawn again from zone 1 on (zone 0 kept, the
+   draws go on). Searched among per-zone and global failure counters, restarting from zone 0 or 1, for every limit
+   from 480 to 520: only this one, with exactly 501, gives CodinGame's zones in all 587 replays; the jar built with it
+   reproduces every frame of the 587 replays (views, infos, summaries, who plays, game parameters, scores) from
+   "seed=<gameSeed>", the file's own rule 584 (scratchpad cg-2014-game-of-drones/scripts/replay_check.py, zone_rules.py).
+
+Applied by legacy/build.sh for the output name cg-2014-game-of-drones. The file with change 1 only (no zone rule) is
+built as cg-2014-game-of-drones-original (patches/cg-2014-game-of-drones-original.patch).
+
+diff --git a/Referees/Game of Drones/Referee.java b/Referees/Game of Drones/Referee.java
+index 849aa28..c9005c7 100644
+--- a/Referees/Game of Drones/Referee.java	
++++ b/Referees/Game of Drones/Referee.java	
+@@ -110,8 +110,8 @@ class Referee {
+ 		nbPlayers = c.nbPlayers;
+ 		nbCurrentPlayers = nbPlayers;
+ 		playersData = new PlayerData[nbPlayers];
+-		if (c.initLines.length == 0) {
+-			long seed = System.currentTimeMillis();
++		if (c.initLines.length == 0 || (c.initLines.length == 1 && c.initLines[0].startsWith("seed="))) {
++			long seed = c.initLines.length == 0 ? System.currentTimeMillis() : Long.parseLong(c.initLines[0].substring(5));
+ 			rand = new Random(seed);
+ 			nbZones = nbPlayers * 2;
+ 			nbDronesPerPlayer = 3 + (2 * rand.nextInt(5));
+@@ -563,6 +563,7 @@ class Referee {
+ 
+ 		for (int i = 0; i < nbZones; i++) {
+ 			boolean intersect = false;
++			int failures = 0;
+ 			do {
+ 				intersect = false;
+ 				int x = rand.nextInt((width - zoneRightMargin)
+@@ -580,7 +581,11 @@ class Referee {
+ 				if (!intersect) {
+ 					zones[i].center = new Point(x, y);
+ 				}
+-			} while (intersect);
++			} while (intersect && ++failures <= 500);
++			if (intersect) {
++				// 501 draws in a row too close to the zones before: the zones are drawn again from zone 1 on
++				i = 0;
++			}
+ 		}
+ 
+ 		for (int i = 0; i < nbDronesPerPlayer; i++) {

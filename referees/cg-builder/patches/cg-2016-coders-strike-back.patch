@@ -1,0 +1,173 @@
+Coders Strike Back (Mad Pod Racing): the rules of the game CodinGame runs today, in its top league (Legend), on
+"Referees/Coders Strike Back/Referee.java" of https://github.com/SpiritusSancti5/codinGame (c0cc6fe), an older version
+of the game (no BOOST, other laps...). Applied by legacy/build.sh for the output name cg-2016-coders-strike-back; the file as
+published is built as cg-2016-coders-strike-back-original.
+
+Inferred from CodinGame's public replays (gameResult/findByGameId: 364 Legend games, 300 Gold), which the jar built
+with this patch reproduces frame for frame (views, infos, summaries, tooltips, scores) from the seed alone. The replays
+show what the live referee does, not its code: this patch is one way to write it, and only the behaviour the replays
+show is certain. Each change and its evidence:
+  - BOOST: the first BOOST of a pod is a thrust of 650 ("boosts towards (x, y)" in the infos), later ones the maximum
+    thrust (MAX_POWER), during a shield cooldown 0 like any thrust; a BOOST during a cooldown also uses the boost up
+    (6 replays). Each pod has its own (454 players had both pods at 650).
+  - "its" instead of "it's" in the two shield action texts.
+  - 3 laps whatever the number of checkpoints (the file: (int) (15.0 / count): 5 laps of 3, 2 of 6).
+  - CHECKPOINT_GENERATION_MAX_GAP 30 (the file: 100): with it, java.util.Random(seed) gives the map of every replay.
+  - The time of a checkpoint is the round plus the fraction of the round where the pod's path (its segments between
+    collisions, as the file checks them) enters the checkpoint's circle (the file: the round). Seen in the
+    eliminations (a player whose last checkpoint was at round r is out at r + 101; without any checkpoint at 100) and
+    in the view's timeout counter (101 after a pod ends a round exactly 600 from its checkpoint). The formula of the
+    fraction is this patch's; the replays only show its integer part and that it is above 0.
+  - A pod that finished the race keeps 0 as its next checkpoint (its count capped at the race's, in the view).
+  - Two pods with as many checkpoints, on their last leg or finished, rank by the time of their last checkpoint,
+    earlier first (on the other legs the distance to the next checkpoint, as in the file).
+The lower leagues differ by constants not changed here (Gold: MAX_POWER 100; Silver and below: one pod per player, other
+maps, MAX_POWER 100, whole rounds as checkpoint times; Wood: no pod collisions).
+
+diff --git a/Referees/Coders Strike Back/Referee.java b/Referees/Coders Strike Back/Referee.java
+index ca1f482..4bd9051 100644
+--- a/Referees/Coders Strike Back/Referee.java	
++++ b/Referees/Coders Strike Back/Referee.java	
+@@ -31,14 +31,16 @@ class Referee extends MultiReferee {
+     private static final int DEFAULT_POD_PER_PLAYER = 2;
+ 
+     private static final int MAX_POWER = 200;
++    private static final int BOOST_POWER = 650;
+ 
+     private static final double FRICTION = 0.15;
+ 
+     private static final int DEFAULT_POD_TIMEOUT = 100;
+ 
+     private static final int MIN_CHECKPOINT_COUNT = 15;
++    private static final int LAPS = 3;
+ 
+-    private static final int CHECKPOINT_GENERATION_MAX_GAP = 100;
++    private static final int CHECKPOINT_GENERATION_MAX_GAP = 30;
+ 
+     private static final double MAX_ROTATION_PER_TURN = Math.PI / 10;
+ 
+@@ -209,6 +211,7 @@ class Referee extends MultiReferee {
+         public int rank, power, wantedPower;
+         public Double lastAngle;
+         public boolean shieldMode;
++        public boolean boostUsed;
+         public Integer lastShieldModeRound;
+ 
+         public Pod(int id, Vector p) {
+@@ -242,7 +245,7 @@ class Referee extends MultiReferee {
+                     PodWayPoint after = positions.get(i + 1);
+                     if (new Line2D.Double(before.position.x, before.position.y, after.position.x, after.position.y)
+                             .ptSegDist(cp.position) <= CHECKPOINT_RADIUS) {
+-                        this.checkPointTimes.add((double) round);
++                        this.checkPointTimes.add(round + crossTime(before, after, cp));
+                         found = true;
+                         continue check;
+                     }
+@@ -251,6 +254,21 @@ class Referee extends MultiReferee {
+ 
+         }
+ 
++        // the time the segment before -> after enters the checkpoint's circle (its first point within the radius)
++        private double crossTime(PodWayPoint before, PodWayPoint after, CheckPoint cp) {
++            double dx = before.position.x - cp.position.x, dy = before.position.y - cp.position.y;
++            double ex = after.position.x - before.position.x, ey = after.position.y - before.position.y;
++            double c = dx * dx + dy * dy - CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
++            double s = 0;
++            if (c > 0) {
++                double a = ex * ex + ey * ey, b = dx * ex + dy * ey;
++                double delta = b * b - a * c;
++                s = (-b - Math.sqrt(Math.max(0, delta))) / a;
++                s = Math.max(0, Math.min(1, s));
++            }
++            return before.time + s * (after.time - before.time);
++        }
++
+         public String toPlayerString() {
+             long angle = -1;
+             if (this.lastAngle != null) {
+@@ -272,7 +290,7 @@ class Referee extends MultiReferee {
+             }
+             pods.append(" " + this.lastAngle);
+             pods.append(" " + (this.shieldMode ? 1 : 0));
+-            pods.append(" " + (this.checkPointTimes.size() % checkPoints.length));
++            pods.append(" " + getNextCheckpointId());
+             pods.append(" " + this.rank);
+             // pods.append(" " + (POD_TIMEOUT - round +
+             // getLastCheckPointTime()));
+@@ -373,6 +391,10 @@ class Referee extends MultiReferee {
+                 return -1;
+             } else if (checkPointTimes.size() < p2.checkPointTimes.size()) {
+                 return 1;
++            } else if (checkPointTimes.size() >= LAPS * checkPoints.length) {
++                double time1 = checkPointTimes.get(checkPointTimes.size() - 1);
++                double time2 = p2.checkPointTimes.get(p2.checkPointTimes.size() - 1);
++                return time1 < time2 ? -1 : (time1 > time2 ? 1 : 0);
+             } else {
+                 // double time1 = checkPointTimes.get(checkPointTimes.size() -
+                 // 1);
+@@ -395,7 +417,7 @@ class Referee extends MultiReferee {
+         }
+ 
+         private int getNextCheckpointId() {
+-            return (checkPointTimes.size() % checkPoints.length);
++            return (Math.min(checkPointTimes.size(), LAPS * checkPoints.length) % checkPoints.length);
+         }
+     }
+ 
+@@ -637,8 +659,8 @@ class Referee extends MultiReferee {
+         p.put("endReached", "End reached");
+         p.put("podDead", "Pod %d of player $%d is eliminated");
+         p.put("podAction", "Pod %d of player $%d moves towards (%d, %d) at power %d");
+-        p.put("podReloadShield", "Pod %d of player $%d waits for it's engine to reload");
+-        p.put("podActionShield", "Pod %d of player $%d enabled it's shield");
++        p.put("podReloadShield", "Pod %d of player $%d waits for its engine to reload");
++        p.put("podActionShield", "Pod %d of player $%d enabled its shield");
+         p.put("podBoost", "Pod %d of player $%d boosts towards (%d, %d)");
+ 
+         p.put("checkPointTimeout", "$%d did not reach the next checkpoint in time");
+@@ -721,7 +743,7 @@ class Referee extends MultiReferee {
+     }
+ 
+     private static final Pattern PLAYER_INPUT_PATTERN = Pattern
+-            .compile("(?<x>-?[0-9]{1,9})\\s+(?<y>-?[0-9]{1,9})\\s+(?<power>([0-9]{1,9}|SHIELD))?(?:\\s+(?<message>.+))?");
++            .compile("(?<x>-?[0-9]{1,9})\\s+(?<y>-?[0-9]{1,9})\\s+(?<power>([0-9]{1,9}|SHIELD|BOOST))?(?:\\s+(?<message>.+))?");
+ 
+     @Override
+     protected void handlePlayerOutput(int frame, int round, int playerIdx, String[] outputs)
+@@ -740,6 +762,9 @@ class Referee extends MultiReferee {
+                         if (pod.shieldMode = "SHIELD".equals(powerStr)) {
+                             pod.wantedPower = 0;
+                             pod.lastShieldModeRound = round;
++                        } else if ("BOOST".equals(powerStr)) {
++                            pod.wantedPower = pod.boostUsed ? MAX_POWER : BOOST_POWER;
++                            pod.boostUsed = true;
+                         } else {
+                             if (powerStr != null) {
+                                 pod.wantedPower = Integer.parseInt(powerStr);
+@@ -795,7 +820,7 @@ class Referee extends MultiReferee {
+     protected String[] getInitInputForPlayer(int playerIdx) {
+         List<String> data = new ArrayList<>();
+         if (this.simulateSoloForAgent == null || this.simulateSoloForAgent != playerIdx) {
+-            int laps = (int) (Math.ceil((double) MIN_CHECKPOINT_COUNT) / ((double) this.checkPoints.length));
++            int laps = LAPS;
+             data.add(String.valueOf(laps));
+             data.add(String.valueOf(this.checkPoints.length));
+             for (CheckPoint cp : this.checkPoints) {
+@@ -895,7 +920,7 @@ class Referee extends MultiReferee {
+             p.endRound();
+         }
+ 
+-        int lastCheckPoint = (int) (Math.ceil((double) MIN_CHECKPOINT_COUNT) / ((double) this.checkPoints.length)) * this.checkPoints.length;
++        int lastCheckPoint = LAPS * this.checkPoints.length;
+ 
+         boolean ended = false;
+         for (Pod p : pods) {
+@@ -1020,6 +1045,8 @@ class Referee extends MultiReferee {
+                 } else {
+                     if (p.lastShieldModeRound != null && round <= p.lastShieldModeRound + INACTIVE_ROUND_AFTER_SHIELD) {
+                         action.add(translate("podReloadShield", podId, p.player.id));
++                    } else if (p.power == BOOST_POWER) {
++                        action.add(translate("podBoost", podId, p.player.id, p.targetPosition.x, p.targetPosition.y));
+                     } else {
+                         action.add(translate("podAction", podId, p.player.id, p.targetPosition.x, p.targetPosition.y, p.power));
+                     }

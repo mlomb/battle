@@ -1,0 +1,25 @@
+Game of Drones as published, drawn from the seed. "Referees/Game of Drones/Referee.java" of
+https://github.com/SpiritusSancti5/codinGame (c0cc6fe) with change 1 of patches/cg-2014-game-of-drones.patch only (see its
+header): one init line "seed=N" (what the jar's CLI passes) is the referee's first path seeded with N
+(`new Random(N)` instead of `new Random(System.currentTimeMillis())`); no line and the three-line form ("nbZones=",
+"nbDrones=", "gameSeed=") are unchanged. Without it the jar cannot play at all (the single line is taken for the
+three-line form: an invalid input, every score 0). Its zones are the file's own rule (each zone redrawn until it is at
+least 700 from the zones before it, without end), which CodinGame's live referee no longer uses (cg-2014-game-of-drones).
+
+Applied by legacy/build.sh for the output name cg-2014-game-of-drones-original.
+
+diff --git a/Referees/Game of Drones/Referee.java b/Referees/Game of Drones/Referee.java
+index 849aa28..c7b7d1b 100644
+--- a/Referees/Game of Drones/Referee.java	
++++ b/Referees/Game of Drones/Referee.java	
+@@ -110,8 +110,8 @@ class Referee {
+ 		nbPlayers = c.nbPlayers;
+ 		nbCurrentPlayers = nbPlayers;
+ 		playersData = new PlayerData[nbPlayers];
+-		if (c.initLines.length == 0) {
+-			long seed = System.currentTimeMillis();
++		if (c.initLines.length == 0 || (c.initLines.length == 1 && c.initLines[0].startsWith("seed="))) {
++			long seed = c.initLines.length == 0 ? System.currentTimeMillis() : Long.parseLong(c.initLines[0].substring(5));
+ 			rand = new Random(seed);
+ 			nbZones = nbPlayers * 2;
+ 			nbDronesPerPlayer = 3 + (2 * rand.nextInt(5));

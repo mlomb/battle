@@ -2,7 +2,7 @@
 // https://github.com/CodinGame/SpringChallenge2021 (commit 91bcff0), CodinGame game engine 4.0.2.
 // 2 players, league 19 as set by the CLI, i.e. the default case of Game.init (Bronze and above:
 // seeds, growth, shadows and holes enabled, 24 days).
-// Deterministic; reproduces the same game as the reference jar (cg-spring-2021-ref) for a -seed.
+// Deterministic; reproduces the same game as the reference jar (cg-2021-spring-photosynthesis-ref) for a -seed.
 //
 // Usage:
 //   referee -p1 "<bot1 cmd>" -p2 "<bot2 cmd>" -seed <N> [-l <file>]

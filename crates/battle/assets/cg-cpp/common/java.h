@@ -3,12 +3,15 @@
 // folder: `#include "common/java.h"` (battle's bundler inlines it). A referee keeps no JDK behaviour
 // of its own: what it needs and is missing here belongs here, with a check against the JDK.
 //
-//   - numbers: (int)/(long) casts of doubles, int arithmetic, Math.round/abs/min/max,
-//     Integer.compare/signum, Double.compare, DoubleStream.sum, Double.parseDouble
+//   - numbers: (int)/(long) casts of doubles, int arithmetic (/ and % included), Math.round (double, float)/abs/min/max,
+//     Integer.compare/signum, Double.compare, DoubleStream.sum, Double.parseDouble, Double.toString, Float.toString,
+//     DecimalFormat("0.##"), String.format("%.Nf"), Math.atan2 (fdlibm), Math.toDegrees, Math.sin / Math.cos
+//     (HotSpot's x86_64 intrinsics), Math.signum(double), java.awt.geom.Line2D.ptSegDistSq / ptSegDist, Point2D#distance
 //   - strings (java::String is UTF-16 like java.lang.String; a std::string is UTF-8 text):
 //     new String(bytes, UTF_8) with the JDK's replacement of malformed input, String.getBytes(UTF_8),
-//     trim, replace, split, startsWith, hashCode, toUpperCase/toLowerCase compared with ASCII text,
-//     Integer.parseInt / Long.parseLong, the regex classes \s \d \w, the texts of the JDK's exceptions
+//     trim (and Kotlin's), replace, split (and split("\\s+")), startsWith, hashCode (and java.awt.Point's),
+//     toUpperCase/toLowerCase compared with ASCII text, equalsIgnoreCase with ASCII text,
+//     Integer.parseInt / Long.parseLong, Boolean.parseBoolean, the regex classes \s \d \w, the texts of the JDK's exceptions
 //   - JSON strings as Gson's JsonWriter writes them (JsonObject.toString, used by the view data)
 //   - collections: the iteration order of HashMap/HashSet, PriorityQueue, TimSort (List.sort,
 //     Collections.sort, Arrays.sort with a comparator, Stream.sorted)
@@ -81,6 +84,16 @@ inline i32 l2i(i64 v) { return (i32)(u32)(u64)v; }
 inline i32 add(i32 a, i32 b) { return (i32)((u32)a + (u32)b); }
 inline i32 sub(i32 a, i32 b) { return (i32)((u32)a - (u32)b); }
 inline i32 mul(i32 a, i32 b) { return (i32)((u32)a * (u32)b); }
+inline i32 neg(i32 a) { return (i32)(0u - (u32)a); }
+// int / and %: truncated toward zero, MIN_VALUE / -1 wraps to MIN_VALUE (remainder 0), a zero divisor throws
+inline i32 div(i32 a, i32 b) {
+    if (b == 0) throw Exception{"java.lang.ArithmeticException: / by zero"};
+    return b == -1 ? neg(a) : a / b;
+}
+inline i32 rem(i32 a, i32 b) {
+    if (b == 0) throw Exception{"java.lang.ArithmeticException: / by zero"};
+    return b == -1 ? 0 : a % b;
+}
 
 // Math.abs(int) / Math.abs(long): MIN_VALUE stays negative
 inline i32 abs(i32 a) { return a < 0 ? (i32)(0u - (u32)a) : a; }
@@ -114,6 +127,16 @@ inline i64 round(double a) {
     return d2l((a - f >= 0.5) ? f + 1.0 : f); // a - f is exact here
 }
 
+// Math.round(float): floor(a + 1/2) computed exactly, saturated to the int range (a separate name, so
+// that a float argument never picks it instead of round(double) by accident)
+inline i32 roundFloat(float a) {
+    if (a != a) return 0;
+    double d = a; // exact
+    if (std::fabs(d) >= 8388608.0) return d2i(d); // already an integer
+    double f = std::floor(d);
+    return d2i((d - f >= 0.5) ? f + 1.0 : f); // d - f is exact here
+}
+
 // Double.compare
 inline int compareDouble(double a, double b) {
     if (a < b) return -1;
@@ -143,6 +166,621 @@ inline double sum(const std::vector<double>& values) {
     double tmp = s[0] - s[1];
     if (tmp != tmp && std::isinf(s[2])) return s[2];
     return tmp;
+}
+
+// Double.toString(double) (JDK 19+): the shortest decimal that rounds to the double (the closest one,
+// then the even one, if several; when that has 1 digit, a closer 2-digit decimal wins), written as
+// integer.fraction when 10^-3 <= |d| < 10^7 (at least one fraction digit), else as d.dddE<n>.
+// Float.toString(float) (JDK 19+) follows the same rules with the decimals that round to the float.
+namespace detail {
+// The significant digits of a > 0 (finite, a double or a float) in scientific notation as std::to_chars
+// writes them: a = d.ddd x 10^exp. precision < 0: the shortest that round-trips (to a's type); else that
+// many digits after the first one, correctly rounded.
+template <class T>
+inline void sciDigits(T a, int precision, std::string& digits, int& exp) {
+    char buf[1100];
+    char* end = precision < 0 ? std::to_chars(buf, buf + sizeof buf, a, std::chars_format::scientific).ptr
+                              : std::to_chars(buf, buf + sizeof buf, a, std::chars_format::scientific, precision).ptr;
+    *end = 0;
+    digits.clear();
+    const char* p = buf;
+    for (; p < end && *p != 'e'; p++)
+        if (*p != '.') digits += *p;
+    exp = atoi(p + 1);
+}
+
+// Double.toString (T = double) / Float.toString (T = float)
+template <class T>
+inline std::string fpToString(T v) {
+    if (v != v) return "NaN";
+    if (std::isinf(v)) return v > 0 ? "Infinity" : "-Infinity";
+    if (v == 0) return std::signbit(v) ? "-0.0" : "0.0";
+    T a = std::fabs(v);
+    std::string digits;
+    int exp;
+    detail::sciDigits(a, -1, digits, exp);
+    if (digits.size() == 1) {
+        std::string d2;
+        int e2;
+        detail::sciDigits(a, 1, d2, e2); // the closest 2-digit decimal
+        std::string text = d2.substr(0, 1) + "." + d2.substr(1) + "e" + std::to_string(e2);
+        T back = 0;
+        std::from_chars(text.data(), text.data() + text.size(), back);
+        if (d2[1] != '0' && back == a) {
+            digits = d2;
+            exp = e2;
+        }
+    }
+    std::string r = v < 0 ? "-" : "";
+    int n = (int)digits.size();
+    if (exp >= -3 && exp < 7) {
+        if (exp >= 0) {
+            for (int i = 0; i <= exp; i++) r += i < n ? digits[i] : '0';
+            r += '.';
+            r += exp + 1 < n ? digits.substr(exp + 1) : "0";
+        } else {
+            r += "0.";
+            r.append(-exp - 1, '0');
+            r += digits;
+        }
+    } else {
+        r += digits[0];
+        r += '.';
+        r += n > 1 ? digits.substr(1) : "0";
+        r += "E" + std::to_string(exp);
+    }
+    return r;
+}
+} // namespace detail
+
+inline std::string doubleToString(double v) { return detail::fpToString(v); }
+
+// Float.toString(float), e.g. `"" + f` of a float field (Game of Drones' (float) Math.atan2 angles). Checked against
+// JDK 26 on every float (all 2^32 bit patterns).
+inline std::string floatToString(float v) { return detail::fpToString(v); }
+
+// new DecimalFormat("0.#...#") (maxFraction '#'s, '.' as the decimal separator, no grouping) .format(v)
+// for a finite v. java.text.DigitList rounds the digits of the shortest decimal (not the exact binary
+// value: 1e23 gives 100000000000000000000000) half-even, and when they end exactly on the tie it
+// looks at whether they are the exact value or were rounded up or down. Trailing zeros are dropped,
+// and "-" is kept for negative values (and -0.0) that round to 0 ("-0").
+inline std::string formatDecimal(double v, int maxFraction) {
+    double a = std::fabs(v);
+    std::string d; // the significant digits: a = 0.d1d2... x 10^decimalAt
+    int decimalAt = 0;
+    if (a != 0) {
+        int exp;
+        detail::sciDigits(a, -1, d, exp);
+        while (d.size() > 1 && d.back() == '0') d.pop_back();
+        decimalAt = exp + 1;
+        int maxDigits = decimalAt + maxFraction;
+        if (maxDigits < 0) {
+            d.clear();
+        } else if (maxDigits < (int)d.size()) {
+            bool up;
+            char c = d[maxDigits];
+            if (c != '5') {
+                up = c > '5';
+            } else if (maxDigits < (int)d.size() - 1) {
+                up = true; // a non-zero digit follows
+            } else {
+                // the digits end on the tie: is the exact value below, above or on it?
+                std::string x;
+                int ex, cmp = 0;
+                detail::sciDigits(a, 767, x, ex);
+                if (exp != ex) {
+                    cmp = exp > ex ? 1 : -1;
+                } else {
+                    for (size_t i = 0; i < std::max(d.size(), x.size()) && cmp == 0; i++) {
+                        char p = i < d.size() ? d[i] : '0', q = i < x.size() ? x[i] : '0';
+                        if (p != q) cmp = p > q ? 1 : -1;
+                    }
+                }
+                if (cmp > 0) up = false;     // the digits were rounded up
+                else if (cmp < 0) up = true; // truncated
+                else up = maxDigits > 0 && (d[maxDigits - 1] - '0') % 2 != 0;
+            }
+            d.resize(maxDigits);
+            if (up) {
+                int i = maxDigits - 1;
+                while (i >= 0 && d[i] == '9') d.pop_back(), i--;
+                if (i < 0) {
+                    d = "1";
+                    decimalAt++;
+                } else {
+                    d[i]++;
+                }
+            }
+            while (!d.empty() && d.back() == '0') d.pop_back();
+        }
+    }
+    std::string r = std::signbit(v) ? "-" : "";
+    if (d.empty()) return r + "0";
+    int n = (int)d.size();
+    if (decimalAt <= 0) {
+        r += "0";
+    } else {
+        for (int i = 0; i < decimalAt; i++) r += i < n ? d[i] : '0';
+    }
+    if (n > decimalAt) {
+        r += ".";
+        if (decimalAt < 0) r.append(-decimalAt, '0');
+        r += d.substr(std::max(decimalAt, 0));
+    }
+    return r;
+}
+
+// String.format(Locale.US, "%.<precision>f", v) for a finite v, as JDK 21+ writes it (java.util.Formatter on
+// jdk.internal.math.FormattedFPDecimal): the decimal digits of Double.toString(v) (the shortest decimal, as
+// doubleToString picks it) rounded half up to `precision` fraction digits, no grouping, "-" for a v below +0.0
+// (Double.compare: -0.0 and negative values rounding to 0 included). Checked against JDK 26 on 50M values (unit
+// interval, exact ties of the shortest digits, tiny and wide magnitudes, both signs, precisions 0 to 5).
+inline std::string formatFixed(double v, int precision) {
+    std::string r = (v < 0 || (v == 0 && std::signbit(v))) ? "-" : "";
+    double a = std::fabs(v);
+    std::string d; // a = 0.d1d2... x 10^decimalAt
+    int decimalAt = 0;
+    if (a != 0) {
+        int exp;
+        detail::sciDigits(a, -1, d, exp);
+        if (d.size() == 1) { // doubleToString's rule: a closer 2-digit decimal wins
+            std::string d2;
+            int e2;
+            detail::sciDigits(a, 1, d2, e2);
+            std::string text = d2.substr(0, 1) + "." + d2.substr(1) + "e" + std::to_string(e2);
+            double back = 0;
+            std::from_chars(text.data(), text.data() + text.size(), back);
+            if (d2[1] != '0' && back == a) {
+                d = d2;
+                exp = e2;
+            }
+        }
+        while (d.size() > 1 && d.back() == '0') d.pop_back();
+        decimalAt = exp + 1;
+        long long keep = (long long)decimalAt + precision; // the digits kept
+        if (keep < 0) {
+            d.clear();
+        } else if (keep < (long long)d.size()) {
+            bool up = d[(size_t)keep] >= '5';
+            d.resize((size_t)keep);
+            if (up) {
+                int i = (int)keep - 1;
+                while (i >= 0 && d[i] == '9') d[i--] = '0';
+                if (i < 0) {
+                    d.insert(d.begin(), '1');
+                    decimalAt++;
+                } else {
+                    d[i]++;
+                }
+            }
+        }
+        if (d.empty() || d.find_first_not_of('0') == std::string::npos) {
+            d.clear();
+            decimalAt = 0;
+        }
+    }
+    int n = (int)d.size();
+    if (decimalAt <= 0) {
+        r += "0";
+    } else {
+        for (int i = 0; i < decimalAt; i++) r += i < n ? d[i] : '0';
+    }
+    if (precision > 0) {
+        r += ".";
+        for (int k = 0; k < precision; k++) {
+            int i = decimalAt + k; // the digit at 10^-(k+1)
+            r += (i >= 0 && i < n) ? d[i] : '0';
+        }
+    }
+    return r;
+}
+
+// Math.atan2 (StrictMath.atan2: fdlibm's e_atan2.c and s_atan.c, as the JDK's FdLibm)
+namespace detail {
+inline i32 hiWord(double x) {
+    u64 b;
+    memcpy(&b, &x, 8);
+    return (i32)(u32)(b >> 32);
+}
+inline u32 loWord(double x) {
+    u64 b;
+    memcpy(&b, &x, 8);
+    return (u32)b;
+}
+inline double fdlibmAtan(double x) {
+    static const double atanhi[] = {4.63647609000806093515e-01, 7.85398163397448278999e-01, 9.82793723247329054082e-01, 1.57079632679489655800e+00};
+    static const double atanlo[] = {2.26987774529616870924e-17, 3.06161699786838301793e-17, 1.39033110312309984516e-17, 6.12323399573676603587e-17};
+    static const double aT[] = {3.33333333333329318027e-01,  -1.99999999998764832476e-01, 1.42857142725034663711e-01,  -1.11111104054623557880e-01,
+                                9.09088713343650656196e-02,  -7.69187620504482999495e-02, 6.66107313738753120669e-02,  -5.83357013379057348645e-02,
+                                4.97687799461593236017e-02,  -3.65315727442169155270e-02, 1.62858201153657823623e-02};
+    const double one = 1.0, huge = 1.0e300;
+    double w, s1, s2, z;
+    int id;
+    i32 hx = hiWord(x);
+    i32 ix = hx & 0x7fffffff;
+    if (ix >= 0x44100000) { // |x| >= 2^66
+        if (ix > 0x7ff00000 || (ix == 0x7ff00000 && loWord(x) != 0)) return x + x; // NaN
+        if (hx > 0) return atanhi[3] + atanlo[3];
+        return -atanhi[3] - atanlo[3];
+    }
+    if (ix < 0x3fdc0000) { // |x| < 0.4375
+        if (ix < 0x3e400000) { // |x| < 2^-27
+            if (huge + x > one) return x;
+        }
+        id = -1;
+    } else {
+        x = std::fabs(x);
+        if (ix < 0x3ff30000) { // |x| < 1.1875
+            if (ix < 0x3fe60000) { // 7/16 <= |x| < 11/16
+                id = 0;
+                x = (2.0 * x - one) / (2.0 + x);
+            } else { // 11/16 <= |x| < 19/16
+                id = 1;
+                x = (x - one) / (x + one);
+            }
+        } else {
+            if (ix < 0x40038000) { // |x| < 2.4375
+                id = 2;
+                x = (x - 1.5) / (one + 1.5 * x);
+            } else { // 2.4375 <= |x| < 2^66
+                id = 3;
+                x = -1.0 / x;
+            }
+        }
+    }
+    z = x * x;
+    w = z * z;
+    s1 = z * (aT[0] + w * (aT[2] + w * (aT[4] + w * (aT[6] + w * (aT[8] + w * aT[10])))));
+    s2 = w * (aT[1] + w * (aT[3] + w * (aT[5] + w * (aT[7] + w * aT[9]))));
+    if (id < 0) return x - x * (s1 + s2);
+    z = atanhi[id] - ((x * (s1 + s2) - atanlo[id]) - x);
+    return (hx < 0) ? -z : z;
+}
+} // namespace detail
+
+inline double atan2(double y, double x) {
+    const double tiny = 1.0e-300, zero = 0.0, pi_o_4 = 7.8539816339744827900E-01, pi_o_2 = 1.5707963267948965580E+00,
+                 pi = 3.1415926535897931160E+00, pi_lo = 1.2246467991473531772E-16;
+    double z;
+    i32 hx = detail::hiWord(x), ix = hx & 0x7fffffff;
+    u32 lx = detail::loWord(x);
+    i32 hy = detail::hiWord(y), iy = hy & 0x7fffffff;
+    u32 ly = detail::loWord(y);
+    if ((u32)(ix | (i32)((lx | (0u - lx)) >> 31)) > 0x7ff00000u || (u32)(iy | (i32)((ly | (0u - ly)) >> 31)) > 0x7ff00000u) return x + y; // a NaN
+    if ((((u32)hx - 0x3ff00000u) | lx) == 0) return detail::fdlibmAtan(y); // x = 1.0
+    int m = ((hy >> 31) & 1) | ((hx >> 30) & 2); // 2 * sign(x) + sign(y)
+    if ((iy | (i32)ly) == 0) { // y = 0
+        switch (m) {
+            case 0:
+            case 1: return y;
+            case 2: return pi + tiny;
+            default: return -pi - tiny;
+        }
+    }
+    if ((ix | (i32)lx) == 0) return (hy < 0) ? -pi_o_2 - tiny : pi_o_2 + tiny; // x = 0
+    if (ix == 0x7ff00000) { // x is INF
+        if (iy == 0x7ff00000) {
+            switch (m) {
+                case 0: return pi_o_4 + tiny;
+                case 1: return -pi_o_4 - tiny;
+                case 2: return 3.0 * pi_o_4 + tiny;
+                default: return -3.0 * pi_o_4 - tiny;
+            }
+        } else {
+            switch (m) {
+                case 0: return zero;
+                case 1: return -zero;
+                case 2: return pi + tiny;
+                default: return -pi - tiny;
+            }
+        }
+    }
+    if (iy == 0x7ff00000) return (hy < 0) ? -pi_o_2 - tiny : pi_o_2 + tiny; // y is INF
+    int k = (iy - ix) >> 20;
+    if (k > 60) z = pi_o_2 + 0.5 * pi_lo;       // |y/x| > 2^60
+    else if (hx < 0 && k < -60) z = 0.0;        // |y|/x < -2^60
+    else z = detail::fdlibmAtan(std::fabs(y / x));
+    switch (m) {
+        case 0: return z;
+        case 1: return -z;
+        case 2: return pi - (z - pi_lo);
+        default: return (z - pi_lo) - pi;
+    }
+}
+
+// Math.toDegrees (JDK 9+: angrad * RADIANS_TO_DEGREES)
+inline double toDegrees(double angrad) { return angrad * 57.29577951308232; }
+
+// Math.signum(double): the argument itself for +-0.0 and NaN, else +-1.0 (HotSpot's intrinsic computes the same)
+inline double signum(double d) { return (d == 0.0 || d != d) ? d : std::copysign(1.0, d); }
+
+// java.awt.geom.Line2D.ptSegDistSq(x1, y1, x2, y2, px, py): the square of the distance from (px, py) to the segment,
+// in the JDK's operation order (also Line2D.Double#ptSegDistSq(Point2D)); ptSegDist is Math.sqrt of it
+inline double ptSegDistSq(double x1, double y1, double x2, double y2, double px, double py) {
+    x2 -= x1;
+    y2 -= y1;
+    px -= x1;
+    py -= y1;
+    double dotprod = px * x2 + py * y2;
+    double projlenSq;
+    if (dotprod <= 0.0) {
+        projlenSq = 0.0;
+    } else {
+        px = x2 - px;
+        py = y2 - py;
+        dotprod = px * x2 + py * y2;
+        if (dotprod <= 0.0) projlenSq = 0.0;
+        else projlenSq = dotprod * dotprod / (x2 * x2 + y2 * y2);
+    }
+    double lenSq = px * px + py * py - projlenSq;
+    if (lenSq < 0) lenSq = 0;
+    return lenSq;
+}
+inline double ptSegDist(double x1, double y1, double x2, double y2, double px, double py) { return std::sqrt(ptSegDistSq(x1, y1, x2, y2, px, py)); }
+
+// java.awt.geom.Point2D#distance(px, py) of the point (x, y) (e.g. a java.awt.Point's, x and y its int coordinates):
+// px -= x, py -= y, Math.sqrt(px * px + py * py), in the JDK's operation order
+inline double pointDistance(double x, double y, double px, double py) {
+    px -= x;
+    py -= y;
+    return std::sqrt(px * px + py * py);
+}
+
+// Math.sin / Math.cos as HotSpot computes them on x86_64 (JDK 9+): not StrictMath's fdlibm (they differ in the last
+// bit for ~3% of arguments) but the stubs of Intel's LIBM (StubGenerator::generate_libmSin / generate_libmCos, used
+// by the interpreter and both compilers alike), translated here instruction by instruction (xmm registers as their
+// two lanes; the same IEEE operations in the same order, FP_CONTRACT off). Checked bit for bit against JDK 26's
+// Math.sin / Math.cos on 900M arguments (cg-2017-mean-max's validation: its spawn angles, |x| < 8, |x| < 90000, random bit
+// patterns with tiny and subnormal values, the edges of the pi/32 table). Only their main path, |x| < 90112 (+-0, tiny and subnormal
+// arguments, Inf and NaN included): beyond, the stubs reduce the argument with a multi-word 2/pi table, not modelled
+// (the port aborts). Note: a jar on another architecture (e.g. aarch64's own stubs) may compute other last bits.
+namespace detail {
+struct Xmm {
+    double lo, hi;
+};
+inline double bitsToDouble(u64 b) {
+    double d;
+    memcpy(&d, &b, 8);
+    return d;
+}
+inline u64 doubleToBits(double d) {
+    u64 b;
+    memcpy(&b, &d, 8);
+    return b;
+}
+inline double juints(u32 lo, u32 hi) { return bitsToDouble(((u64)hi << 32) | lo); }
+// StubGenerator's Ctable: 64 entries of 4 doubles (each a pair of juints, low word first)
+inline const u32 LIBM_CTABLE[] = {
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x3ff00000, 0x176d6d31, 0xbf73b92e,
+    0xbc29b42c, 0x3fb917a6, 0xe0000000, 0xbc3e2718, 0x00000000, 0x3ff00000, 0x011469fb, 0xbf93ad06, 0x3c69a60b, 0x3fc8f8b8,
+    0xc0000000, 0xbc626d19, 0x00000000, 0x3ff00000, 0x939d225a, 0xbfa60bea, 0x2ed59f06, 0x3fd29406, 0xa0000000, 0xbc75d28d,
+    0x00000000, 0x3ff00000, 0x866b95cf, 0xbfb37ca1, 0xa6aea963, 0x3fd87de2, 0xe0000000, 0xbc672ced, 0x00000000, 0x3ff00000,
+    0x73fa1279, 0xbfbe3a68, 0x3806f63b, 0x3fde2b5d, 0x20000000, 0x3c5e0d89, 0x00000000, 0x3ff00000, 0x5bc57974, 0xbfc59267,
+    0x39ae68c8, 0x3fe1c73b, 0x20000000, 0x3c8b25dd, 0x00000000, 0x3ff00000, 0x53aba2fd, 0xbfcd0dfe, 0x25091dd6, 0x3fe44cf3,
+    0x20000000, 0x3c68076a, 0x00000000, 0x3ff00000, 0x99fcef32, 0x3fca8279, 0x667f3bcd, 0x3fe6a09e, 0x20000000, 0xbc8bdd34,
+    0x00000000, 0x3fe00000, 0x94247758, 0x3fc133cc, 0x6b151741, 0x3fe8bc80, 0x20000000, 0xbc82c5e1, 0x00000000, 0x3fe00000,
+    0x9ae68c87, 0x3fac73b3, 0x290ea1a3, 0x3fea9b66, 0xe0000000, 0x3c39f630, 0x00000000, 0x3fe00000, 0x7f909c4e, 0xbf9d4a2c,
+    0xf180bdb1, 0x3fec38b2, 0x80000000, 0xbc76e0b1, 0x00000000, 0x3fe00000, 0x65455a75, 0xbfbe0875, 0xcf328d46, 0x3fed906b,
+    0x20000000, 0x3c7457e6, 0x00000000, 0x3fe00000, 0x76acf82d, 0x3fa4a031, 0x56c62dda, 0x3fee9f41, 0xe0000000, 0x3c8760b1,
+    0x00000000, 0x3fd00000, 0x0e5967d5, 0xbfac1d1f, 0xcff75cb0, 0x3fef6297, 0x20000000, 0x3c756217, 0x00000000, 0x3fd00000,
+    0x0f592f50, 0xbf9ba165, 0xa3d12526, 0x3fefd88d, 0x40000000, 0xbc887df6, 0x00000000, 0x3fc00000, 0x00000000, 0x00000000,
+    0x00000000, 0x3ff00000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x0f592f50, 0x3f9ba165, 0xa3d12526, 0x3fefd88d,
+    0x40000000, 0xbc887df6, 0x00000000, 0xbfc00000, 0x0e5967d5, 0x3fac1d1f, 0xcff75cb0, 0x3fef6297, 0x20000000, 0x3c756217,
+    0x00000000, 0xbfd00000, 0x76acf82d, 0xbfa4a031, 0x56c62dda, 0x3fee9f41, 0xe0000000, 0x3c8760b1, 0x00000000, 0xbfd00000,
+    0x65455a75, 0x3fbe0875, 0xcf328d46, 0x3fed906b, 0x20000000, 0x3c7457e6, 0x00000000, 0xbfe00000, 0x7f909c4e, 0x3f9d4a2c,
+    0xf180bdb1, 0x3fec38b2, 0x80000000, 0xbc76e0b1, 0x00000000, 0xbfe00000, 0x9ae68c87, 0xbfac73b3, 0x290ea1a3, 0x3fea9b66,
+    0xe0000000, 0x3c39f630, 0x00000000, 0xbfe00000, 0x94247758, 0xbfc133cc, 0x6b151741, 0x3fe8bc80, 0x20000000, 0xbc82c5e1,
+    0x00000000, 0xbfe00000, 0x99fcef32, 0xbfca8279, 0x667f3bcd, 0x3fe6a09e, 0x20000000, 0xbc8bdd34, 0x00000000, 0xbfe00000,
+    0x53aba2fd, 0x3fcd0dfe, 0x25091dd6, 0x3fe44cf3, 0x20000000, 0x3c68076a, 0x00000000, 0xbff00000, 0x5bc57974, 0x3fc59267,
+    0x39ae68c8, 0x3fe1c73b, 0x20000000, 0x3c8b25dd, 0x00000000, 0xbff00000, 0x73fa1279, 0x3fbe3a68, 0x3806f63b, 0x3fde2b5d,
+    0x20000000, 0x3c5e0d89, 0x00000000, 0xbff00000, 0x866b95cf, 0x3fb37ca1, 0xa6aea963, 0x3fd87de2, 0xe0000000, 0xbc672ced,
+    0x00000000, 0xbff00000, 0x939d225a, 0x3fa60bea, 0x2ed59f06, 0x3fd29406, 0xa0000000, 0xbc75d28d, 0x00000000, 0xbff00000,
+    0x011469fb, 0x3f93ad06, 0x3c69a60b, 0x3fc8f8b8, 0xc0000000, 0xbc626d19, 0x00000000, 0xbff00000, 0x176d6d31, 0x3f73b92e,
+    0xbc29b42c, 0x3fb917a6, 0xe0000000, 0xbc3e2718, 0x00000000, 0xbff00000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0xbff00000, 0x176d6d31, 0x3f73b92e, 0xbc29b42c, 0xbfb917a6, 0xe0000000, 0x3c3e2718,
+    0x00000000, 0xbff00000, 0x011469fb, 0x3f93ad06, 0x3c69a60b, 0xbfc8f8b8, 0xc0000000, 0x3c626d19, 0x00000000, 0xbff00000,
+    0x939d225a, 0x3fa60bea, 0x2ed59f06, 0xbfd29406, 0xa0000000, 0x3c75d28d, 0x00000000, 0xbff00000, 0x866b95cf, 0x3fb37ca1,
+    0xa6aea963, 0xbfd87de2, 0xe0000000, 0x3c672ced, 0x00000000, 0xbff00000, 0x73fa1279, 0x3fbe3a68, 0x3806f63b, 0xbfde2b5d,
+    0x20000000, 0xbc5e0d89, 0x00000000, 0xbff00000, 0x5bc57974, 0x3fc59267, 0x39ae68c8, 0xbfe1c73b, 0x20000000, 0xbc8b25dd,
+    0x00000000, 0xbff00000, 0x53aba2fd, 0x3fcd0dfe, 0x25091dd6, 0xbfe44cf3, 0x20000000, 0xbc68076a, 0x00000000, 0xbff00000,
+    0x99fcef32, 0xbfca8279, 0x667f3bcd, 0xbfe6a09e, 0x20000000, 0x3c8bdd34, 0x00000000, 0xbfe00000, 0x94247758, 0xbfc133cc,
+    0x6b151741, 0xbfe8bc80, 0x20000000, 0x3c82c5e1, 0x00000000, 0xbfe00000, 0x9ae68c87, 0xbfac73b3, 0x290ea1a3, 0xbfea9b66,
+    0xe0000000, 0xbc39f630, 0x00000000, 0xbfe00000, 0x7f909c4e, 0x3f9d4a2c, 0xf180bdb1, 0xbfec38b2, 0x80000000, 0x3c76e0b1,
+    0x00000000, 0xbfe00000, 0x65455a75, 0x3fbe0875, 0xcf328d46, 0xbfed906b, 0x20000000, 0xbc7457e6, 0x00000000, 0xbfe00000,
+    0x76acf82d, 0xbfa4a031, 0x56c62dda, 0xbfee9f41, 0xe0000000, 0xbc8760b1, 0x00000000, 0xbfd00000, 0x0e5967d5, 0x3fac1d1f,
+    0xcff75cb0, 0xbfef6297, 0x20000000, 0xbc756217, 0x00000000, 0xbfd00000, 0x0f592f50, 0x3f9ba165, 0xa3d12526, 0xbfefd88d,
+    0x40000000, 0x3c887df6, 0x00000000, 0xbfc00000, 0x00000000, 0x00000000, 0x00000000, 0xbff00000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x0f592f50, 0xbf9ba165, 0xa3d12526, 0xbfefd88d, 0x40000000, 0x3c887df6, 0x00000000, 0x3fc00000,
+    0x0e5967d5, 0xbfac1d1f, 0xcff75cb0, 0xbfef6297, 0x20000000, 0xbc756217, 0x00000000, 0x3fd00000, 0x76acf82d, 0x3fa4a031,
+    0x56c62dda, 0xbfee9f41, 0xe0000000, 0xbc8760b1, 0x00000000, 0x3fd00000, 0x65455a75, 0xbfbe0875, 0xcf328d46, 0xbfed906b,
+    0x20000000, 0xbc7457e6, 0x00000000, 0x3fe00000, 0x7f909c4e, 0xbf9d4a2c, 0xf180bdb1, 0xbfec38b2, 0x80000000, 0x3c76e0b1,
+    0x00000000, 0x3fe00000, 0x9ae68c87, 0x3fac73b3, 0x290ea1a3, 0xbfea9b66, 0xe0000000, 0xbc39f630, 0x00000000, 0x3fe00000,
+    0x94247758, 0x3fc133cc, 0x6b151741, 0xbfe8bc80, 0x20000000, 0x3c82c5e1, 0x00000000, 0x3fe00000, 0x99fcef32, 0x3fca8279,
+    0x667f3bcd, 0xbfe6a09e, 0x20000000, 0x3c8bdd34, 0x00000000, 0x3fe00000, 0x53aba2fd, 0xbfcd0dfe, 0x25091dd6, 0xbfe44cf3,
+    0x20000000, 0xbc68076a, 0x00000000, 0x3ff00000, 0x5bc57974, 0xbfc59267, 0x39ae68c8, 0xbfe1c73b, 0x20000000, 0xbc8b25dd,
+    0x00000000, 0x3ff00000, 0x73fa1279, 0xbfbe3a68, 0x3806f63b, 0xbfde2b5d, 0x20000000, 0xbc5e0d89, 0x00000000, 0x3ff00000,
+    0x866b95cf, 0xbfb37ca1, 0xa6aea963, 0xbfd87de2, 0xe0000000, 0x3c672ced, 0x00000000, 0x3ff00000, 0x939d225a, 0xbfa60bea,
+    0x2ed59f06, 0xbfd29406, 0xa0000000, 0x3c75d28d, 0x00000000, 0x3ff00000, 0x011469fb, 0xbf93ad06, 0x3c69a60b, 0xbfc8f8b8,
+    0xc0000000, 0x3c626d19, 0x00000000, 0x3ff00000, 0x176d6d31, 0xbf73b92e, 0xbc29b42c, 0xbfb917a6, 0xe0000000, 0x3c3e2718,
+    0x00000000, 0x3ff00000,
+};
+// the double at a byte offset of Ctable ([rax + k] with rax = Ctable + (index << 5))
+inline double libmCtable(int byteOffset) { return juints(LIBM_CTABLE[byteOffset / 4], LIBM_CTABLE[byteOffset / 4 + 1]); }
+
+// The main path shared by both stubs, from the reduction (x in xmm0, PI32INV * x + 0.5 * sign(x) in xmm1, N its
+// truncation) to the result: the two stubs only differ in a few register moves and the table offset (cos: N + 16)
+inline double libmSinCos(double x, bool cosine) {
+    const double PI32INV = juints(0x6dc9c883, 0x40245f30), ONEHALF = juints(0x00000000, 0x3fe00000);
+    const double P_1 = juints(0x54400000, 0x3fb921fb), P_2 = juints(0x1a600000, 0x3d90b461), P_3 = juints(0x2e037073, 0x3b63198a);
+    const Xmm SC_1 = {juints(0x55555555, 0xbfc55555), juints(0x00000000, 0xbfe00000)};
+    const Xmm SC_2 = {juints(0x11111111, 0x3f811111), juints(0x55555555, 0x3fa55555)};
+    const Xmm SC_3 = {juints(0x1a01a01a, 0xbf2a01a0), juints(0x16c16c17, 0xbf56c16c)};
+    const Xmm SC_4 = {juints(0xa556c734, 0x3ec71de3), juints(0x1a01a01a, 0x3efa01a0)};
+    Xmm x0{x, 0}, x1, x2, x3, x4, x5, x6, x7;
+    x1 = {PI32INV, 0};
+    x1.lo = x1.lo * x0.lo;                                                // mulsd(xmm1, xmm0)
+    x5 = {ONEHALF, ONEHALF};                                              // movdqu(xmm5, ONEHALF)
+    x5.lo = bitsToDouble(doubleToBits(x5.lo) | (doubleToBits(x0.lo) & 0x8000000000000000ull)); // movq(xmm4, SIGN_MASK); pand; por
+    x1.lo = x1.lo + x5.lo;                                                // addpd(xmm1, xmm5)
+    x1.hi = x1.hi + x5.hi;
+    i32 rdx = (i32)x1.lo;                                                 // cvttsd2sil (|x1| < 2^31 here)
+    x1.lo = (double)rdx;                                                  // cvtsi2sdl
+    int off;
+    if (!cosine) {
+        x6 = {P_2, P_2};                                                  // movdqu(xmm6, P_2)
+        x3 = {P_1, 0};                                                    // mov64(r8, P_1); movdq(xmm3, r8)
+        x5 = SC_4;                                                        // movdqu(xmm5, SC_4)
+        x4 = {x0.lo, x0.lo};                                              // pshufd(xmm4, xmm0, 68)
+        x3.lo = x3.lo * x1.lo;                                            // mulsd(xmm3, xmm1)
+        x1 = {x1.lo, x1.lo};                                              // movddup(xmm1, xmm1)
+        off = (int)(((u32)rdx & 63) << 5);                                // andl(rdx, 63); shll(rdx, 5)
+        x6.lo = x6.lo * x1.lo;                                            // mulpd(xmm6, xmm1)
+        x6.hi = x6.hi * x1.hi;
+        x1.lo = x1.lo * P_3;                                              // mulsd(xmm1, P_3)
+        x4.lo = x4.lo - x3.lo;                                            // subsd(xmm4, xmm3)
+        x7 = {libmCtable(off + 8), 0};                                    // movq(xmm7, [rax + 8])
+        x0.lo = x0.lo - x3.lo;                                            // subsd(xmm0, xmm3)
+        x3 = {x4.lo, x4.lo};                                              // movddup(xmm3, xmm4)
+        x4.lo = x4.lo - x6.lo;                                            // subsd(xmm4, xmm6)
+        x0 = {x0.lo, x0.lo};                                              // pshufd(xmm0, xmm0, 68)
+        x2 = {libmCtable(off), libmCtable(off + 8)};                      // movdqu(xmm2, [rax])
+        x5.lo = x5.lo * x0.lo;                                            // mulpd(xmm5, xmm0)
+        x5.hi = x5.hi * x0.hi;
+        x0.lo = x0.lo - x6.lo;                                            // subpd(xmm0, xmm6)
+        x0.hi = x0.hi - x6.hi;
+        x7.lo = x7.lo * x4.lo;                                            // mulsd(xmm7, xmm4)
+        x3.lo = x3.lo - x4.lo;                                            // subsd(xmm3, xmm4)
+        x5.lo = x5.lo * x0.lo;                                            // mulpd(xmm5, xmm0)
+        x5.hi = x5.hi * x0.hi;
+        x0.lo = x0.lo * x0.lo;                                            // mulpd(xmm0, xmm0)
+        x0.hi = x0.hi * x0.hi;
+        x3.lo = x3.lo - x6.lo;                                            // subsd(xmm3, xmm6)
+        x6 = SC_2;                                                        // movdqu(xmm6, SC_2)
+        x1.lo = x1.lo - x3.lo;                                            // subsd(xmm1, xmm3)
+    } else {
+        x2 = {P_2, P_2};                                                  // movdqu(xmm2, P_2)
+        x3 = {P_1, 0};                                                    // movq(xmm3, P_1)
+        x3.lo = x3.lo * x1.lo;                                            // mulsd(xmm3, xmm1)
+        x1 = {x1.lo, x1.lo};                                              // unpcklpd(xmm1, xmm1)
+        off = (int)((((u64)(u32)rdx + 1865232u) & 63) << 5);              // addq(rdx, 1865232); andq(rdx, 63); shlq(rdx, 5)
+        x4 = x0;                                                          // movdqu(xmm4, xmm0)
+        x5 = SC_4;                                                        // movdqu(xmm5, SC_4)
+        x2.lo = x2.lo * x1.lo;                                            // mulpd(xmm2, xmm1)
+        x2.hi = x2.hi * x1.hi;
+        x0.lo = x0.lo - x3.lo;                                            // subsd(xmm0, xmm3)
+        x1.lo = x1.lo * P_3;                                              // mulsd(xmm1, P_3)
+        x4.lo = x4.lo - x3.lo;                                            // subsd(xmm4, xmm3)
+        x7 = {libmCtable(off + 8), 0};                                    // movq(xmm7, [rax + 8])
+        x0 = {x0.lo, x0.lo};                                              // unpcklpd(xmm0, xmm0)
+        x3 = x4;                                                          // movdqu(xmm3, xmm4)
+        x4.lo = x4.lo - x2.lo;                                            // subsd(xmm4, xmm2)
+        x5.lo = x5.lo * x0.lo;                                            // mulpd(xmm5, xmm0)
+        x5.hi = x5.hi * x0.hi;
+        x0.lo = x0.lo - x2.lo;                                            // subpd(xmm0, xmm2)
+        x0.hi = x0.hi - x2.hi;
+        x6 = SC_2;                                                        // movdqu(xmm6, SC_2)
+        x7.lo = x7.lo * x4.lo;                                            // mulsd(xmm7, xmm4)
+        x3.lo = x3.lo - x4.lo;                                            // subsd(xmm3, xmm4)
+        x5.lo = x5.lo * x0.lo;                                            // mulpd(xmm5, xmm0)
+        x5.hi = x5.hi * x0.hi;
+        x0.lo = x0.lo * x0.lo;                                            // mulpd(xmm0, xmm0)
+        x0.hi = x0.hi * x0.hi;
+        x3.lo = x3.lo - x2.lo;                                            // subsd(xmm3, xmm2)
+        x2 = {libmCtable(off), libmCtable(off + 8)};                      // movdqu(xmm2, [rax])
+        x1.lo = x1.lo - x3.lo;                                            // subsd(xmm1, xmm3)
+    }
+    x3 = {libmCtable(off + 24), 0};                                       // movq(xmm3, [rax + 24])
+    x2.lo = x2.lo + x3.lo;                                                // addsd(xmm2, xmm3)
+    x7.lo = x7.lo - x2.lo;                                                // subsd(xmm7, xmm2)
+    x2.lo = x2.lo * x4.lo;                                                // mulsd(xmm2, xmm4)
+    x6.lo = x6.lo * x0.lo;                                                // mulpd(xmm6, xmm0)
+    x6.hi = x6.hi * x0.hi;
+    x3.lo = x3.lo * x4.lo;                                                // mulsd(xmm3, xmm4)
+    x2.lo = x2.lo * x0.lo;                                                // mulpd(xmm2, xmm0)
+    x2.hi = x2.hi * x0.hi;
+    x0.lo = x0.lo * x0.lo;                                                // mulpd(xmm0, xmm0)
+    x0.hi = x0.hi * x0.hi;
+    x5.lo = x5.lo + SC_3.lo;                                              // addpd(xmm5, SC_3)
+    x5.hi = x5.hi + SC_3.hi;
+    x4.lo = x4.lo * libmCtable(off);                                      // mulsd(xmm4, [rax])
+    x6.lo = x6.lo + SC_1.lo;                                              // addpd(xmm6, SC_1)
+    x6.hi = x6.hi + SC_1.hi;
+    x5.lo = x5.lo * x0.lo;                                                // mulpd(xmm5, xmm0)
+    x5.hi = x5.hi * x0.hi;
+    x0 = x3;                                                              // movdqu(xmm0, xmm3)
+    x3.lo = x3.lo + libmCtable(off + 8);                                  // addsd(xmm3, [rax + 8])
+    x1.lo = x1.lo * x7.lo;                                                // mulpd(xmm1, xmm7)
+    x1.hi = x1.hi * x7.hi;
+    x7 = x4;                                                              // movdqu(xmm7, xmm4)
+    x4.lo = x4.lo + x3.lo;                                                // addsd(xmm4, xmm3)
+    x6.lo = x6.lo + x5.lo;                                                // addpd(xmm6, xmm5)
+    x6.hi = x6.hi + x5.hi;
+    x5 = {libmCtable(off + 8), 0};                                        // movq(xmm5, [rax + 8])
+    x5.lo = x5.lo - x3.lo;                                                // subsd(xmm5, xmm3)
+    x3.lo = x3.lo - x4.lo;                                                // subsd(xmm3, xmm4)
+    x1.lo = x1.lo + libmCtable(off + 16);                                 // addsd(xmm1, [rax + 16])
+    x6.lo = x6.lo * x2.lo;                                                // mulpd(xmm6, xmm2)
+    x6.hi = x6.hi * x2.hi;
+    if (!cosine) {
+        x5.lo = x5.lo + x0.lo;                                            // addsd(xmm5, xmm0)
+        x3.lo = x3.lo + x7.lo;                                            // addsd(xmm3, xmm7)
+        x1.lo = x1.lo + x5.lo;                                            // addsd(xmm1, xmm5)
+        x1.lo = x1.lo + x3.lo;                                            // addsd(xmm1, xmm3)
+        x1.lo = x1.lo + x6.lo;                                            // addsd(xmm1, xmm6)
+        x6 = {x6.hi, x6.hi};                                              // unpckhpd(xmm6, xmm6)
+        x0 = x4;                                                          // movdqu(xmm0, xmm4)
+        x1.lo = x1.lo + x6.lo;                                            // addsd(xmm1, xmm6)
+        x0.lo = x0.lo + x1.lo;                                            // addsd(xmm0, xmm1)
+    } else {
+        x0.lo = x0.lo + x5.lo;                                            // addsd(xmm0, xmm5)
+        x3.lo = x3.lo + x7.lo;                                            // addsd(xmm3, xmm7)
+        x0.lo = x0.lo + x1.lo;                                            // addsd(xmm0, xmm1)
+        x0.lo = x0.lo + x3.lo;                                            // addsd(xmm0, xmm3)
+        x0.lo = x0.lo + x6.lo;                                            // addsd(xmm0, xmm6)
+        x6 = {x6.hi, x6.hi};                                              // unpckhpd(xmm6, xmm6)
+        x0.lo = x0.lo + x6.lo;                                            // addsd(xmm0, xmm6)
+        x0.lo = x0.lo + x4.lo;                                            // addsd(xmm0, xmm4)
+    }
+    return x0.lo;
+}
+
+// the stubs' range test: (high word & 0x7fff0000) - 0x30300000 above 0x10c50000 (unsigned: tiny, signed: large)
+inline int libmRange(double x, u32& rax) {
+    rax = ((u32)(doubleToBits(x) >> 32) & 2147418112u) - 808452096u;
+    if (rax <= 281346048u) return 0;          // the main path
+    return (i32)rax > 281346048 ? 1 : -1;     // |x| >= 90112, Inf, NaN : tiny (or 0)
+}
+
+[[noreturn]] inline void libmUnsupported(const char* f, double x) {
+    fprintf(stderr, "java::%s: argument %.17g beyond the modelled range (|x| < 90112)\n", f, x);
+    abort();
+}
+} // namespace detail
+
+inline double sin(double x) {
+    u32 rax;
+    int r = detail::libmRange(x, rax);
+    if (r == 0) return detail::libmSinCos(x, false);
+    if (r > 0) {
+        if (((u32)(detail::doubleToBits(x) >> 32) & 0x7ff00000u) == 0x7ff00000u) return x * -0.0; // Inf, NaN: NaN
+        detail::libmUnsupported("sin", x);
+    }
+    if ((rax >> 20) == 3325u) return x * detail::juints(0xffffffff, 0x3fefffff); // +-0, subnormal: x * (1 - 2^-53)
+    double t = detail::juints(0x00000000, 0x43600000);                            // 2^-55 * (2^55 * x - x)
+    t = t * x;
+    t = t - x;
+    return t * detail::juints(0x00000000, 0x3c800000);
+}
+
+inline double cos(double x) {
+    u32 rax;
+    int r = detail::libmRange(x, rax);
+    if (r == 0) return detail::libmSinCos(x, true);
+    if (r > 0) {
+        if (((u32)(detail::doubleToBits(x) >> 32) & 0x7ff00000u) == 0x7ff00000u) return x * -0.0; // Inf, NaN: NaN
+        detail::libmUnsupported("cos", x);
+    }
+    return 1.0 - std::fabs(x); // tiny: 1 - |x|
 }
 
 // ----------------------------------------------------------------------------
@@ -317,6 +955,42 @@ inline S trim(const S& s) {
     return s.substr(a, b - a);
 }
 
+// Kotlin's Char.isWhitespace() on the JVM: Character.isWhitespace(c) || Character.isSpaceChar(c)
+// (the chars below with JDK 26: Unicode Zs, Zl, Zp, \t-\r and U+001C-U+001F)
+inline bool isKotlinWhitespace(char16_t c) {
+    switch (c) {
+    case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x1C: case 0x1D: case 0x1E: case 0x1F: case 0x20:
+    case 0xA0: case 0x1680: case 0x2028: case 0x2029: case 0x202F: case 0x205F: case 0x3000:
+        return true;
+    default:
+        return c >= 0x2000 && c <= 0x200A;
+    }
+}
+
+// Kotlin's String.trim() / CharSequence.trim() (kotlin-stdlib, JVM): removes the leading and
+// trailing chars for which isKotlinWhitespace holds; unlike String.trim() it keeps the other
+// control chars (U+0000-U+0008...) and removes U+00A0, U+3000...
+inline String kotlinTrim(const String& s) {
+    size_t a = 0, b = s.size();
+    while (a < b && isKotlinWhitespace(s[a])) a++;
+    while (b > a && isKotlinWhitespace(s[b - 1])) b--;
+    return s.substr(a, b - a);
+}
+
+// Kotlin's CharSequence.split(delimiter) with one non-empty String delimiter, no limit, case
+// sensitive (kotlin-stdlib): every part, the empty ones included (unlike String.split)
+template <class S>
+inline std::vector<S> kotlinSplit(const S& s, const S& delim) {
+    std::vector<S> r;
+    size_t off = 0, next;
+    while ((next = s.find(delim, off)) != S::npos) {
+        r.push_back(s.substr(off, next - off));
+        off = next + delim.size();
+    }
+    r.push_back(s.substr(off));
+    return r;
+}
+
 // String.replace(CharSequence, CharSequence)
 template <class S>
 inline S replace(const S& s, const S& target, const S& repl) {
@@ -383,6 +1057,14 @@ inline i32 hashCode(const String& s) {
     return (i32)h;
 }
 
+// java.awt.Point#hashCode (Point2D's: Point does not override it): the long bits of the double x, xor those of the
+// double y times 31, folded to an int
+inline i32 pointHashCode(i32 x, i32 y) {
+    u64 bits = detail::doubleToBits((double)x);
+    bits ^= detail::doubleToBits((double)y) * 31u;
+    return (i32)(u32)bits ^ (i32)(u32)(bits >> 32);
+}
+
 // s.toUpperCase().startsWith(t), s.toUpperCase().equals(t), and the same with toLowerCase(), for
 // an ASCII text t (default locale en_US, which maps like Locale.ROOT). Only these non-ASCII code
 // points have a mapping that starts with an ASCII char (every code point checked with JDK 26):
@@ -440,12 +1122,71 @@ inline bool upperCaseEquals(const String& s, const char* t) { return detail::cas
 inline bool lowerCaseStartsWith(const String& s, const char* t) { return detail::caseMappingMatches(s, t, false, true); }
 inline bool lowerCaseEquals(const String& s, const char* t) { return detail::caseMappingMatches(s, t, false, false); }
 
+// s.equalsIgnoreCase(t) for an ASCII text t: the same length, and each char of s is t's char, or for a letter its
+// other ASCII case or one of the four non-ASCII chars that regionMatches folds to it (Character.toUpperCase /
+// toLowerCase per char: U+0130 and U+0131 to i, U+017F to s, U+212A to k). Every BMP char against every ASCII
+// char checked with JDK 26, in Latin-1 and UTF-16 strings, both ways round.
+inline bool equalsIgnoreCase(const String& s, const char* t) {
+    size_t n = strlen(t);
+    if (s.size() != n) return false;
+    for (size_t i = 0; i < n; i++) {
+        char16_t c = s[i];
+        char16_t a = (char16_t)(unsigned char)t[i];
+        if (c == a) continue;
+        if (a >= u'A' && a <= u'Z') a = (char16_t)(a + 32);
+        if (a < u'a' || a > u'z') return false; // not a letter: only itself
+        if (c >= u'A' && c <= u'Z') c = (char16_t)(c + 32);
+        if (c == a) continue;
+        if ((c == 0x0130 || c == 0x0131) && a == u'i') continue;
+        if (c == 0x017F && a == u's') continue;
+        if (c == 0x212A && a == u'k') continue;
+        return false;
+    }
+    return true;
+}
+
 // line terminators of java.util.Scanner#nextLine ("\r\n|[\n\r  \u0085]"); also the chars
 // '.' does not match in a regex (no DOTALL)
 inline bool isLineSeparator(char16_t c) { return c == u'\n' || c == u'\r' || c == 0x2028 || c == 0x2029 || c == 0x0085; }
 
+// new Scanner(s).nextLine(): the text of s up to its first line terminator; false where Java throws
+// NoSuchElementException ("No line found": s is empty)
+inline bool scannerFirstLine(const String& s, String& line) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    while (i < s.size() && !isLineSeparator(s[i])) i++;
+    line = s.substr(0, i);
+    return true;
+}
+
 // \s in a java.util.regex Pattern (no UNICODE_CHARACTER_CLASS)
 inline bool isRegexSpace(char16_t c) { return c == u' ' || c == u'\t' || c == u'\n' || c == 0x0B || c == u'\f' || c == u'\r'; }
+
+// String.split("\\s+") (a regex: Pattern.split with limit 0): the parts between the runs of \s; a run at the start
+// gives an empty first part, the trailing empty parts are removed (a string of white space only gives no part), a
+// string without white space is returned whole ("" gives [""])
+inline std::vector<String> splitRegexSpaces(const String& s) {
+    std::vector<String> list;
+    size_t index = 0, i = 0, n = s.size();
+    bool matched = false;
+    while (i < n) {
+        if (!isRegexSpace(s[i])) {
+            i++;
+            continue;
+        }
+        size_t j = i;
+        while (j < n && isRegexSpace(s[j])) j++;
+        list.push_back(s.substr(index, i - index));
+        index = i = j;
+        matched = true;
+    }
+    if (!matched) return {s};
+    list.push_back(s.substr(index));
+    size_t k = list.size();
+    while (k > 0 && list[k - 1].empty()) k--;
+    list.resize(k);
+    return list;
+}
 
 // \d in a java.util.regex Pattern (no UNICODE_CHARACTER_CLASS)
 inline bool isRegexDigit(char16_t c) { return c >= u'0' && c <= u'9'; }
@@ -519,6 +1260,19 @@ inline bool parseInt(const String& s, i32& out) {
     return true;
 }
 inline bool parseInt(const std::string& utf8, i32& out) { return parseInt(decodeUtf8(utf8), out); }
+
+// Boolean.parseBoolean(s) / Boolean.valueOf(s): "true".equalsIgnoreCase(s). No char but the ASCII ones folds to t, r, u
+// or e (Character.toUpperCase / toLowerCase; every char at every place checked with JDK 26), so an ASCII comparison
+inline bool parseBoolean(const String& s) {
+    const char16_t* t = u"true";
+    if (s.size() != 4) return false;
+    for (size_t i = 0; i < 4; i++) {
+        char16_t c = s[i];
+        if (c >= u'A' && c <= u'Z') c = (char16_t)(c + 32);
+        if (c != t[i]) return false;
+    }
+    return true;
+}
 
 // Double.parseDouble(s) (FloatingDecimal.readJavaFormatString): trims, then an optional sign and
 // "NaN", "Infinity", or a decimal or hexadecimal literal with an optional [fFdD] suffix. Returns
@@ -728,8 +1482,20 @@ inline std::string traceJson(const String& s) {
 // HashMap.compute (inserting a new key), HashMap.remove, resize, treeifyBin and the TreeNode code
 // (red-black bins keep a "next" order that iteration follows). Two keys in the same tree bin (8+
 // keys in one bucket of a table of 64+) must not share a hash code: Java would order them with
-// compareTo or identity hash codes. Integer keys and in-grid coordinates never do.
-struct HashMapOrder {
+// compareTo or identity hash codes. Integer keys and in-grid coordinates never do. When they can
+// (Platinum Rift's HashSet<Edge>, Edge hashing to 31 * (31 + a) + b), use HashMapOrderT with a
+// tie-break policy: TieBreak::enabled, and tieBreak(k, pk) gives the direction Java's TreeNode code
+// takes for the key k against the tree's key pk (< 0 left, > 0 right: compareComparables for
+// Comparable keys, else tieBreakOrder, i.e. System.identityHashCode(k) <= System.identityHashCode(pk)
+// ? -1 : 1, which a port can only model on the jar's usual outcome); keys are then found by hash and
+// key like TreeNode.find. java::HashMapOrder (NoTieBreak) is the code without it.
+struct NoTieBreak {
+    static constexpr bool enabled = false;
+    int operator()(i32, i32) const { return 1; }
+};
+template <class TieBreak = NoTieBreak>
+struct HashMapOrderT {
+    [[no_unique_address]] TieBreak tieBreak;
     struct N {
         i32 hash, key;
         int next = -1, parent = -1, left = -1, right = -1, prev = -1;
@@ -829,6 +1595,22 @@ struct HashMapOrder {
             if (ph > h) p = P(p).left;
             else if (ph < h) p = P(p).right;
             else return p;
+        }
+        return -1;
+    }
+    // TreeNode.find(h, k, null) for keys that are not Comparable (with a tie-break policy): equal hash codes searched
+    // on both sides, the right subtree first
+    int findKey(int p, i32 h, i32 k) {
+        while (p >= 0) {
+            int pl = P(p).left, pr = P(p).right, q;
+            i32 ph = P(p).hash;
+            if (ph > h) p = pl;
+            else if (ph < h) p = pr;
+            else if (P(p).key == k) return p;
+            else if (pl < 0) p = pr;
+            else if (pr < 0) p = pl;
+            else if ((q = findKey(pr, h, k)) >= 0) return q;
+            else p = pl;
         }
         return -1;
     }
@@ -996,7 +1778,9 @@ struct HashMapOrder {
                 i32 h = P(x).hash;
                 for (int p = rt;;) {
                     i32 ph = P(p).hash;
-                    int dir = ph > h ? -1 : 1; // hashes are distinct
+                    int dir = ph > h ? -1 : 1; // hashes are distinct (without a tie-break policy)
+                    if constexpr (TieBreak::enabled)
+                        if (ph == h) dir = tieBreak(P(x).key, P(p).key);
                     int xp = p;
                     if ((p = (dir <= 0) ? P(p).left : P(p).right) < 0) {
                         P(x).parent = xp;
@@ -1073,12 +1857,22 @@ struct HashMapOrder {
     // returns the existing node, or -1 after inserting
     int putTreeVal(int first, i32 h, i32 k) {
         int rt = P(first).parent >= 0 ? root(first) : first;
+        [[maybe_unused]] bool searched = false;
         for (int p = rt;;) {
             int dir;
             i32 ph = P(p).hash;
             if (ph > h) dir = -1;
             else if (ph < h) dir = 1;
-            else return p;
+            else if constexpr (!TieBreak::enabled) return p;
+            else {
+                if (P(p).key == k) return p;
+                if (!searched) { // the key may be further down, on either side
+                    searched = true;
+                    int q = -1;
+                    if ((P(p).left >= 0 && (q = findKey(P(p).left, h, k)) >= 0) || (P(p).right >= 0 && (q = findKey(P(p).right, h, k)) >= 0)) return q;
+                }
+                dir = tieBreak(k, P(p).key);
+            }
             int xp = p;
             if ((p = (dir <= 0) ? P(p).left : P(p).right) < 0) {
                 int xpn = P(xp).next;
@@ -1198,7 +1992,8 @@ struct HashMapOrder {
         if (first >= 0) {
             if (P(first).tree) {
                 t = first;
-                old = find(P(first).parent >= 0 ? root(first) : first, hash);
+                if constexpr (TieBreak::enabled) old = findKey(P(first).parent >= 0 ? root(first) : first, hash, key);
+                else old = find(P(first).parent >= 0 ? root(first) : first, hash);
             } else {
                 int e = first;
                 do {
@@ -1229,8 +2024,10 @@ struct HashMapOrder {
         int node = -1, e;
         if (P(p).hash == hash && P(p).key == key) node = p;
         else if ((e = P(p).next) >= 0) {
-            if (P(p).tree) node = find(P(p).parent >= 0 ? root(p) : p, hash);
-            else {
+            if (P(p).tree) {
+                if constexpr (TieBreak::enabled) node = findKey(P(p).parent >= 0 ? root(p) : p, hash, key);
+                else node = find(P(p).parent >= 0 ? root(p) : p, hash);
+            } else {
                 do {
                     if (P(e).hash == hash && P(e).key == key) {
                         node = e;
@@ -1252,7 +2049,14 @@ struct HashMapOrder {
         for (int b : tab)
             for (int e = b; e >= 0; e = P(e).next) out.push_back(P(e).key);
     }
+    // HashMap.clear / HashSet.clear: empties the bins, the table keeps its size (and threshold)
+    void clear() {
+        for (int& b : tab) b = -1;
+        pool.clear();
+        size = 0;
+    }
 };
+using HashMapOrder = HashMapOrderT<>;
 
 // The iteration order of a HashMap / HashSet (default capacity) after putting distinct keys with
 // the given hashCode()s in order: the indices of the keys
@@ -1707,6 +2511,13 @@ struct RandomMethods {
         return r;
     }
 
+    // Random.nextInt(int bound) with its argument check: an IllegalArgumentException for a bound below 1
+    // (nextInt(bound) above assumes a positive bound)
+    i32 nextIntChecked(i32 bound) {
+        if (bound <= 0) throw Exception{"java.lang.IllegalArgumentException: bound must be positive"};
+        return nextInt(bound);
+    }
+
     // RandomGenerator.nextInt(int origin, int bound) (RandomSupport.boundedNextInt)
     i32 nextInt(i32 origin, i32 bound) {
         i32 r = nextInt();
@@ -1734,6 +2545,15 @@ struct RandomMethods {
     bool nextBoolean() { return bits(1) != 0; }
 
     float nextFloat() { return (float)bits(24) / (float)(1 << 24); }
+
+    // RandomGenerator.nextFloat(float bound) (RandomSupport.boundedNextFloat); `bound` must be finite
+    // and positive (Java throws IllegalArgumentException otherwise)
+    float nextFloat(float bound) {
+        float r = nextFloat();
+        r = r * bound;
+        if (r >= bound) r = std::nextafter(bound, -INFINITY);
+        return r;
+    }
 
     double nextDouble() { return (double)(((i64)bits(26) << 27) + bits(27)) * 0x1.0p-53; }
 
@@ -1763,6 +2583,45 @@ struct Random : RandomMethods<Random> {
     i32 next(int bits) {
         seed = (seed * 0x5DEECE66DULL + 0xBULL) & ((1ULL << 48) - 1);
         return (i32)(u32)(seed >> (48 - bits));
+    }
+};
+
+// HotSpot's identity hash codes (Object#hashCode / System.identityHashCode of an object whose class does not
+// override hashCode; -XX:hashCode=5, the default since JDK 8): every thread has its own Marsaglia xor-shift
+// generator, seeded when the thread is created with X = os::random(), Y = 842502087, Z = 0x8767, W = 273326509;
+// an object gets the next value of the thread that first asks for its hash code (the new W, 31 bits, 0 becoming
+// 0xBAD), and keeps it. os::random() is the JVM's global Park-Miller generator (16807, 2^31 - 1, from 1234567),
+// called once per thread created and a few other times: a thread's seed is os::random()'s n-th value, n depending on
+// how many threads the JVM created before (JIT compiler and GC threads come and go with the load, so the same
+// program's thread can get another n from one launch to the next). Checked against JDK 26 (x86_64) with diagnostic
+// builds of cg-2014-poker-chip-race's jar (every identity hash code of a game explained by one thread seed).
+struct IdentityHashes {
+    u32 x = 0, y = 842502087u, z = 0x8767u, w = 273326509u;
+    i64 count = 0; // the values drawn so far
+    IdentityHashes() {}
+    explicit IdentityHashes(u32 threadSeed) : x(threadSeed) {}
+    // os::random()'s n-th value (n >= 1)
+    static u32 osRandom(int n) {
+        u64 s = 1234567;
+        for (int i = 0; i < n; i++) s = s * 16807 % 2147483647;
+        return (u32)s;
+    }
+    // the identity hash code of the next object hashed by the thread
+    i32 next() {
+        u32 t = x;
+        t ^= t << 11;
+        x = y;
+        y = z;
+        z = w;
+        u32 v = w;
+        v = (v ^ (v >> 19)) ^ (t ^ (t >> 8));
+        w = v;
+        count++;
+        u32 value = v & 0x7FFFFFFFu;
+        return (i32)(value == 0 ? 0xBAD : value);
+    }
+    void skip(i64 n) {
+        for (i64 i = 0; i < n; i++) next();
     }
 };
 
@@ -1922,5 +2781,304 @@ template <class T, class R>
 inline void shuffle(std::vector<T>& list, R& rnd) {
     for (int i = (int)list.size(); i > 1; i--) std::swap(list[i - 1], list[rnd.nextInt(i)]);
 }
+
+// ----------------------------------------------------------------------------
+// String.format, java.util.Properties
+// ----------------------------------------------------------------------------
+
+// An argument of String.format: an Integer / Long, a String, or null
+struct FormatArg {
+    enum Kind { NUL, INT, STR } kind = NUL;
+    i64 i = 0;
+    String s;
+    FormatArg() {}
+    FormatArg(int v) : kind(INT), i(v) {}
+    FormatArg(i64 v) : kind(INT), i(v) {}
+    FormatArg(const String& v) : kind(STR), s(v) {}
+    FormatArg(const char16_t* v) : kind(STR), s(v) {}
+    // String.valueOf(arg)
+    String toString() const { return kind == INT ? str(i) : (kind == STR ? s : String(u"null")); }
+};
+
+// The platform's line separator (System.lineSeparator(), what println and %n write)
+#ifdef _WIN32
+inline const char16_t* LINE_SEPARATOR = u"\r\n";
+#else
+inline const char16_t* LINE_SEPARATOR = u"\n";
+#endif
+
+// String.format(format, args) (an English default locale) for the conversions %s, %d, %% and %n
+// with an optional argument index, '-' flag, width and (%s) precision: the formats of the messages
+// of CodinGame's old referees. The JDK's exceptions for a missing argument, a %d of a String, an
+// unknown conversion; other flags and conversions are not supported (the port aborts).
+inline String format(const String& fmt, const std::vector<FormatArg>& args) {
+    String out;
+    size_t ordinary = 0;
+    for (size_t i = 0; i < fmt.size(); i++) {
+        if (fmt[i] != u'%') {
+            out += fmt[i];
+            continue;
+        }
+        size_t start = i++;
+        // %[argument_index$][flags][width][.precision]conversion
+        auto digits = [&](size_t& k) {
+            size_t a = k;
+            while (k < fmt.size() && fmt[k] >= u'0' && fmt[k] <= u'9') k++;
+            return a < k;
+        };
+        auto number = [&](size_t a, size_t b) {
+            i64 v = 0;
+            for (size_t k = a; k < b; k++) v = std::min<i64>(v * 10 + (fmt[k] - u'0'), INT32_MAX);
+            return v;
+        };
+        i64 index = -1, width = -1, precision = -1;
+        size_t k = i;
+        if (digits(k) && k < fmt.size() && fmt[k] == u'$') {
+            index = number(i, k);
+            i = k + 1;
+        }
+        bool left = false;
+        String flags;
+        while (i < fmt.size() && String(u"-#+ 0,(<").find(fmt[i]) != String::npos) {
+            if (fmt[i] == u'-') left = true;
+            flags += fmt[i++];
+        }
+        k = i;
+        if (digits(k)) {
+            width = number(i, k);
+            i = k;
+        }
+        if (i < fmt.size() && fmt[i] == u'.') {
+            k = i + 1;
+            if (digits(k)) {
+                precision = number(i + 1, k);
+                i = k;
+            }
+        }
+        if (i >= fmt.size()) throw Exception{"java.util.UnknownFormatConversionException: Conversion = '%'"};
+        char16_t conv = fmt[i];
+        String spec = fmt.substr(start, i + 1 - start);
+        if (conv != u's' && conv != u'd' && conv != u'%' && conv != u'n') {
+            bool known = String(u"bBhHsScCdoxXeEfgGaAtT%n").find(conv) != String::npos;
+            if (!known) throw Exception{"java.util.UnknownFormatConversionException: Conversion = '" + encodeUtf8(String(1, conv)) + "'"};
+            fprintf(stderr, "java::format: unsupported conversion %s\n", encodeUtf8(spec).c_str());
+            abort();
+        }
+        if (flags.size() > (left ? 1u : 0u) || (left && width < 0)) {
+            fprintf(stderr, "java::format: unsupported flags %s\n", encodeUtf8(spec).c_str());
+            abort();
+        }
+        String text;
+        if (conv == u'n') {
+            out += LINE_SEPARATOR;
+            continue;
+        } else if (conv == u'%') {
+            text = u"%";
+        } else {
+            size_t a = index >= 1 ? (size_t)(index - 1) : ordinary++;
+            if (a >= args.size()) throw Exception{"java.util.MissingFormatArgumentException: Format specifier '" + encodeUtf8(spec) + "'"};
+            const FormatArg& arg = args[a];
+            if (conv == u'd') {
+                if (arg.kind == FormatArg::STR) throw Exception{"java.util.IllegalFormatConversionException: d != java.lang.String"};
+                if (precision >= 0) throw Exception{"java.util.IllegalFormatPrecisionException: " + std::to_string(precision)};
+            }
+            text = arg.toString();
+            if (conv == u's' && precision >= 0 && (i64)text.size() > precision) text = text.substr(0, (size_t)precision);
+        }
+        while (width > (i64)text.size()) text = left ? text + u" " : u" " + text;
+        out += text;
+    }
+    return out;
+}
+
+// java.util.Properties: getProperty / setProperty / load, and the iteration order of entrySet():
+// since JDK 9 a Properties is a ConcurrentHashMap of initial capacity 8, i.e. a table of 16 bins, in
+// which each bin keeps its keys in insertion order (putVal appends a new key to its bin); the 12th key
+// doubles the table (and the 24th, the 48th...: count >= 0.75 n), which moves each bin's keys to bins i
+// and i + n (ConcurrentHashMap#transfer: the keys after the last change of the new bit stay in order, the
+// ones before it are put in front of them one by one, i.e. reversed). A bin of 8 keys that gets a 9th
+// (treeifyBin: presized or turned into a tree) is not modelled: the port aborts.
+struct Properties {
+    std::vector<std::pair<String, String>> entries; // insertion order
+
+    const String* find(const String& key) const {
+        for (auto& e : entries)
+            if (e.first == key) return &e.second;
+        return nullptr;
+    }
+    // setProperty / put: a new key goes last, an existing one keeps its place
+    void setProperty(const String& key, const String& value) {
+        for (auto& e : entries)
+            if (e.first == key) {
+                e.second = value;
+                return;
+            }
+        entries.push_back({key, value});
+    }
+    String getProperty(const String& key, const String& defaultValue) const {
+        const String* v = find(key);
+        return v ? *v : defaultValue;
+    }
+    size_t size() const { return entries.size(); }
+    // entrySet() in iteration order: the keys put again in their insertion order into the table
+    // (spread(hashCode) & (n - 1), n = 16, doubled at count >= 0.75 n), then the bins in order
+    std::vector<std::pair<String, String>> entrySet() const {
+        size_t n = 16;
+        std::vector<std::vector<size_t>> bins(n);
+        for (size_t k = 0; k < entries.size(); k++) {
+            i32 h = hashCode(entries[k].first);
+            u32 spread = (u32)(h ^ (i32)((u32)h >> 16)) & 0x7fffffffu;
+            std::vector<size_t>& bin = bins[spread & (n - 1)];
+            if (bin.size() >= 8) {
+                fprintf(stderr, "java::Properties: a bin of more than 8 keys (treeifyBin) is not supported\n");
+                abort();
+            }
+            bin.push_back(k);
+            if (k + 1 >= n - (n >> 2)) { // addCount: count >= sizeCtl, transfer to a table of 2n
+                std::vector<std::vector<size_t>> next(n * 2);
+                for (size_t i = 0; i < n; i++) {
+                    const std::vector<size_t>& f = bins[i];
+                    if (f.empty()) continue;
+                    auto bit = [&](size_t key) {
+                        i32 kh = hashCode(entries[key].first);
+                        return ((u32)(kh ^ (i32)((u32)kh >> 16)) & (u32)n) != 0;
+                    };
+                    size_t lastRun = 0; // the last run of keys with the same bit
+                    for (size_t p = 1; p < f.size(); p++)
+                        if (bit(f[p]) != bit(f[lastRun])) lastRun = p;
+                    std::vector<size_t>& run = next[bit(f[lastRun]) ? i + n : i];
+                    run.assign(f.begin() + (std::ptrdiff_t)lastRun, f.end());
+                    for (size_t p = 0; p < lastRun; p++) {
+                        std::vector<size_t>& to = next[bit(f[p]) ? i + n : i];
+                        to.insert(to.begin(), f[p]);
+                    }
+                }
+                bins.swap(next);
+                n *= 2;
+            }
+        }
+        std::vector<std::pair<String, String>> r;
+        for (const std::vector<size_t>& bin : bins)
+            for (size_t k : bin) r.push_back(entries[k]);
+        return r;
+    }
+    // load(new StringReader(text)): natural lines ended by \n, \r or \r\n, leading white space
+    // (' ', '\t', '\f') skipped, blank and comment (# !) lines skipped, a line ending with an odd
+    // number of backslashes continued on the next one, key = up to the first unescaped '=', ':' or
+    // white space, then white space and one '=' or ':' skipped, escapes \t \n \r \f \uXXXX \x
+    void load(const String& text) {
+        auto isWs = [](char16_t c) { return c == u' ' || c == u'\t' || c == u'\f'; };
+        size_t off = 0, n = text.size();
+        bool skipLF = false;
+        // LineReader.readLine: the next logical line, false at the end
+        auto readLine = [&](String& line) {
+            line.clear();
+            bool skipWhiteSpace = true, appendedLineBegin = false, precedingBackslash = false;
+            for (;;) {
+                if (off >= n) {
+                    if (line.empty()) return false;
+                    if (precedingBackslash) line.pop_back();
+                    return true;
+                }
+                char16_t c = text[off++];
+                if (skipLF) {
+                    skipLF = false;
+                    if (c == u'\n') continue;
+                }
+                if (skipWhiteSpace) {
+                    if (isWs(c)) continue;
+                    if (!appendedLineBegin && (c == u'\r' || c == u'\n')) continue;
+                    skipWhiteSpace = false;
+                    appendedLineBegin = false;
+                }
+                if (line.empty() && (c == u'#' || c == u'!')) { // a comment: up to the end of its line
+                    for (;;) {
+                        if (off >= n) return false;
+                        char16_t b = text[off++];
+                        if (b == u'\r' || b == u'\n') break;
+                    }
+                    skipWhiteSpace = true;
+                    continue;
+                }
+                if (c != u'\n' && c != u'\r') {
+                    line += c;
+                    precedingBackslash = (c == u'\\') ? !precedingBackslash : false;
+                } else {
+                    if (line.empty()) {
+                        skipWhiteSpace = true;
+                        continue;
+                    }
+                    if (off >= n) { // the end of the input
+                        if (precedingBackslash) line.pop_back();
+                        return true;
+                    }
+                    if (precedingBackslash) { // continued on the next line, without its leading white space
+                        line.pop_back();
+                        skipWhiteSpace = true;
+                        appendedLineBegin = true;
+                        precedingBackslash = false;
+                        if (c == u'\r') skipLF = true;
+                    } else {
+                        return true;
+                    }
+                }
+            }
+        };
+        String line;
+        while (readLine(line)) {
+            // load0
+            size_t limit = line.size(), keyLen = 0, valueStart = limit;
+            bool hasSep = false, precedingBackslash = false;
+            while (keyLen < limit) {
+                char16_t c = line[keyLen];
+                if ((c == u'=' || c == u':') && !precedingBackslash) {
+                    valueStart = keyLen + 1;
+                    hasSep = true;
+                    break;
+                } else if (isWs(c) && !precedingBackslash) {
+                    valueStart = keyLen + 1;
+                    break;
+                }
+                precedingBackslash = c == u'\\' ? !precedingBackslash : false;
+                keyLen++;
+            }
+            while (valueStart < limit) {
+                char16_t c = line[valueStart];
+                if (!isWs(c)) {
+                    if (!hasSep && (c == u'=' || c == u':')) hasSep = true;
+                    else break;
+                }
+                valueStart++;
+            }
+            setProperty(loadConvert(line.substr(0, keyLen)), loadConvert(line.substr(valueStart)));
+        }
+    }
+    // Properties.loadConvert: the escapes
+    static String loadConvert(const String& in) {
+        String out;
+        for (size_t i = 0; i < in.size();) {
+            char16_t c = in[i++];
+            if (c != u'\\') {
+                out += c;
+                continue;
+            }
+            if (i >= in.size()) break; // (a final lone backslash is dropped by readLine)
+            c = in[i++];
+            if (c == u'u') {
+                u32 v = 0;
+                for (int k = 0; k < 4; k++) {
+                    char16_t d = i < in.size() ? in[i++] : 0;
+                    int x = d >= u'0' && d <= u'9' ? d - u'0' : (d >= u'a' && d <= u'f' ? d - u'a' + 10 : (d >= u'A' && d <= u'F' ? d - u'A' + 10 : -1));
+                    if (x < 0) throw Exception{"java.lang.IllegalArgumentException: Malformed \\uxxxx encoding."};
+                    v = (v << 4) + x;
+                }
+                out += (char16_t)v;
+            } else {
+                out += c == u't' ? u'\t' : c == u'r' ? u'\r' : c == u'n' ? u'\n' : c == u'f' ? u'\f' : c;
+            }
+        }
+        return out;
+    }
+};
 
 } // namespace java
