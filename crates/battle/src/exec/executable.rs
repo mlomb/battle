@@ -1,5 +1,5 @@
 use battle_wrapcmd::Transcript;
-use log::info;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 #[cfg(unix)]
@@ -116,10 +116,14 @@ impl Executable {
         })
     }
 
+    pub fn is_playback(&self) -> bool {
+        matches!(self.kind, ExecutableKind::Playback)
+    }
+
     /// Initializes the temporal directory and writes the files to it
     fn initialize_files(&mut self) -> Result<PathBuf, String> {
         if self.tmp_workdir.is_none() {
-            info!(
+            debug!(
                 "Initializing executable {:?}, files: {:?} ({} bytes)",
                 self.kind,
                 self.files.keys(),

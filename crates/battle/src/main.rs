@@ -7,6 +7,7 @@ mod referee;
 
 use log::{LevelFilter, info};
 use std::collections::VecDeque;
+use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, process::ExitCode};
@@ -16,12 +17,12 @@ use crate::exec::Executable;
 use crate::exec::Target;
 use crate::game::{GameResultData, GameSetup};
 use crate::network::client_node::{GameChannel, NetworkArgs};
-use crate::network::worker_node::WorkerNode;
+use crate::network::worker_node::{self, WorkerNode};
 use crate::referee::Referee;
 use battle_bundler::{BundlerArgs, BundlerCli, bundler_main};
 use battle_cgapi::{CGFetchCli, cgapi_main};
 use battle_cgsync::{CGSyncCli, cgsync_main};
-use battle_wrapcmd::{WrapCmdCli, wrapcmd_main};
+use battle_wrapcmd::{Transcript, WrapCmdCli, wrapcmd_main};
 use clap::{Parser, Subcommand};
 use console::style;
 use tempfile::tempdir;
@@ -163,6 +164,14 @@ struct Args {
     command: Commands,
 }
 
+/// A transcript's stdin, stdout and stderr. `wrap capture` logs each stream from its own
+/// thread, so how they interleave varies from run to run: compare them separately.
+fn streams(transcript: &Option<Transcript>) -> Option<(String, String, String)> {
+    transcript
+        .as_ref()
+        .map(|t| (t.stdin(), t.stdout(), t.stderr()))
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     env_logger::Builder::new()
@@ -184,13 +193,13 @@ async fn main() -> ExitCode {
             info!("Starting worker node...");
 
             if threads == 0 {
-                threads = (num_cpus::get_physical() - 2).max(1);
+                threads = worker_node::default_threads();
             }
 
             info!("Worker listening on port {}", style(port).yellow());
             info!("Using {}", style(format!("{} threads", threads)).cyan());
 
-            let (node, handler) = WorkerNode::new(threads, port);
+            let (node, handler, _) = WorkerNode::new(threads, (Ipv4Addr::UNSPECIFIED, port).into());
             let join = std::thread::spawn(move || {
                 node.run();
             });
@@ -290,6 +299,19 @@ async fn main() -> ExitCode {
                         Some((setup, result)) => {
                             let is_reference = Arc::ptr_eq(&setup.referee.target, &reference.target);
 
+                            let result = match result {
+                                Ok(result) => result,
+                                Err(err) => {
+                                    println!(
+                                        "{} with the {} referee, seed {}: {err}",
+                                        style("GAME FAILED").red().bold(),
+                                        if is_reference { "reference" } else { "candidate" },
+                                        style(setup.seed).yellow(),
+                                    );
+                                    std::process::exit(1);
+                                }
+                            };
+
                             let scores = play::format_agent_scores(&result.agents);
 
                             if is_reference {
@@ -332,7 +354,7 @@ async fn main() -> ExitCode {
 
                                 let transcripts_match = reference_result.agents.len() == candidate_result.agents.len()
                                     && reference_result.agents.iter().zip(candidate_result.agents.iter())
-                                    .all(|(r, c)| r.transcript == c.transcript);
+                                    .all(|(r, c)| streams(&r.transcript) == streams(&c.transcript));
 
                                 let game_data_match = true;// || reference_result.game_data == candidate_result.game_data;
 
@@ -373,7 +395,7 @@ async fn main() -> ExitCode {
                                     {
                                         println!(
                                             "Transcript agent {i}: {} ({} vs {} events)",
-                                            if r.transcript != c.transcript {
+                                            if streams(&r.transcript) != streams(&c.transcript) {
                                                 style("MISMATCH").red().bold()
                                             } else {
                                                 style("MATCH").green().bold()

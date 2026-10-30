@@ -1,4 +1,4 @@
-use log::info;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{BufRead, BufReader, Read},
@@ -44,7 +44,7 @@ pub trait Execute {
 
 impl Execute for Command {
     fn execute(&mut self, timeout: Duration, abort: Option<&AtomicBool>) -> ExecutionResult {
-        info!("Executing command: {:?}", self);
+        debug!("Executing command: {:?}", self);
 
         let start = Instant::now();
 

@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::{debug, error, info};
+use log::{debug, info};
 use message_io::{
     events::TimerId,
     network::{Endpoint, NetEvent},
@@ -7,19 +7,22 @@ use message_io::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
+    net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
+    sync::{Arc, OnceLock},
     thread,
     time::Duration,
 };
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::sync::mpsc::{
+    Receiver, Sender, UnboundedReceiver, UnboundedSender, channel, unbounded_channel,
+};
 
 use crate::{
     exec::{Target, TargetId},
-    game::{GameResultData, GameSetup},
+    game::{GameResult, GameSetup},
     network::{
         DEFAULT_WORKER_PORT, FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats,
         net_deserialize, net_serialize,
+        worker_node::{WorkerNode, default_threads},
     },
 };
 
@@ -39,6 +42,24 @@ fn parse_worker_address(s: &str) -> Result<SocketAddr, String> {
     Err(format!("invalid worker address: {s}"))
 }
 
+/// The worker on this machine: the one on the default port, or, when it is not running and no
+/// other worker is given (`standalone`), one started inside this process (once).
+fn local_worker(standalone: bool) -> SocketAddr {
+    let default = SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_WORKER_PORT));
+    if !standalone || TcpStream::connect_timeout(&default, Duration::from_millis(200)).is_ok() {
+        return default;
+    }
+
+    static IN_PROCESS: OnceLock<SocketAddr> = OnceLock::new();
+    *IN_PROCESS.get_or_init(|| {
+        let threads = default_threads();
+        let (node, _, addr) = WorkerNode::new(threads, (Ipv4Addr::LOCALHOST, 0).into());
+        thread::spawn(move || node.run());
+        info!(target: "battle", "No worker running, playing in this process with {threads} threads");
+        addr
+    })
+}
+
 #[derive(Clone, Debug, Parser)]
 pub struct NetworkArgs {
     /// Worker node addresses to connect to
@@ -50,8 +71,8 @@ pub struct GameChannel {
     /// Send game setups to be played
     pub tx: Sender<GameSetup>,
 
-    /// Receives game results
-    pub rx: Receiver<(GameSetup, GameResultData)>,
+    /// Receives game results (or why a game could not be played)
+    pub rx: UnboundedReceiver<(GameSetup, GameResult)>,
 
     /// Share of the node's `NodeHandler` so on drop we call `NodeHandler::stop()` and
     /// the background `for_each` loop exits (see `message_io` node docs).
@@ -66,15 +87,12 @@ impl Drop for GameChannel {
 
 impl GameChannel {
     pub fn new(mut network_args: NetworkArgs) -> Self {
-        let (tx_result, rx_result) = channel::<(GameSetup, GameResultData)>(32);
+        let (tx_result, rx_result) = unbounded_channel::<(GameSetup, GameResult)>();
         let (tx_input, rx_input) = channel::<GameSetup>(1);
 
         // always add the local worker by default
-        network_args.workers.push(
-            format!("127.0.0.1:{}", DEFAULT_WORKER_PORT)
-                .parse()
-                .unwrap(),
-        );
+        let standalone = network_args.workers.is_empty();
+        network_args.workers.push(local_worker(standalone));
 
         let (handler, listener) = node::split::<ClientSignal>();
         let node_shutdown = handler.clone();
@@ -126,7 +144,7 @@ struct ClientNode {
     listener: Option<NodeListener<ClientSignal>>,
 
     rx_input: Receiver<GameSetup>,
-    tx_result: Sender<(GameSetup, GameResultData)>,
+    tx_result: UnboundedSender<(GameSetup, GameResult)>,
 
     workers_available: HashSet<Endpoint>,
     pending_games: HashMap<Endpoint, HashMap<GameId, GameSetup>>,
@@ -204,14 +222,20 @@ impl ClientNode {
                                 .and_then(|m: &mut HashMap<GameId, GameSetup>| m.remove(&game_id))
                                 .expect("result for known game");
 
-                            match result {
-                                Ok(data) => {
-                                    let _ = self.tx_result.try_send((game_setup, data));
-                                }
-                                Err(err) => {
-                                    error!("Game failed: {err}");
+                            // forget the targets no pending game uses (e.g. playback transcripts);
+                            // the next game that needs one adds it back
+                            for target in game_setup.all_targets() {
+                                let in_use = self
+                                    .pending_games
+                                    .values()
+                                    .flat_map(|games| games.values())
+                                    .any(|g| g.all_targets().iter().any(|t| t.id == target.id));
+                                if !in_use {
+                                    self.known_targets.remove(&target.id);
                                 }
                             }
+
+                            let _ = self.tx_result.send((game_setup, result));
 
                             // a slot just freed up on this worker, kick the dispatcher ASAP
                             self.schedule_send_game(Duration::ZERO);

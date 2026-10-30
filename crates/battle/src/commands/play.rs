@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use console::style;
-use log::info;
+use log::{error, info};
 
 use crate::exec::Target;
 use crate::game::{GameAgentResult, GameResultData, GameSetup};
@@ -79,13 +79,18 @@ pub async fn play_games(
             }
 
             item = game_channel.rx.recv() => match item {
-                Some((setup, data)) => {
+                Some((setup, result)) => {
                     results_received += 1;
                     in_flight -= 1;
 
-                    let scores = format_agent_scores(&data.agents);
-                    info!("#{} {} - seed {}", results_received, scores, setup.seed);
-                    out.push((setup, data));
+                    match result {
+                        Ok(data) => {
+                            let scores = format_agent_scores(&data.agents);
+                            info!("#{} {} - seed {}", results_received, scores, setup.seed);
+                            out.push((setup, data));
+                        }
+                        Err(err) => error!("#{} failed - seed {}: {err}", results_received, setup.seed),
+                    }
                     if results_received >= n {
                         break;
                     }

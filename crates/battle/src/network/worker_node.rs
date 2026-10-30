@@ -1,13 +1,15 @@
-use log::{error, info};
+use log::{debug, error, info};
 use message_io::{
     network::{Endpoint, NetEvent},
     node::{self, NodeEvent, NodeHandler, NodeListener},
 };
 use std::{
     collections::{HashMap, HashSet},
+    net::SocketAddr,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
 };
 
@@ -53,18 +55,36 @@ pub struct WorkerNode {
     /// One shared abort flag per connected client; set to true on disconnect to
     /// cancel all running games from that client.
     abort_flags: HashMap<Endpoint, Arc<AtomicBool>>,
-    /// IDs of games currently running a thread (see `threads` for capacity).
-    running_games: HashSet<GameId>,
+    /// Games currently running a thread (see `threads` for capacity), with the targets they use.
+    running_games: HashMap<GameId, Vec<TargetId>>,
+
+    /// Messages to send, written by a dedicated thread: message_io's `send` spins until the
+    /// peer reads, so sending from the event loop deadlocks when the peer is sending too.
+    outbox: mpsc::Sender<(Endpoint, Vec<u8>)>,
+}
+
+/// Physical CPUs minus 2, at least 1.
+pub fn default_threads() -> usize {
+    num_cpus::get_physical().saturating_sub(2).max(1)
 }
 
 impl WorkerNode {
-    pub fn new(capacity: usize, port: u16) -> (Self, NodeHandler<WorkerSignal>) {
+    /// Listens on `addr` (port 0 picks a free port) and returns the address actually bound.
+    pub fn new(capacity: usize, addr: SocketAddr) -> (Self, NodeHandler<WorkerSignal>, SocketAddr) {
         let (handler, listener) = node::split::<WorkerSignal>();
 
-        handler
+        let (_, addr) = handler
             .network()
-            .listen(MESSAGE_IO_TRANSPORT, ("0.0.0.0", port))
+            .listen(MESSAGE_IO_TRANSPORT, addr)
             .expect("to listen");
+
+        let (outbox, outbox_rx) = mpsc::channel::<(Endpoint, Vec<u8>)>();
+        let sender = handler.clone();
+        std::thread::spawn(move || {
+            for (endpoint, data) in outbox_rx {
+                sender.network().send(endpoint, &data);
+            }
+        });
 
         (
             Self {
@@ -76,10 +96,16 @@ impl WorkerNode {
                 inflight_requests: HashMap::new(),
                 waiting_games: Vec::new(),
                 abort_flags: HashMap::new(),
-                running_games: HashSet::new(),
+                running_games: HashMap::new(),
+                outbox,
             },
             handler,
+            addr,
         )
+    }
+
+    fn send(&self, endpoint: Endpoint, data: Vec<u8>) {
+        let _ = self.outbox.send((endpoint, data));
     }
 
     /// Send the updated stats to all connected clients.
@@ -87,22 +113,23 @@ impl WorkerNode {
         let stats = WorkerStats {
             clients: self.connected_clients.len(),
             running: self.running_games.len(),
-            running_ids: self.running_games.iter().copied().collect(),
+            running_ids: self.running_games.keys().copied().collect(),
             capacity: self.capacity,
         };
         let data = net_serialize(FromWorker::Stats(stats));
 
         for client in self.connected_clients.iter() {
-            self.handler.network().send(*client, &data);
+            self.send(*client, data.clone());
         }
     }
 
     pub fn start_game(&mut self, endpoint: Endpoint, game_id: GameId, game: GameSetup<TargetId>) {
-        let game = game.to_executable(&self.targets);
-        if !self.running_games.insert(game_id) {
+        if self.running_games.contains_key(&game_id) {
             error!("Duplicate game_id {game_id}, ignoring");
             return;
         }
+        self.running_games.insert(game_id, game.all_targets());
+        let game = game.to_executable(&self.targets);
         self.send_stats_update();
 
         let abort_flag = self
@@ -172,7 +199,7 @@ impl WorkerNode {
                 }
                 NetEvent::Message(endpoint, input_data) => {
                     let message: FromClient = net_deserialize(input_data);
-                    println!("message: {:?}", message);
+                    debug!("message: {:?}", message);
 
                     match message {
                         FromClient::RunGame { id, game } => {
@@ -187,9 +214,9 @@ impl WorkerNode {
                             } else {
                                 for &id in &needed {
                                     if !self.inflight_requests.contains_key(&id) {
-                                        self.handler.network().send(
+                                        self.send(
                                             endpoint,
-                                            &net_serialize(FromWorker::RequestTarget(id)),
+                                            net_serialize(FromWorker::RequestTarget(id)),
                                         );
                                         self.inflight_requests.insert(id, endpoint);
                                     }
@@ -207,7 +234,25 @@ impl WorkerNode {
                                 TargetKind::SourceCode(source) => match source.build() {
                                     Ok(exe) => exe,
                                     Err(e) => {
-                                        error!("Failed to build target {target_id}: {e:?}");
+                                        error!("Failed to build target {target_id}: {e}");
+                                        self.inflight_requests.remove(&target_id);
+
+                                        // fail the games waiting for it, their clients would wait forever otherwise
+                                        let (failed, waiting): (Vec<_>, Vec<_>) =
+                                            std::mem::take(&mut self.waiting_games)
+                                                .into_iter()
+                                                .partition(|w| w.needed.contains(&target_id));
+                                        self.waiting_games = waiting;
+                                        for w in failed {
+                                            let result = Err(format!("failed to build: {e}"));
+                                            self.send(
+                                                w.endpoint,
+                                                net_serialize(FromWorker::GameResult {
+                                                    id: w.id,
+                                                    result,
+                                                }),
+                                            );
+                                        }
                                         return;
                                     }
                                 },
@@ -249,15 +294,28 @@ impl WorkerNode {
 
                 // Send result back to the client that requested this game, if
                 // it is still connected.
-                self.handler.network().send(
+                self.send(
                     endpoint,
-                    &net_serialize(FromWorker::GameResult {
+                    net_serialize(FromWorker::GameResult {
                         id: game_id,
                         result,
                     }),
                 );
 
-                self.running_games.remove(&game_id);
+                // playback targets (transcripts) belong to a single game: free them
+                for id in self.running_games.remove(&game_id).unwrap_or_default() {
+                    let playback = self
+                        .targets
+                        .get(&id)
+                        .is_some_and(|t| t.blocking_lock().is_playback());
+                    let waited = self
+                        .waiting_games
+                        .iter()
+                        .any(|w| w.game.all_targets().contains(&id));
+                    if playback && !waited {
+                        self.targets.remove(&id);
+                    }
+                }
                 self.send_stats_update();
             }
         });
