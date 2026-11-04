@@ -5,7 +5,7 @@
 //
 //   - numbers: (int)/(long) casts of doubles, int arithmetic (/ and % included), Math.round (double, float)/abs/min/max,
 //     Integer.compare/signum, Double.compare, DoubleStream.sum, Double.parseDouble, Double.toString, Float.toString,
-//     DecimalFormat("0.##"), String.format("%.Nf"), Math.atan2 (fdlibm), Math.toDegrees, Math.sin / Math.cos
+//     DecimalFormat("0.##"), String.format("%.Nf"), Math.atan2 / Math.acos (fdlibm), Math.toDegrees, Math.sin / Math.cos
 //     (HotSpot's x86_64 intrinsics), Math.signum(double), java.awt.geom.Line2D.ptSegDistSq / ptSegDist, Point2D#distance
 //   - strings (java::String is UTF-16 like java.lang.String; a std::string is UTF-8 text):
 //     new String(bytes, UTF_8) with the JDK's replacement of malformed input, String.getBytes(UTF_8),
@@ -485,6 +485,59 @@ inline double atan2(double y, double x) {
         case 1: return -z;
         case 2: return pi - (z - pi_lo);
         default: return (z - pi_lo) - pi;
+    }
+}
+
+// Math.acos / StrictMath.acos: HotSpot has no intrinsic for it, both run FdLibm.Acos (the port of
+// fdlibm's e_acos.c), which libm's acos does not always match to the last bit
+inline double acos(double x) {
+    auto bits = [](u64 b) {
+        double d;
+        std::memcpy(&d, &b, 8);
+        return d;
+    };
+    const double pi = bits(0x400921FB54442D18ULL), pio2_hi = bits(0x3FF921FB54442D18ULL),
+                 pio2_lo = bits(0x3C91A62633145C07ULL), pS0 = bits(0x3FC5555555555555ULL),
+                 pS1 = bits(0xBFD4D61203EB6F7DULL), pS2 = bits(0x3FC9C1550E884455ULL),
+                 pS3 = bits(0xBFA48228B5688F3BULL), pS4 = bits(0x3F49EFE07501B288ULL),
+                 pS5 = bits(0x3F023DE10DFDF709ULL), qS1 = bits(0xC0033A271C8A2D4BULL),
+                 qS2 = bits(0x40002AE59C598AC8ULL), qS3 = bits(0xBFE6066C1B8D0159ULL),
+                 qS4 = bits(0x3FB3B8C5B12E9282ULL);
+    u64 u;
+    std::memcpy(&u, &x, 8);
+    i32 hx = (i32)(u >> 32), ix = hx & 0x7fffffff;
+    u32 lx = (u32)u;
+    if (ix >= 0x3ff00000) { // |x| >= 1
+        if (((u32)(ix - 0x3ff00000) | lx) == 0) return hx > 0 ? 0.0 : pi + 2.0 * pio2_lo;
+        return (x - x) / (x - x); // NaN
+    }
+    if (ix < 0x3fe00000) { // |x| < 0.5
+        if (ix <= 0x3c600000) return pio2_hi + pio2_lo;
+        double z = x * x;
+        double p = z * (pS0 + z * (pS1 + z * (pS2 + z * (pS3 + z * (pS4 + z * pS5)))));
+        double q = 1.0 + z * (qS1 + z * (qS2 + z * (qS3 + z * qS4)));
+        double r = p / q;
+        return pio2_hi - (x - (pio2_lo - x * r));
+    } else if (hx < 0) { // x < -0.5
+        double z = (1.0 + x) * 0.5;
+        double p = z * (pS0 + z * (pS1 + z * (pS2 + z * (pS3 + z * (pS4 + z * pS5)))));
+        double q = 1.0 + z * (qS1 + z * (qS2 + z * (qS3 + z * qS4)));
+        double s = std::sqrt(z);
+        double r = p / q;
+        double w = r * s - pio2_lo;
+        return pi - 2.0 * (s + w);
+    } else { // x > 0.5
+        double z = (1.0 - x) * 0.5;
+        double s = std::sqrt(z);
+        u64 sb;
+        std::memcpy(&sb, &s, 8);
+        double df = bits(sb & 0xFFFFFFFF00000000ULL);
+        double c = (z - df * df) / (s + df);
+        double p = z * (pS0 + z * (pS1 + z * (pS2 + z * (pS3 + z * (pS4 + z * pS5)))));
+        double q = 1.0 + z * (qS1 + z * (qS2 + z * (qS3 + z * qS4)));
+        double r = p / q;
+        double w = r * s + c;
+        return 2.0 * (df + w);
     }
 }
 
@@ -1145,7 +1198,7 @@ inline bool equalsIgnoreCase(const String& s, const char* t) {
     return true;
 }
 
-// line terminators of java.util.Scanner#nextLine ("\r\n|[\n\r  \u0085]"); also the chars
+// line terminators of java.util.Scanner#nextLine ("\r\n|[\n\r\u0085]"); also the chars
 // '.' does not match in a regex (no DOTALL)
 inline bool isLineSeparator(char16_t c) { return c == u'\n' || c == u'\r' || c == 0x2028 || c == 0x2029 || c == 0x0085; }
 

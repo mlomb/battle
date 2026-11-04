@@ -13,6 +13,7 @@ docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInt
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v2.java https://github.com/CodinGame/LegendsOfCodeAndMagic . cg-2018-legends-of-code-and-magic cardlist.txt
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v1.java https://github.com/Illedan/BOTG-Refree "team-1 project" cg-2018-botters-of-the-galaxy
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/eulerscheZahl/Troll-Farm . cg-2026-spring-troll-farm
+docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/eulerscheZahl/TryAngle-Catch . cg-2026-fall-tryangle-catch
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CGjupoulton/SummerChallenge2026 . cg-2026-summer-back-track-king
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/WinterChallenge2026-Exotec . cg-2026-winter-snakebyte
 docker run --rm -it -v ${PWD}/target:/target $(docker build -q .) CommandLineInterface-v4.java https://github.com/CodinGame/SummerChallenge2025-SoakOverflow . cg-2025-summer-soak-overflow
