@@ -6,6 +6,7 @@ Referees are provided for convenience.
 
 | Platform | Year | Season | Contest | Validated | Reference | Fast | Notes |
 |-|-|-|-|-|-|-|-|
+| CodinGame | 2026 | Fall | TryAngle Catch | ✅ | `cg-2026-fall-tryangle-catch-ref` <br/> [cg-2026-fall-tryangle-catch.jar](cg-jar/cg-2026-fall-tryangle-catch.jar) | `cg-2026-fall-tryangle-catch` <br/> [cg-2026-fall-tryangle-catch.cpp](cg-cpp/cg-2026-fall-tryangle-catch.cpp) |  |
 | CodinGame | 2026 | Summer | Back Track King | ✅ | `cg-2026-summer-back-track-king-ref` <br/> [cg-2026-summer-back-track-king.jar](cg-jar/cg-2026-summer-back-track-king.jar) | `cg-2026-summer-back-track-king` <br/> [cg-2026-summer-back-track-king.cpp](cg-cpp/cg-2026-summer-back-track-king.cpp) |  |
 | CodinGame | 2026 | Winter | SnakeByte | ✅ | `cg-2026-winter-snakebyte-ref` <br/> [cg-2026-winter-snakebyte.jar](cg-jar/cg-2026-winter-snakebyte.jar) | `cg-2026-winter-snakebyte` <br/> [cg-2026-winter-snakebyte.cpp](cg-cpp/cg-2026-winter-snakebyte.cpp) |  |
 | CodinGame | 2025 | Summer | Soak Overflow | ✅ | `cg-2025-summer-soak-overflow-ref` <br/> [cg-2025-summer-soak-overflow.jar](cg-jar/cg-2025-summer-soak-overflow.jar) | `cg-2025-summer-soak-overflow` <br/> [cg-2025-summer-soak-overflow.cpp](cg-cpp/cg-2025-summer-soak-overflow.cpp) |  |

@@ -93,6 +93,7 @@ impl Referee<Arc<Target>> {
             "cg-2019-crystal-rush" => (2, 2),
             "cg-2020-fall-witches-brew" => (2, 2),
             "cg-2023-fall-fish" => (2, 2),
+            "cg-2026-fall-tryangle-catch" => (2, 2),
             "cg-2022-fall-keep-off-the-grass" => (2, 2),
             "cg-2016-fantastic-bits" => (2, 2),
             "cg-2016-fantastic-bits-contest" => (2, 2),
