@@ -220,7 +220,7 @@ async fn main() -> ExitCode {
                     Arc::new(Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"))
                 })
                 .collect();
-                
+
             return play::play_main(referee, &paths, agents, args, network_args).await;
         }
 
