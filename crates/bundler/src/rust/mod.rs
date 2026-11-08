@@ -7,9 +7,10 @@ use crate::source::{Language, Source};
 use cargo_metadata::{MetadataCommand, TargetKind};
 use format::{format_code, FmtError};
 use quote::quote;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use visitors::resolve_source;
+use syn::visit_mut::VisitMut;
+use visitors::{resolve_source, ConstOverrider};
 
 pub struct RustBundler {}
 
@@ -22,7 +23,7 @@ impl Bundler for RustBundler {
             .eq("cargo.toml")
     }
 
-    fn bundle(manifest_path: &Path) -> Result<Bundle, BundlerError> {
+    fn bundle(manifest_path: &Path, defines: &[String]) -> Result<Bundle, BundlerError> {
         assert!(Self::is_entrypoint(manifest_path));
 
         let metadata = MetadataCommand::new()
@@ -71,6 +72,16 @@ impl Bundler for RustBundler {
             target_file.items.splice(..0, lib_file.items);
             target_file.shebang = target_file.shebang.or(lib_file.shebang);
         }
+
+        // `NAME=VALUE` sets the value of `const NAME`
+        let mut values = HashMap::new();
+        for define in defines {
+            let (name, value) = define.split_once('=').unwrap_or((define, "true"));
+            let value = syn::parse_str(value)
+                .map_err(|e| BundlerError::Other(format!("invalid value for {name}: {e}")))?;
+            values.insert(name.to_string(), value);
+        }
+        ConstOverrider(values).visit_file_mut(&mut target_file);
 
         let source = quote!(#target_file).to_string();
 

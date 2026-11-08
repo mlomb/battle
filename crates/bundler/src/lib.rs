@@ -21,12 +21,20 @@ pub struct BundlerArgs {
     /// If not provided, it will find an appropiate entry point in the current folder.
     #[arg(default_value_os_t = std::env::current_dir().unwrap())]
     pub entry: PathBuf,
+
+    /// C++: `#define NAME VALUE` at the top of the bundle (`NAME` alone is 1).
+    /// Rust: replace the value of `const NAME` (`NAME` alone is true)
+    #[arg(short = 'D', long = "define", value_name = "NAME[=VALUE]")]
+    pub defines: Vec<String>,
     // TODO: add flags: remove comments, etc
 }
 
 impl BundlerArgs {
     pub fn default_from_entry(entry: PathBuf) -> Self {
-        Self { entry }
+        Self {
+            entry,
+            defines: vec![],
+        }
     }
 }
 

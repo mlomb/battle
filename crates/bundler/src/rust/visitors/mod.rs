@@ -1,4 +1,5 @@
 mod attribute_remover;
+mod const_override;
 mod mod_inliner;
 mod test_remover;
 mod use_trimmer;
@@ -6,6 +7,7 @@ mod use_trimmer;
 use crate::error::BundlerError;
 use attribute_remover::AttributeRemover;
 use cargo_metadata::camino::Utf8Path;
+pub use const_override::ConstOverrider;
 use mod_inliner::ModInliner;
 use std::collections::HashSet;
 use std::path::PathBuf;

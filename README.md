@@ -40,7 +40,7 @@ To update, install the crate again or pull the latest changes and run the comman
     <th>Note</th>
   </tr>
   <tr>
-    <td align="center" rowspan="3"><b><code>battle bundle</code></b></br></br>
+    <td align="center" rowspan="4"><b><code>battle bundle</code></b></br></br>
 A tool to bundle C++ and Rust projects into a single source unit for submission.</td>
     <td><code>battle bundle</code></td>
     <td>It will look for a C++ or Rust project (see <a href="https://github.com/mlomb/battle/tree/main/crates/bundler/README.md#what-is-a-project">What is a project?</a>) and print a single file to stdout.</td>
@@ -52,6 +52,10 @@ A tool to bundle C++ and Rust projects into a single source unit for submission.
   <tr>
     <td><code>battle build main.cpp --output submission.cpp</code></td>
     <td>Output to a file instead of stdout.</td>
+  </tr>
+  <tr>
+    <td><code>battle bundle main.cpp -D DEPTH=4</code></td>
+    <td>Add <code>#define DEPTH 4</code> at the top of a C++ bundle, or set the value of <code>const DEPTH</code> in a Rust one.</td>
   </tr>
   <tr>
     <td align="center"><b><code>battle build</code></b></br></br>A tool to bundle and build your bot and check compilation issues.</td>
@@ -79,7 +83,7 @@ Starts a worker node that the distributed runner uses to play games.</td>
     <td>Override the thread count and listening port.</td>
   </tr>
   <tr>
-    <td align="center" rowspan="3"><b><code>battle play</code></b></br></br>
+    <td align="center" rowspan="4"><b><code>battle play</code></b></br></br>
 Plays games between bots through the worker pool, streaming results as they finish</td>
     <td><code>battle play -r cg-2023-fall-fish -a v1.cpp -a v2.cpp</code></td>
     <td>Play a single game with the given referee and agents (repeat <code>-a</code> per agent).</td>
@@ -91,6 +95,10 @@ Plays games between bots through the worker pool, streaming results as they fini
   <tr>
     <td><code>battle play -r ... -a v2.cpp -a v1.cpp -n 100 --swap</code></td>
     <td>Play every seed once per seat order, to compare versions without map or seat luck</td>
+  </tr>
+  <tr>
+    <td><code>battle play -r ... -a v1.cpp -D DEPTH=4 -a v1.cpp -D DEPTH=6</code></td>
+    <td>Each <code>-D</code> defines a macro for the <code>-a</code> before it, to compare settings of the same bot.</td>
   </tr>
   <tr>
     <td align="center" rowspan="2"><b><code>battle referee-diff</code></b></br></br>

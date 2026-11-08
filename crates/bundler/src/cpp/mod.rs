@@ -44,7 +44,7 @@ impl Bundler for CppBundler {
         }
     }
 
-    fn bundle(main_path: &Path) -> Result<Bundle, BundlerError> {
+    fn bundle(main_path: &Path, defines: &[String]) -> Result<Bundle, BundlerError> {
         assert!(Self::is_entrypoint(main_path));
 
         let mut expander = CppExpander::new();
@@ -52,9 +52,18 @@ impl Bundler for CppBundler {
             .expand_source(main_path)?
             .ok_or(BundlerError::Other("source was empty".to_string()))?;
 
+        // `NAME` alone is 1, like `-D`
+        let defines: String = defines
+            .iter()
+            .map(|define| {
+                let (name, value) = define.split_once('=').unwrap_or((define, "1"));
+                format!("#define {name} {value}\n")
+            })
+            .collect();
+
         Ok(Bundle {
             source: Source {
-                code: format!("{}\n{}", PRAGMAS, source),
+                code: format!("{}{}\n{}", defines, PRAGMAS, source),
                 language: Language::Cpp,
             },
             src_files: expander.files_included,

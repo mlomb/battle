@@ -18,12 +18,20 @@ use battle_bundler::BundlerArgs;
 struct BuildMcp {
     /// Entry point file (main.cpp, Cargo.toml) or directory containing an entry file
     entry: PathBuf,
+
+    /// `NAME=VALUE` defines: a `#define` in C++, the value of `const NAME` in Rust
+    #[serde(default)]
+    defines: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct PlayMcp {
     /// Agent entrypoint paths (main.cpp, Cargo.toml) or directory containing an entry file
     agents: Vec<PathBuf>,
+
+    /// The `NAME=VALUE` defines of each agent, in the order of `agents` (see the build tool)
+    #[serde(default)]
+    defines: Vec<Vec<String>>,
 
     /// Number of games to play
     #[serde(default = "default_play_games")]
@@ -65,6 +73,7 @@ impl BattleMcpServer {
     async fn build_bot(&self, Parameters(bundler_mcp): Parameters<BuildMcp>) -> String {
         let result = bundle_and_build(BundlerArgs {
             entry: bundler_mcp.entry,
+            defines: bundler_mcp.defines,
         });
         match result {
             Ok(exec) => format!("Ok: {:?}", exec),
@@ -83,7 +92,14 @@ impl BattleMcpServer {
             play_mcp
                 .agents
                 .iter()
-                .map(|p| Arc::new(Target::from_entrypoint(p.clone()).expect("correct bundle")))
+                .enumerate()
+                .map(|(i, entry)| {
+                    let bundler_args = BundlerArgs {
+                        entry: entry.clone(),
+                        defines: play_mcp.defines.get(i).cloned().unwrap_or_default(),
+                    };
+                    Arc::new(Target::from_bundler_args(&bundler_args).expect("correct bundle"))
+                })
                 .collect(),
             play_mcp.n,
             play_mcp.seed,

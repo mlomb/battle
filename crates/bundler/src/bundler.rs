@@ -16,7 +16,7 @@ pub trait Bundler {
     }
 
     /// Bundles the project into a single source unit
-    fn bundle(path: &Path) -> Result<Bundle, BundlerError>;
+    fn bundle(path: &Path, defines: &[String]) -> Result<Bundle, BundlerError>;
 
     /// Find the entrypoint file of a project
     fn find_entrypoint(path: &Path) -> Option<PathBuf> {
@@ -64,11 +64,11 @@ pub fn bundle(args: &BundlerArgs) -> Result<Bundle, BundlerError> {
     let entry = args.entry.clone();
 
     if let Some(entry) = RustBundler::find_entrypoint(entry.as_path()) {
-        return RustBundler::bundle(entry.as_path());
+        return RustBundler::bundle(entry.as_path(), &args.defines);
     }
 
     if let Some(entry) = CppBundler::find_entrypoint(entry.as_path()) {
-        return CppBundler::bundle(entry.as_path());
+        return CppBundler::bundle(entry.as_path(), &args.defines);
     }
 
     Err(BundlerError::NoEntrypoint)

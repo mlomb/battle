@@ -188,7 +188,6 @@ struct Summary {
 #[derive(Serialize)]
 struct AgentSummary {
     name: String,
-    path: String,
     wins: usize,
     draws: usize,
     losses: usize,
@@ -223,7 +222,7 @@ impl Output {
 
 pub async fn play_main(
     referee: Referee,
-    paths: &[String],
+    names: Vec<String>,
     agents: Vec<Arc<Target>>,
     args: PlayArgs,
     network_args: NetworkArgs,
@@ -232,7 +231,7 @@ pub async fn play_main(
         log::set_max_level(log::LevelFilter::Warn);
     }
 
-    let names = agent_names(paths);
+    let names = numbered(names);
     let n = agents.len();
 
     if let Some(dir) = &args.game_data_dir
@@ -278,7 +277,7 @@ pub async fn play_main(
     })
     .await;
 
-    let summary = summarize(&records, &names, paths, total);
+    let summary = summarize(&records, &names, total);
     let text = format_summary(&summary, &records, &names);
     output.emit(JsonLine::Summary(&summary), Some(text));
     if let Some(mut file) = output.file
@@ -375,20 +374,13 @@ fn format_game(count: usize, record: &GameRecord, names: &[String]) -> String {
     line
 }
 
-fn agent_names(paths: &[String]) -> Vec<String> {
-    let stems: Vec<String> = paths
-        .iter()
-        .map(|p| match Path::new(p).file_stem() {
-            Some(stem) => stem.to_string_lossy().to_string(),
-            None => p.clone(),
-        })
-        .collect();
-    stems
+fn numbered(names: Vec<String>) -> Vec<String> {
+    names
         .iter()
         .enumerate()
-        .map(|(i, s)| match stems.iter().filter(|o| *o == s).count() {
+        .map(|(i, s)| match names.iter().filter(|o| *o == s).count() {
             1 => s.clone(),
-            _ => format!("{s}#{}", stems[..=i].iter().filter(|o| *o == s).count()),
+            _ => format!("{s}#{}", names[..=i].iter().filter(|o| *o == s).count()),
         })
         .collect()
 }
@@ -405,7 +397,7 @@ fn points(scores: &[i32]) -> Vec<f64> {
         .collect()
 }
 
-fn summarize(records: &[GameRecord], names: &[String], paths: &[String], total: usize) -> Summary {
+fn summarize(records: &[GameRecord], names: &[String], total: usize) -> Summary {
     let ok: Vec<&GameRecord> = records.iter().filter(|r| r.error.is_none()).collect();
 
     let mut by_seed: BTreeMap<i64, Vec<Vec<f64>>> = BTreeMap::new();
@@ -443,7 +435,6 @@ fn summarize(records: &[GameRecord], names: &[String], paths: &[String], total: 
 
             AgentSummary {
                 name: names[a].clone(),
-                path: paths[a].clone(),
                 wins,
                 draws,
                 losses,
@@ -549,7 +540,7 @@ mod tests {
 
     #[test]
     fn repeated_names_are_numbered() {
-        let paths = ["a/v1.cpp", "b/v1.cpp", "v2"].map(String::from);
-        assert_eq!(agent_names(&paths), vec!["v1#1", "v1#2", "v2"]);
+        let names = ["v1", "v1", "v2"].map(String::from).to_vec();
+        assert_eq!(numbered(names), vec!["v1#1", "v1#2", "v2"]);
     }
 }
