@@ -7,10 +7,10 @@ mod referee;
 
 use log::{LevelFilter, info};
 use std::collections::VecDeque;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, process::ExitCode};
 
+use crate::commands::agents::AgentArgs;
 use crate::commands::play::{self};
 use crate::exec::Executable;
 use crate::exec::Target;
@@ -77,8 +77,8 @@ enum Commands {
         turn_timeout: Option<u64>,
 
         /// List of agents participating in the game
-        #[arg(short, long, required = true)]
-        agent: Vec<String>,
+        #[clap(flatten)]
+        agents: AgentArgs,
 
         #[clap(flatten)]
         args: play::PlayArgs,
@@ -105,8 +105,8 @@ enum Commands {
 
         /// Agents to use for the comparison. The agents must not be trivial bots to allow for meaningful comparisons.
         /// A single non-trivial non-deterministic agent works wonders.
-        #[arg(short, long)]
-        agent: Vec<String>,
+        #[clap(flatten)]
+        agents: AgentArgs,
 
         /// First game seed to use
         #[arg(long, default_value_t = 1, allow_negative_numbers = true)]
@@ -208,26 +208,23 @@ async fn main() -> ExitCode {
         }
         Commands::Play {
             referee,
-            agent: paths,
+            agents,
             turn_timeout,
             args,
             network_args,
         } => {
             let referee = Referee::from_string(&referee).with_turn_timeout(turn_timeout);
-            let agents = paths
-                .iter()
-                .map(|path| {
-                    Arc::new(Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"))
-                })
-                .collect();
 
-            return play::play_main(referee, &paths, agents, args, network_args).await;
+            let names = agents.names();
+            let agents = agents.targets();
+
+            return play::play_main(referee, names, agents, args, network_args).await;
         }
 
         Commands::RefereeDiff {
             reference,
             candidate,
-            agent,
+            agents,
             seed,
             max_games,
             turn_timeout,
@@ -238,12 +235,7 @@ async fn main() -> ExitCode {
 
             let mut game_channel = GameChannel::new(network_args);
 
-            let real_agents: Vec<Arc<Target>> = agent
-                .iter()
-                .map(|path| {
-                    Arc::new(Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"))
-                })
-                .collect();
+            let real_agents = agents.targets();
 
             let mut pending_ref: VecDeque<_> = (0..max_games as i64)
                 .map(|index| GameSetup {

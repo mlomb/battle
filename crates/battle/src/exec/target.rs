@@ -43,7 +43,11 @@ impl Target {
     }
 
     pub fn from_entrypoint(entry: impl Into<PathBuf>) -> Result<Self, BundlerError> {
-        let bundle_out = bundle(&BundlerArgs::default_from_entry(entry.into()))?;
+        Self::from_bundler_args(&BundlerArgs::default_from_entry(entry.into()))
+    }
+
+    pub fn from_bundler_args(args: &BundlerArgs) -> Result<Self, BundlerError> {
+        let bundle_out = bundle(args)?;
         Ok(Self::new(TargetKind::SourceCode(bundle_out.source)))
     }
 }
