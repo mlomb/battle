@@ -7,8 +7,8 @@ use message_io::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
-    sync::{Arc, OnceLock},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
     thread,
     time::Duration,
 };
@@ -22,7 +22,6 @@ use crate::{
     network::{
         DEFAULT_WORKER_PORT, FromClient, FromWorker, GameId, MESSAGE_IO_TRANSPORT, WorkerStats,
         net_deserialize, net_serialize,
-        worker_node::{WorkerNode, default_threads},
     },
 };
 
@@ -40,24 +39,6 @@ fn parse_worker_address(s: &str) -> Result<SocketAddr, String> {
     }
 
     Err(format!("invalid worker address: {s}"))
-}
-
-/// The worker on this machine: the one on the default port, or, when it is not running and no
-/// other worker is given (`standalone`), one started inside this process (once).
-fn local_worker(standalone: bool) -> SocketAddr {
-    let default = SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_WORKER_PORT));
-    if !standalone || TcpStream::connect_timeout(&default, Duration::from_millis(200)).is_ok() {
-        return default;
-    }
-
-    static IN_PROCESS: OnceLock<SocketAddr> = OnceLock::new();
-    *IN_PROCESS.get_or_init(|| {
-        let threads = default_threads();
-        let (node, _, addr) = WorkerNode::new(threads, (Ipv4Addr::LOCALHOST, 0).into());
-        thread::spawn(move || node.run());
-        info!(target: "battle", "No worker running, playing in this process with {threads} threads");
-        addr
-    })
 }
 
 #[derive(Clone, Debug, Parser)]
@@ -91,8 +72,9 @@ impl GameChannel {
         let (tx_input, rx_input) = channel::<GameSetup>(1);
 
         // always add the local worker by default
-        let standalone = network_args.workers.is_empty();
-        network_args.workers.push(local_worker(standalone));
+        network_args
+            .workers
+            .push(SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_WORKER_PORT)));
 
         let (handler, listener) = node::split::<ClientSignal>();
         let node_shutdown = handler.clone();

@@ -181,7 +181,7 @@ impl Referee<Arc<Mutex<Executable>>> {
     pub fn command(
         &self,
         agent_cmds: &[Command],
-        seed: u64,
+        seed: i64,
         output_logs: Option<PathBuf>,
     ) -> Command {
         let mut exe = self.target.blocking_lock();

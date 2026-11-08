@@ -7,7 +7,6 @@ mod referee;
 
 use log::{LevelFilter, info};
 use std::collections::VecDeque;
-use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, process::ExitCode};
@@ -73,21 +72,16 @@ enum Commands {
         #[arg(short, long, env = "BATTLE_REFEREE")]
         referee: String,
 
-        /// List of agents participating in the game
-        #[arg(short, long)]
-        agent: Vec<String>,
-
-        /// Number of games to play
-        #[arg(short, long, default_value_t = 1)]
-        n: usize,
-
-        /// Seed to use. If n > 1, the seed will be incremented each game.
-        #[arg(long, default_value_t = 1)]
-        seed: u64,
-
         /// Override the referee's per-turn time limit
         #[arg(long)]
         turn_timeout: Option<u64>,
+
+        /// List of agents participating in the game
+        #[arg(short, long, required = true)]
+        agent: Vec<String>,
+
+        #[clap(flatten)]
+        args: play::PlayArgs,
 
         #[clap(flatten)]
         network_args: NetworkArgs,
@@ -115,8 +109,8 @@ enum Commands {
         agent: Vec<String>,
 
         /// First game seed to use
-        #[arg(long, default_value_t = 1)]
-        seed: u64,
+        #[arg(long, default_value_t = 1, allow_negative_numbers = true)]
+        seed: i64,
 
         /// Number of games to compare (seed runs from `0` to `max_games - 1`)
         #[arg(long, default_value_t = 10)]
@@ -199,7 +193,7 @@ async fn main() -> ExitCode {
             info!("Worker listening on port {}", style(port).yellow());
             info!("Using {}", style(format!("{} threads", threads)).cyan());
 
-            let (node, handler, _) = WorkerNode::new(threads, (Ipv4Addr::UNSPECIFIED, port).into());
+            let (node, handler) = WorkerNode::new(threads, port);
             let join = std::thread::spawn(move || {
                 node.run();
             });
@@ -214,23 +208,20 @@ async fn main() -> ExitCode {
         }
         Commands::Play {
             referee,
-            agent: agents,
-            n,
-            seed,
+            agent: paths,
             turn_timeout,
+            args,
             network_args,
         } => {
             let referee = Referee::from_string(&referee).with_turn_timeout(turn_timeout);
-            let agents = agents
+            let agents = paths
                 .iter()
                 .map(|path| {
                     Arc::new(Target::from_entrypoint(PathBuf::from(path)).expect("correct bundle"))
                 })
                 .collect();
 
-            info!("Using a networked worker pool");
-            play::play_games(referee, agents, n, seed, network_args, true, false).await;
-            info!("Exiting!");
+            return play::play_main(referee, &paths, agents, args, network_args).await;
         }
 
         Commands::RefereeDiff {
@@ -254,7 +245,7 @@ async fn main() -> ExitCode {
                 })
                 .collect();
 
-            let mut pending_ref: VecDeque<_> = (0..max_games as u64)
+            let mut pending_ref: VecDeque<_> = (0..max_games as i64)
                 .map(|index| GameSetup {
                     referee: reference.clone(),
                     agents: real_agents.clone(),
@@ -278,7 +269,7 @@ async fn main() -> ExitCode {
             };
 
             // reference results by seed
-            let mut reference_results: HashMap<u64, GameResultData> = HashMap::new();
+            let mut reference_results: HashMap<i64, GameResultData> = HashMap::new();
 
             // number of seeds compared so far, we are done once all of them have been compared
             let mut compared = 0;
