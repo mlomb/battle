@@ -5,7 +5,6 @@ use message_io::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    net::SocketAddr,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -69,13 +68,12 @@ pub fn default_threads() -> usize {
 }
 
 impl WorkerNode {
-    /// Listens on `addr` (port 0 picks a free port) and returns the address actually bound.
-    pub fn new(capacity: usize, addr: SocketAddr) -> (Self, NodeHandler<WorkerSignal>, SocketAddr) {
+    pub fn new(capacity: usize, port: u16) -> (Self, NodeHandler<WorkerSignal>) {
         let (handler, listener) = node::split::<WorkerSignal>();
 
-        let (_, addr) = handler
+        handler
             .network()
-            .listen(MESSAGE_IO_TRANSPORT, addr)
+            .listen(MESSAGE_IO_TRANSPORT, ("0.0.0.0", port))
             .expect("to listen");
 
         let (outbox, outbox_rx) = mpsc::channel::<(Endpoint, Vec<u8>)>();
@@ -100,7 +98,6 @@ impl WorkerNode {
                 outbox,
             },
             handler,
-            addr,
         )
     }
 

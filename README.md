@@ -79,14 +79,18 @@ Starts a worker node that the distributed runner uses to play games.</td>
     <td>Override the thread count and listening port.</td>
   </tr>
   <tr>
-    <td align="center" rowspan="2"><b><code>battle play</code></b></br></br>
-Plays one or more games between bots through the worker pool, streaming results as they finish.</td>
+    <td align="center" rowspan="3"><b><code>battle play</code></b></br></br>
+Plays games between bots through the worker pool, streaming results as they finish</td>
     <td><code>battle play -r cg-2023-fall-fish -a v1.cpp -a v2.cpp</code></td>
     <td>Play a single game with the given referee and agents (repeat <code>-a</code> per agent).</td>
   </tr>
   <tr>
     <td><code>battle play -r ... -a v1.cpp -a v2.cpp -n 100</code></td>
-    <td>Play <code>-n</code> games in total.</td>
+    <td>Play <code>-n</code> games on consecutive seeds, from <code>--seed</code> (default <code>1</code>).</td>
+  </tr>
+  <tr>
+    <td><code>battle play -r ... -a v2.cpp -a v1.cpp -n 100 --swap</code></td>
+    <td>Play every seed once per seat order, to compare versions without map or seat luck</td>
   </tr>
   <tr>
     <td align="center" rowspan="2"><b><code>battle referee-diff</code></b></br></br>

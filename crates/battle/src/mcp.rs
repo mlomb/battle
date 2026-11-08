@@ -31,7 +31,7 @@ struct PlayMcp {
 
     /// Seed to use. If n > 1, the seed will be incremented each game
     #[serde(default = "default_seed")]
-    seed: u64,
+    seed: i64,
 
     /// Optionally stores each agent's transcript (stdin, stdout, stderr) for analysis
     #[serde(default = "default_capture_io")]
@@ -45,7 +45,7 @@ fn default_play_games() -> usize {
     1000
 }
 
-fn default_seed() -> u64 {
+fn default_seed() -> i64 {
     1
 }
 
@@ -97,7 +97,7 @@ impl BattleMcpServer {
 
         #[derive(serde::Serialize)]
         struct NotableGame {
-            seed: u64,
+            seed: i64,
             scores: Vec<i32>,
         }
 
@@ -131,7 +131,7 @@ impl BattleMcpServer {
             losses: usize,
             score_sum: i64,
             // (agent_score, seed, all_scores) — sorted ascending after the loop
-            games: Vec<(i32, u64, Vec<i32>)>,
+            games: Vec<(i32, i64, Vec<i32>)>,
         }
 
         let mut accum: Vec<AgentAccum> = (0..num_agents)
@@ -147,7 +147,14 @@ impl BattleMcpServer {
         let mut all_games: Vec<NotableGame> = vec![];
 
         for (setup, data) in &results {
-            let scores: Vec<i32> = data.agents.iter().map(|a| a.score).collect();
+            let Some(scores) = data
+                .agents
+                .iter()
+                .map(|a| a.score)
+                .collect::<Option<Vec<i32>>>()
+            else {
+                continue;
+            };
             let max_score = scores.iter().copied().max().unwrap_or(0);
             let is_draw = scores.iter().filter(|&&s| s == max_score).count() > 1;
 
@@ -188,7 +195,7 @@ impl BattleMcpServer {
 
         let games = results.len();
 
-        let to_notable = |slice: &[(i32, u64, Vec<i32>)]| -> Vec<NotableGame> {
+        let to_notable = |slice: &[(i32, i64, Vec<i32>)]| -> Vec<NotableGame> {
             slice
                 .iter()
                 .take(NOTABLE_COUNT)
